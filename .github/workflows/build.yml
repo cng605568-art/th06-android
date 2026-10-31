@@ -1,0 +1,185 @@
+# Builds, tests, signs and releases the Android APK.
+#
+#   push to main / pull request  -> host unit tests + release APK as a workflow artifact
+#   push a tag "v*"              -> same, plus a GitHub Release with the signed APK
+#                                   (tags containing "-", e.g. v0.2.0-beta, become pre-releases)
+#
+# Repository secrets (Settings > Secrets and variables > Actions):
+#   ANDROID_KEYSTORE_BASE64    base64 of your release .jks (required for tags)
+#   ANDROID_KEYSTORE_PASSWORD  keystore password            (required for tags)
+#   ANDROID_KEY_ALIAS          key alias, default "release"  (optional)
+#   ANDROID_KEY_PASSWORD       key password, default = keystore password (optional)
+# Without the keystore secrets, branch builds are signed with a throwaway debug key so
+# they still install for testing; tag builds refuse to run.
+
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  NDK_VERSION: 28.2.13676358
+  CMAKE_VERSION: 3.22.1
+  BUILD_TOOLS_VERSION: 36.0.0
+  PLATFORM: android-36
+  GRADLE_VERSION: 9.4.1
+  ABIS: arm64-v8a
+
+jobs:
+  host-tests:
+    name: Host unit tests (archives, LZSS, pool, game sim)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cache pinned third-party sources
+        uses: actions/cache@v6
+        with:
+          path: third_party
+          key: third-party-${{ hashFiles('scripts/fetch_deps.sh') }}
+
+      - name: Fetch pinned dependencies (SHA-256 verified)
+        run: bash scripts/fetch_deps.sh
+
+      - name: Configure
+        run: cmake -S tests -B build-tests -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build-tests --parallel
+
+      - name: Run
+        run: ctest --test-dir build-tests --output-on-failure
+
+  android:
+    name: Release APK
+    needs: host-tests
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write   # creating GitHub Releases on tag pushes
+    env:
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Refuse unsigned release tags
+        if: startsWith(github.ref, 'refs/tags/v') && env.HAS_KEYSTORE != 'true'
+        run: |
+          echo "::error::Tag builds must be release-signed. Add the ANDROID_KEYSTORE_BASE64 and ANDROID_KEYSTORE_PASSWORD repository secrets."
+          exit 1
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Cache Android NDK and CMake
+        uses: actions/cache@v6
+        with:
+          path: |
+            /usr/local/lib/android/sdk/ndk/${{ env.NDK_VERSION }}
+            /usr/local/lib/android/sdk/cmake/${{ env.CMAKE_VERSION }}
+          key: android-ndk-${{ env.NDK_VERSION }}-cmake-${{ env.CMAKE_VERSION }}
+
+      - name: Set up Android SDK, NDK (side-by-side) and CMake
+        uses: android-actions/setup-android@v4
+        with:
+          packages: >-
+            platform-tools
+            platforms;${{ env.PLATFORM }}
+            build-tools;${{ env.BUILD_TOOLS_VERSION }}
+            ndk;${{ env.NDK_VERSION }}
+            cmake;${{ env.CMAKE_VERSION }}
+
+      - name: Check NDK contents SDL2 needs
+        run: |
+          f="$ANDROID_HOME/ndk/$NDK_VERSION/sources/android/cpufeatures/cpu-features.c"
+          if [ ! -f "$f" ]; then
+            echo "::error::$f is missing. SDL2 2.32's CMake build compiles it; pick an NDK that still ships cpufeatures."
+            exit 1
+          fi
+          echo "NDK OK: $ANDROID_HOME/ndk/$NDK_VERSION"
+
+      - name: Cache pinned third-party sources
+        uses: actions/cache@v6
+        with:
+          path: third_party
+          key: third-party-${{ hashFiles('scripts/fetch_deps.sh') }}
+
+      - name: Fetch pinned dependencies (SHA-256 verified)
+        run: bash scripts/fetch_deps.sh
+
+      - name: Set up Gradle ${{ env.GRADLE_VERSION }} (with dependency cache)
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: ${{ env.GRADLE_VERSION }}
+          cache-read-only: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}
+
+      - name: Compute version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            name="${GITHUB_REF_NAME#v}"
+          else
+            name="0.0.0-dev+${GITHUB_SHA::7}"
+          fi
+          echo "TH06_VERSION_NAME=$name" >> "$GITHUB_ENV"
+          echo "TH06_VERSION_CODE=$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
+          echo "APK_BASENAME=th06-android-${name//+/-}" >> "$GITHUB_ENV"
+
+      - name: Decode release keystore
+        if: env.HAS_KEYSTORE == 'true'
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+          echo "TH06_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      # Passwords are passed to this step only, never written to GITHUB_ENV.
+      - name: Build release APK (CMake via externalNativeBuild)
+        env:
+          TH06_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          TH06_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          TH06_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: gradle --no-daemon --stacktrace :app:assembleRelease -Pth06.abis="$ABIS"
+
+      - name: Verify signature and stage APK
+        run: |
+          apk=app/build/outputs/apk/release/app-release.apk
+          test -f "$apk" || { echo "::error::$apk was not produced"; ls -R app/build/outputs/apk || true; exit 1; }
+          "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner" verify --verbose --print-certs "$apk"
+          mkdir -p dist
+          suffix=""
+          [ "$HAS_KEYSTORE" = "true" ] || suffix="-debugsigned"
+          cp "$apk" "dist/${APK_BASENAME}${suffix}.apk"
+          (cd dist && sha256sum *.apk > SHA256SUMS.txt && cat SHA256SUMS.txt)
+          rm -f "$RUNNER_TEMP/release.jks"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.APK_BASENAME }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            dist/*.apk
+            dist/SHA256SUMS.txt
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          fail_on_unmatched_files: true

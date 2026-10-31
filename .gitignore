@@ -1,0 +1,23 @@
+# Fetched by scripts/fetch_deps.sh (pinned + hash-checked); never commit
+/third_party/
+
+# Build output
+/build*/
+/app/build/
+/app/.cxx/
+/.gradle/
+/local.properties
+*.apk
+*.aab
+
+# Signing material and game data must never be committed
+*.jks
+*.keystore
+*.dat
+*.DAT
+
+# IDE / OS
+.idea/
+*.iml
+.DS_Store
+Thumbs.db

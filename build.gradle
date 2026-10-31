@@ -1,0 +1,4 @@
+// Top-level build file. AGP 9.2.1 requires Gradle >= 9.4.1 and JDK 17.
+plugins {
+    id 'com.android.application' version '9.2.1' apply false
+}

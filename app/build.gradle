@@ -1,0 +1,98 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Pinned sources fetched by scripts/fetch_deps.sh. SDL's Java glue is compiled from the
+// same tarball as the native library so the two can never drift apart.
+def thirdParty = rootProject.file('third_party')
+def sdl2Dir = new File(thirdParty, 'SDL2')
+if (!new File(sdl2Dir, 'android-project/app/src/main/java/org/libsdl/app/SDLActivity.java').exists()) {
+    throw new GradleException('third_party/SDL2 is missing. Run: bash scripts/fetch_deps.sh')
+}
+
+def abiList = (project.findProperty('th06.abis') ?: 'arm64-v8a').toString()
+        .split(',').collect { it.trim() }.findAll { !it.isEmpty() }
+
+// Release signing comes only from environment variables (set by CI from GitHub Secrets).
+def keystorePath = System.getenv('TH06_KEYSTORE_PATH')
+def hasReleaseKey = keystorePath != null && !keystorePath.isEmpty() && new File(keystorePath).exists()
+
+android {
+    namespace = 'io.github.cng605568art.th06'
+    compileSdk = 36
+    ndkVersion = '28.2.13676358'
+
+    defaultConfig {
+        applicationId = 'io.github.cng605568art.th06'
+        minSdk = 24
+        targetSdk = 36
+        versionCode = (System.getenv('TH06_VERSION_CODE') ?: '1').toInteger()
+        versionName = System.getenv('TH06_VERSION_NAME') ?: '0.0.0-local'
+
+        ndk {
+            abiFilters.addAll(abiList)
+        }
+
+        externalNativeBuild {
+            cmake {
+                // Two C++ shared libraries (SDL2's HIDAPI layer and ours): the NDK requires
+                // the shared STL; AGP packages libc++_shared.so automatically.
+                arguments '-DANDROID_STL=c++_shared',
+                          '-DANDROID_ARM_NEON=ON',
+                          "-DTH06_THIRD_PARTY=${thirdParty.absolutePath}"
+            }
+        }
+    }
+
+    signingConfigs {
+        release {
+            if (hasReleaseKey) {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv('TH06_KEYSTORE_PASSWORD')
+                keyAlias = System.getenv('TH06_KEY_ALIAS') ?: 'release'
+                keyPassword = System.getenv('TH06_KEY_PASSWORD') ?: System.getenv('TH06_KEYSTORE_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled = false
+            // No release key (forks, local builds): sign with the debug key so the APK still
+            // installs for testing. CI refuses to publish tags in that state.
+            signingConfig = hasReleaseKey ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file('src/main/cpp/CMakeLists.txt')
+            version = '3.22.1'
+        }
+    }
+
+    sourceSets {
+        main {
+            java.srcDir(new File(sdl2Dir, 'android-project/app/src/main/java'))
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    packaging {
+        jniLibs {
+            // Keep .so files uncompressed and 16 KB page-aligned inside the APK.
+            useLegacyPackaging = false
+        }
+    }
+
+    lint {
+        // SDL's bundled Java targets many API levels behind runtime checks; don't let
+        // release lint fail the CI build on it.
+        checkReleaseBuilds = false
+        abortOnError = false
+    }
+}
