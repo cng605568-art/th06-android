@@ -223,9 +223,28 @@ void Game::render(SpriteSink& s, const HudInfo& hud) const {
     line("FPS", std::format("{:.1f}", hud.fps));
     line("DRAWS", std::format("{}", hud.drawCalls));
     y += 8;
+    // Why an asset fell back to generated art, word-wrapped to the panel (29 chars, 3 lines).
+    auto note = [&](std::string_view text) {
+        constexpr std::size_t kWidth = 29;
+        const auto warn = rgba(255, 210, 120);
+        for (int lines = 0; !text.empty() && lines < 3; ++lines) {
+            std::size_t cut = text.size();
+            if (cut > kWidth) {
+                cut = text.rfind(' ', kWidth);
+                if (cut == std::string_view::npos || cut == 0) cut = kWidth;
+            }
+            drawText(s, ui, x + 6, y, text.substr(0, cut), 1.0f, warn);
+            y += 10;
+            text.remove_prefix(cut);
+            while (!text.empty() && text.front() == ' ') text.remove_prefix(1);
+        }
+    };
     drawText(s, ui, x, y, art_.bulletsFromGameData ? "BULLETS: ETAMA3.ANM" : "BULLETS: GENERATED", 1.0f, label);
     y += 12;
+    note(art_.bulletsNote);
     drawText(s, ui, x, y, art_.playerFromGameData ? "PLAYER: PLAYER00.ANM" : "PLAYER: GENERATED", 1.0f, label);
+    y += 12;
+    note(art_.playerNote);
 #if !defined(__ANDROID__)
     drawText(s, ui, x, 440, "KEYS: ARROWS Z X SHIFT ESC", 1.0f, rgba(140, 120, 150));
 #endif

@@ -21,7 +21,9 @@ struct GameArt {
     SpriteRegion spawner;
     bool bulletsFromGameData = false;
     bool playerFromGameData = false;
-    std::string dataLabel;  // shown in the HUD
+    std::string dataLabel;    // shown in the HUD
+    std::string bulletsNote;  // why game bullets were not used (empty = fine)
+    std::string playerNote;   // why the game's player sprite was not used
 };
 
 GameArt buildGameArt(const Vfs* vfs, TextureLibrary& lib);
