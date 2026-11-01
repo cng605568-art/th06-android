@@ -28,6 +28,8 @@ import java.util.Locale;
 final class DataSources {
     static final String FORMAT_PBG3 = "PBG3"; // 2002 original (紅魔郷CM.DAT, KOUMAKYO_CM.dat, ...)
     static final String FORMAT_PKGL = "PKGL"; // New Classic, Steam 2026 (th06CM.dat, ...)
+    static final String FORMAT_EXE = "EXE";   // the game program (東方紅魔郷.exe): some data tables are read from it
+    static final String FORMAT_WAV = "WAV";   // the 2002 music, bgm/th06_NN.wav (loose files, not in the archives)
 
     private static final String PREFS = "th06_data_sources";
     private static final String KEY_TREE = "tree_uri";
@@ -146,10 +148,15 @@ final class DataSources {
                         }
                         continue;
                     }
-                    if (!name.toLowerCase(Locale.ROOT).endsWith(".dat") || size < 8) continue;
+                    String lower = name.toLowerCase(Locale.ROOT);
+                    boolean program = lower.endsWith(".exe") && size >= 256 * 1024 && size <= 4L * 1024 * 1024;
+                    boolean music = lower.endsWith(".wav") && lower.startsWith("th06_") && size > 44;
+                    if (!program && !music && (!lower.endsWith(".dat") || size < 8)) continue;
                     Uri doc = DocumentsContract.buildDocumentUriUsingTree(treeUri, id);
                     String format = sniff(cr, doc);
-                    if (format != null) found.add(new Entry(name, doc.toString(), format, size));
+                    if (program && !FORMAT_EXE.equals(format)) continue;
+                    if (music != FORMAT_WAV.equals(format)) continue;
+                    if (format != null) found.add(new Entry(music ? "bgm/" + name : name, doc.toString(), format, size));
                 }
             } catch (RuntimeException ignored) {
                 // Unreadable folder (provider error): skip it, keep scanning the rest.
@@ -174,6 +181,8 @@ final class DataSources {
         String s = new String(magic, java.nio.charset.StandardCharsets.US_ASCII);
         if (s.equals(FORMAT_PBG3)) return FORMAT_PBG3;
         if (s.equals(FORMAT_PKGL)) return FORMAT_PKGL;
+        if (magic[0] == 'M' && magic[1] == 'Z') return FORMAT_EXE;
+        if (s.equals("RIFF")) return FORMAT_WAV;
         return null;
     }
 }

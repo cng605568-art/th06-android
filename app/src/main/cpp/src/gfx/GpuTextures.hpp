@@ -24,6 +24,7 @@ class GpuTextures {
     GLuint placeholder();
 
     std::vector<GLuint> textures_;
+    std::vector<std::uint32_t> versions_;  // uploaded version of each (dynamic textures change)
     GLuint placeholder_ = 0;
 };
 
