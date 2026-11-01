@@ -91,8 +91,10 @@ refuse to run unsigned.
    Keep `東方紅魔郷.exe` (1.02h) in the folder: the shot types are read from it. Copy the
    `bgm` folder too (`th06_01.wav` …) for music.
 3. Tap **Play**: the game's title screen opens (SHOT confirms, BOMB or Back cancels). The
-   launcher's **Quick start** skips the title and starts the shot type, difficulty and stage
-   picked there. Without the 2002 archives the screen says what is missing.
+   launcher's **Stage select** skips the title and starts at any stage (Extra too) with the
+   shot type and difficulty picked there, as practice: you play on from that stage (with the
+   power a practice run of it gives), and nothing from that game is saved, not even with a
+   top-10 score. Without the 2002 archives the screen says what is missing.
 4. Optional: **Replace music** (below Play) swaps any of the 17 songs for an audio file of your
    own: choose the song, optionally a loop point in seconds, then the file.
 

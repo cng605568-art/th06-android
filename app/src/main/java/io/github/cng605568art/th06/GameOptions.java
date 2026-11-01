@@ -4,9 +4,10 @@ import android.content.Context;
 import android.content.SharedPreferences;
 
 /**
- * Choices made in the launcher: the mischief options, and the quick start (skip the
- * game's title screen and start a stage at once with the shot type, difficulty and stage
- * chosen here). Read by the native engine through GameActivity.
+ * Choices made in the launcher: the mischief options, and stage select (skip the game's
+ * title screen and start at a stage with the shot type and difficulty chosen here, as
+ * practice: nothing from that game is saved). Read by the native engine through
+ * GameActivity.
  */
 final class GameOptions {
     static final String[] SHOT_TYPES = {"Reimu A (homing amulets)", "Reimu B (needles)",

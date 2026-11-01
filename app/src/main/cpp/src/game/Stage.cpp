@@ -268,7 +268,7 @@ void Stage::runMenus(const MenuInput& edges) {
 // HUD's hi-score (in practice, the stage's practice best).
 void Stage::startRun() {
     runStartStage_ = stageNumber_;
-    recordable_ = state_.mischief == 0;
+    recordable_ = state_.mischief == 0 && !stageSelect_;
     if (!recordable_) world_.scores = nullptr;  // no spell history either
     loadScores();
     const std::uint32_t hi = practiceRun_ ? scores_.practice(state_.shotType, std::clamp(stageNumber_ - 1, 0, 5), std::min(state_.difficulty, 3))
@@ -555,17 +555,21 @@ void Stage::startFromTitle() {
     if (!load(c.stage, c.stage == 7 ? Extra : c.difficulty)) log::warn("Stage not started: {}", error_);
 }
 
-bool Stage::quickStart(int stageNumber, int difficulty) {
+bool Stage::quickStart(int stageNumber, int difficulty, bool stageSelect) {
     stageNumber = std::clamp(stageNumber, 1, 7);
     const int d = stageNumber == 7 ? Extra : std::clamp(difficulty, 0, 3);
-    const bool practice = stageNumber != 1 && stageNumber != 7;
     session_.difficulty = d;
     session_.character = state_.shotType / 2;
     session_.shot = state_.shotType % 2;
-    session_.practice = practice;
-    if (practice) session_.practiceStage = stageNumber - 1;
-    const bool full = d != Extra && !practice;
-    newRun(stageNumber, full ? config_.lives : 2, full ? config_.bombs : 3, practice);
+    session_.practice = false;
+    const bool extra = d == Extra;
+    newRun(stageNumber, extra ? 2 : config_.lives, extra ? 3 : config_.bombs, false);
+    if (stageSelect) {
+        // The launcher's stage select: play on from the chosen stage, with the power a
+        // practice run of that stage would have; nothing from this game is saved.
+        stageSelect_ = true;
+        state_.power = stageNumber <= 1 ? 0 : stageNumber == 2 ? 64 : GameState::kMaxPower;
+    }
     return load(stageNumber, d);
 }
 
@@ -582,6 +586,7 @@ void Stage::newRun(int stageNumber, int lives, int bombs, bool practice) {
     state_.practice = practice;
     if (practice) state_.power = stageNumber <= 1 ? 0 : stageNumber == 2 ? 64 : GameState::kMaxPower;
     practiceRun_ = practice;
+    stageSelect_ = false;
     runStartStage_ = 0;
     quitRequested_ = inResults_ = inEnding_ = endingMusic_ = false;
     world_.scores = &scores_;
@@ -680,15 +685,17 @@ void Stage::renderBombName(SpriteSink& s) {
 // With the game's panel on screen, only the list of features the data used that are not
 // ported yet, small, at the bottom of the side panel.
 void Stage::renderDiagnostics(SpriteSink& s) {
-    if (state_.mischief != 0) {  // say so: these scores are not saved
+    if (state_.mischief != 0 || stageSelect_) {  // say so: these scores are not saved
         std::string t;
         if (state_.cheat(MischiefLives)) t += " LIVES";
         if (state_.cheat(MischiefBombs)) t += " BOMBS";
         if (state_.cheat(MischiefInvincible)) t += " INVINCIBLE";
         if (state_.cheat(MischiefFullPower)) t += " POWER";
         if (state_.cheat(MischiefContinues)) t += " CONT";
+        if (stageSelect_) t = (runStartStage_ == 7 ? std::string(" FROM THE EXTRA STAGE") : " FROM STAGE " + std::to_string(runStartStage_)) + t;
         s.fillRect(ui_.white, 420.0f, 352.0f, 216.0f, 23.0f, rgba(60, 0, 40, 170));
-        drawText(s, ui_, 424.0f, 355.0f, "MISCHIEF (SCORES NOT SAVED):", 1.0f, rgba(255, 140, 200));
+        drawText(s, ui_, 424.0f, 355.0f, stageSelect_ ? "STAGE SELECT (SCORES NOT SAVED):" : "MISCHIEF (SCORES NOT SAVED):", 1.0f,
+                 rgba(255, 140, 200));
         drawText(s, ui_, 424.0f, 365.0f, t.substr(1, 34), 1.0f, rgba(255, 190, 220));
     }
     if (unported_.counts().empty()) return;

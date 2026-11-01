@@ -62,10 +62,12 @@ class Stage {
     const MusicRoom& musicRoom() const { return musicRoom_; }
     // The title or one of its screens is up (Android Back is Cancel there).
     bool inMenus() const { return inTitle_ || inMusicRoom_ || (inResults_ && results_.titleMode()); }
-    // A new game straight away, without the title (the launcher's quick start): stage 1..7
-    // at the given difficulty, with the shot type set by setShotType(). A game started at
-    // stage 2..6 is a practice run.
-    bool quickStart(int stageNumber, int difficulty);
+    // A new game straight away, without the title: stage 1..7 at the given difficulty, with
+    // the shot type set by setShotType(). `stageSelect` (the launcher's stage select): it
+    // plays on from that stage with the stage's practice power and saves nothing (no high
+    // scores, clear progress or spell history); otherwise it is an ordinary game.
+    bool quickStart(int stageNumber, int difficulty, bool stageSelect = false);
+    bool stageSelectRun() const { return stageSelect_; }
     // Loads stage 1..7 at the given difficulty (also the next stage of a game). On failure
     // the stage shows why instead.
     bool load(int stageNumber, int difficulty);
@@ -208,6 +210,7 @@ class Stage {
     std::string scorePath_;
     int runStartStage_ = 0;  // 0 until the first stage of the game is loaded
     bool practiceRun_ = false;
+    bool stageSelect_ = false;  // started from the launcher's stage select: nothing is saved
     bool recordable_ = true;  // a full game without mischief: its scores are saved
     ResultScreen results_;
     bool inResults_ = false;

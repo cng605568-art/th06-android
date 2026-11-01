@@ -93,10 +93,12 @@ public class ImportActivity extends Activity {
         status.setTypeface(Typeface.MONOSPACE);
         column.addView(status, wrap());
 
-        // The game opens at its own title screen (Start, Extra, Practice, Option). The quick
-        // start skips it and goes straight into a stage chosen here.
+        // The game opens at its own title screen (Start, Extra, Practice, Option). Stage select
+        // skips it and starts at any stage chosen here, as practice: the game plays on from
+        // there, and nothing from it (high scores, clear progress, spell cards) is saved.
+        column.addView(label("Stage select"), wrap());
         CheckBox quick = new CheckBox(this);
-        quick.setText("Quick start: skip the title screen");
+        quick.setText("Start at any stage (skips the title; practice, scores not saved)");
         quick.setChecked(GameOptions.quickStart(this));
         column.addView(quick, wrap());
         LinearLayout quickOptions = new LinearLayout(this);
