@@ -39,6 +39,11 @@ void applyColorKey(Image& image, std::uint32_t argb);
 // the mask's blue channel into the texture's alpha. Masks of another size are resampled.
 void applyAlphaFromMask(Image& image, const Image& mask);
 
+// Converts pixels to what the original stored for the ANM header's texture format, so
+// alpha edges and gradients look as they did:
+//   1 A8R8G8B8 (unchanged)  2 A1R5G5B5  3 R5G6B5  4 R8G8B8 (alpha dropped)  5 A4R4G4B4
+void quantizeToD3DFormat(Image& image, std::uint32_t anmFormat);
+
 // Places `image` in the top-left of a larger transparent canvas (D3DX_FILTER_NONE padding
 // of textures to the size recorded in the ANM header).
 Image padTo(const Image& image, int width, int height);
