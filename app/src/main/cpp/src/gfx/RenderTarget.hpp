@@ -23,6 +23,7 @@ class RenderTarget {
 
   private:
     GLuint framebuffer_ = 0;
+    GLuint depth_ = 0;
     GLuint texture_ = 0;
     int width_ = 0;
     int height_ = 0;
