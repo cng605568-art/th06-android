@@ -60,6 +60,7 @@ class App {
     bool devTouch_ = false;
     int devBombFrame_ = -1;  // --demo-bomb N: tap the touch BOMB button on frame N
     int devPauseFrame_ = -1;  // --demo-pause N: presses Menu on frame N
+    std::uint32_t mischief_ = 0;  // launcher mischief options (desktop: --mischief bits)
     int devGameOverFrame_ = -1;  // --demo-gameover N: ends the game on frame N (result screen)
     std::unique_ptr<TextRenderer> text_;  // platform text (null: built-in fallback); outlives stage_
     int startStage_ = 1;

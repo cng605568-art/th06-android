@@ -190,6 +190,11 @@ void ResultScreen::nameEntry(World& world, Gui& gui, const Edges& e) {
         entry.difficulty = static_cast<std::uint8_t>(run_.difficulty);
         entry.stage = run_.cleared ? ScoreFile::kStageCleared : static_cast<std::uint8_t>(run_.stage);
         entry.naming = true;
+        if (!run_.recordable) {  // mischief: the score does not go into the table
+            rank_ = 10;
+            finishNameEntry(world);
+            return;
+        }
         ScoreFile::Table& table = scores_->table(run_.difficulty, run_.shotType);
         rank_ = ScoreFile::insert(table, entry);
         if (rank_ >= 10) {  // not in the top 10: straight on, silently, and never saved

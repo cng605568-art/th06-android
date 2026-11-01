@@ -427,6 +427,7 @@ int Player::checkCollision(World& world, const Vec3f& center, const Vec3f& size)
 }
 
 void Player::die(World& world) {
+    if (world.state->cheat(MischiefInvincible)) return;  // mischief: nothing kills
     state = Dead;
     if (world.enemies) world.enemies->failSpellcardCapture();
     counter_ = 0;
@@ -479,11 +480,11 @@ void Player::respawn(World& world) {
     prevPosition = positionCenter;  // the hitbox stays at the hit point until the spawn ends
     counter_ = 0;
     world.anm->setAndExecuteScript(sprite_, kScriptIdle);
-    if (gs.livesRemaining <= 0) {
+    if (gs.livesRemaining <= 0 && !gs.cheat(MischiefLives)) {
         gs.continueMenu = true;  // no spare life: game over, the continue menu opens next frame
         return;
     }
-    --gs.livesRemaining;
+    if (!gs.cheat(MischiefLives)) --gs.livesRemaining;
     gs.bombs = gs.difficulty == Extra ? 3 : gs.startingBombs;
     spawnStep();
 }

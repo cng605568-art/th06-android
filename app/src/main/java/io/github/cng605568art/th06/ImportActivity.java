@@ -91,6 +91,17 @@ public class ImportActivity extends Activity {
         column.addView(choice(GameOptions.STAGES, GameOptions.stage(this) - 1,
                 v -> GameOptions.setStage(this, v + 1)), wrap());
 
+        column.addView(label("Mischief (high scores are not saved while any is on)"), wrap());
+        int mischief = GameOptions.mischief(this);
+        for (int i = 0; i < GameOptions.MISCHIEF.length; ++i) {
+            final int bit = i;
+            CheckBox box = new CheckBox(this);
+            box.setText(GameOptions.MISCHIEF[i]);
+            box.setChecked((mischief & (1 << i)) != 0);
+            box.setOnCheckedChangeListener((b, checked) -> GameOptions.setMischief(this, bit, checked));
+            column.addView(box, wrap());
+        }
+
         playButton = new Button(this);
         playButton.setOnClickListener(v -> startActivity(new Intent(this, GameActivity.class)));
         column.addView(playButton, wrap());

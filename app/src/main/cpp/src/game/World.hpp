@@ -34,6 +34,16 @@ inline constexpr float kGameRegionHeight = 448.0f;
 
 enum Difficulty : int { Easy = 0, Normal = 1, Hard = 2, Lunatic = 3, Extra = 4 };
 
+// The launcher's "mischief" options (not in the original). Any of them keeps the game's
+// scores out of score.dat.
+enum Mischief : std::uint32_t {
+    MischiefLives = 1,       // lives never run out
+    MischiefBombs = 2,       // bombs never run out
+    MischiefInvincible = 4,  // nothing kills the player
+    MischiefFullPower = 8,   // power stays at MAX
+    MischiefContinues = 16,  // unlimited continues
+};
+
 // SoundIdx of the original (0..31); see audio/SoundPlayer for the file/volume table.
 class SoundSink {
   public:
@@ -76,6 +86,8 @@ struct GameState {
     // by the player's respawn; the player ship is not drawn while it is set.
     bool continueMenu = false;
     std::int32_t continuesUsed = 0;  // this game (3 credits on Easy to Lunatic, none on Extra)
+    std::uint32_t mischief = 0;      // Mischief bits
+    bool cheat(Mischief m) const { return (mischief & m) != 0; }
     bool bossPresent = false;
     // Boss HUD inputs written by the enemies: life-bar target (life / max life), the life
     // count from ECL, and whole seconds left on the boss timer (also the capture bonus's s).

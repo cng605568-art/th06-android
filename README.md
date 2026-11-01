@@ -33,6 +33,7 @@ Built entirely by GitHub Actions: no Android Studio, no local SDK.
 | Music | The 2002 game's WAV mode: the stage file's song path becomes your `bgm/th06_NN.wav`, with loop points from `th06_NN.pos` in the archives; the intro plays once, then the loop repeats gaplessly. Stage theme at stage start, boss theme from the dialogue, 4-second fade after the boss (linear in decibels to −50 dB), every request restarts its song, music keeps playing through the pause menu. Mono or other sample rates are played at the device rate. |
 | Sound | SoundIdx → wav + DirectSound volume table, 3-entry per-frame queue with de-duplication, played once per frame |
 | Main loop | `std::chrono` fixed timestep of exactly 1/60 s (rational arithmetic, no drift), rendering once per display refresh with positions interpolated to the present instant (60/90/120/144 Hz), vsync-jitter snapping, max 4 ticks per frame |
+| Mischief (port extra) | Launcher switches not in the original: infinite lives, infinite bombs, invincible, power always MAX, unlimited continues. While any is on, the HUD says so and the game's scores, clear progress and spell history are not saved (the result screen still shows the statistics). |
 | Controls | Touch D-pad + Shot/Bomb/Focus/Pause registered as an **SDL virtual game controller**; physical gamepads and keyboards use the same path |
 
 **Not ported yet** (shown live under *NOT PORTED YET* in the HUD whenever the game data uses

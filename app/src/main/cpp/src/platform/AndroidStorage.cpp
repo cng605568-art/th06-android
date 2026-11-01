@@ -141,12 +141,14 @@ AndroidGameOptions readAndroidGameOptions() {
     if (!mid) return out;
     auto array = static_cast<jintArray>(a.env->CallStaticObjectMethod(a.cls, mid));
     if (a.clearException() || !array) return out;
-    if (a.env->GetArrayLength(array) >= 3) {
-        jint v[3];
-        a.env->GetIntArrayRegion(array, 0, 3, v);
+    const jsize n = a.env->GetArrayLength(array);
+    if (n >= 3) {
+        jint v[4] = {0, 1, 1, 0};
+        a.env->GetIntArrayRegion(array, 0, n >= 4 ? 4 : 3, v);
         out.shotType = v[0];
         out.difficulty = v[1];
         out.stage = v[2];
+        out.mischief = static_cast<std::uint32_t>(v[3]);
     }
     a.env->DeleteLocalRef(array);
     return out;

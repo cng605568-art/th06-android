@@ -104,7 +104,7 @@ void Bomb::showName(World& world) {
 void Bomb::start(World& world, Player& player) {
     GameState& gs = *world.state;
     ++gs.bombsUsed;
-    --gs.bombs;
+    if (!gs.cheat(MischiefBombs)) --gs.bombs;
     gs.bombActive = true;
     timer_ = 0;
     duration_ = 999;

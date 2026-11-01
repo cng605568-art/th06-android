@@ -84,6 +84,7 @@ bool App::init(int argc, char** argv) {
         else if (a == "--stage" && next) startStage_ = std::atoi(argv[++i]);
         else if (a == "--difficulty" && next) startDifficulty_ = std::atoi(argv[++i]);
         else if (a == "--shot" && next) shotType_ = std::atoi(argv[++i]);
+        else if (a == "--mischief" && next) mischief_ = static_cast<std::uint32_t>(std::atoi(argv[++i]));
         else if (a == "--size" && next) std::sscanf(argv[++i], "%dx%d", &windowWidth_, &windowHeight_);
     }
 #endif
@@ -140,9 +141,11 @@ bool App::init(int argc, char** argv) {
         shotType_ = o.shotType;
         startStage_ = o.stage;
         startDifficulty_ = o.stage == 7 ? Extra : o.difficulty;
+        mischief_ = o.mischief;
     }
 #endif
     stage_->setShotType(shotType_);
+    stage_->setMischief(mischief_);
     if (char* pref = SDL_GetPrefPath("th06", "th06-android")) {  // app storage on Android
         stage_->setScorePath(std::string(pref) + "score.dat");
         SDL_free(pref);

@@ -4772,6 +4772,82 @@ static void testResultScreen() {
     CHECK(ResultScreen::completionText(ResultScreen::Run{Extra, 0, 7, false, 0, 0, 0, 0, 0, 19'800}) == "    50.00%");
 }
 
+// ---- launcher mischief options -----------------------------------------------------------
+
+static void testMischief() {
+    // Player level: bombs, lives, invincibility.
+    {
+        TestWorld tw;
+        CHECK(tw.ok);
+        if (!tw.ok) return;
+        Player& pl = tw.player;
+        GameState& gs = tw.state;
+        gs.mischief = MischiefBombs | MischiefLives;
+        const InputState none;
+        InputState press;
+        press.bomb = true;
+        pl.update(tw.world, none);
+        pl.state = Player::Alive;
+        gs.bombs = 1;
+        pl.update(tw.world, press);
+        CHECK(gs.bombActive && gs.bombs == 1 && gs.bombsUsed == 1);  // the bomb fired, none spent
+        while (gs.bombActive) pl.update(tw.world, none);
+        pl.state = Player::Alive;
+        gs.livesRemaining = 0;
+        pl.checkCollision(tw.world, pl.positionCenter, {4.0f, 4.0f, 0.0f});
+        CHECK(pl.state == Player::Dead);
+        for (int f = 0; f < 31; ++f) pl.update(tw.world, none);
+        CHECK(pl.state == Player::Spawning && gs.livesRemaining == 0 && !gs.continueMenu);  // no game over
+        gs.mischief = MischiefInvincible;
+        pl.state = Player::Alive;
+        const std::uint32_t deaths = gs.deaths;
+        pl.checkCollision(tw.world, pl.positionCenter, {4.0f, 4.0f, 0.0f});
+        CHECK(pl.state == Player::Alive && gs.deaths == deaths);
+    }
+    // Stage level: full power, unlimited continues, nothing saved.
+    const Bytes archive = syntheticStageArchive();
+    Vfs vfs;
+    vfs.mount(open("SYNTH_ST.DAT", archive));
+    TextureLibrary lib;
+    const UiArt ui = registerUiArt(lib);
+    RecordingBackend backend;
+    SoundPlayer sound(&backend);
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "th06_mischief_test";
+    std::filesystem::create_directories(dir);
+    const std::string path = (dir / "score.dat").string();
+    std::filesystem::remove(path);
+    Stage st(lib, ui, &vfs, &sound);
+    st.setScorePath(path);
+    st.setMischief(MischiefFullPower | MischiefContinues);
+    CHECK(st.load(1, Normal) && !st.recordable() && !st.practiceRun());
+    const InputState idle;
+    GameState& g = *st.world().state;
+    st.tick(idle);
+    CHECK(g.power == GameState::kMaxPower);
+    g.livesRemaining = 0;
+    g.bombs = 0;
+    g.continuesUsed = 3;
+    st.player().state = Player::Alive;
+    st.player().checkCollision(st.world(), st.player().positionCenter, {4.0f, 4.0f, 4.0f});
+    for (int i = 0; i < 40 && !st.menus().continueActive(); ++i) st.tick(idle);
+    CHECK(st.menus().continueActive() && !st.inResults());  // credits never run out
+    // Giving up: the results show, but the score is not entered or saved.
+    InputState shot;
+    shot.shoot = true;
+    for (int i = 0; i < 31; ++i) st.tick(idle);
+    st.tick(shot);  // "No"
+    for (int i = 0; i < 20; ++i) st.tick(idle);
+    CHECK(st.inResults());
+    st.tick(idle);
+    CHECK(st.results().state() == ResultScreen::State::Statistics && st.results().rank() >= 10);
+    for (int i = 0; i < 95; ++i) st.tick(idle);
+    st.tick(shot);
+    for (int i = 0; i < 100 && !st.quitRequested(); ++i) st.tick(idle);
+    CHECK(st.quitRequested() && !std::filesystem::exists(path));
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+}
+
 int main() {
     struct Test {
         const char* name;
@@ -4818,6 +4894,7 @@ int main() {
         {"menus in a stage: freeze, resume, quit, continue", testMenusInStage},
         {"score.dat: format, tables, clears, practice, spells", testScoreFile},
         {"result screen: name entry, statistics, saving", testResultScreen},
+        {"mischief: lives, bombs, invincible, power, continues", testMischief},
     };
     for (const Test& t : tests) {
         const int before = g_failures;

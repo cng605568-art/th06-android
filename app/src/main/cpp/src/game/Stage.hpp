@@ -64,6 +64,8 @@ class Stage {
     }
 
     void setShotType(int shotType) { state_.shotType = shotType < 0 || shotType > 3 ? 0 : shotType; }
+    // The launcher's mischief options (Mischief bits). Set before the first load().
+    void setMischief(std::uint32_t bits) { state_.mischief = bits & 31u; }
 
     // A menu (pause or continue) is up and the game is frozen.
     bool paused() const { return menus_.frozen(); }
@@ -92,8 +94,9 @@ class Stage {
     bool inResults() const { return inResults_; }
     const ResultScreen& results() const { return results_; }
     ResultScreen& results() { return results_; }
-    // A game started at stage 2..6 is a practice run: nothing is saved.
+    // A game started at stage 2..6 is a practice run: nothing is saved (nor with mischief on).
     bool practiceRun() const { return practiceRun_; }
+    bool recordable() const { return recordable_; }
     // Developer hook (desktop --demo-gameover): the game ends now, as after giving up.
     void endGameForTesting() {
         if (ready_ && !inResults_) gameOver(false);
@@ -161,6 +164,7 @@ class Stage {
     std::string scorePath_;
     int runStartStage_ = 0;  // 0 until the first stage of the game is loaded
     bool practiceRun_ = false;
+    bool recordable_ = true;  // a full game without mischief: its scores are saved
     ResultScreen results_;
     bool inResults_ = false;
     TextureLibrary& textures_;

@@ -39,6 +39,7 @@ class ResultScreen {
         int continues = 0;
         std::uint32_t deaths = 0, bombs = 0, spellsCaptured = 0;
         std::int64_t completion = 0;
+        bool recordable = true;  // false (mischief): no name entry, nothing saved
     };
 
     // Loads result.jpg and result00..03.anm (the game's art must be gone: they reuse the

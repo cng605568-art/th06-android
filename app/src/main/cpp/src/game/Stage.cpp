@@ -140,7 +140,7 @@ bool Stage::load(int stageNumber, int difficulty) {
     gui_.startStage(world_, *vfs_, stageNumber_, newRun);
     if (runStartStage_ == 0) startRun();
     gui_.setHiScore(std::max(gui_.hiScore(), state_.displayedScore));
-    if (!practiceRun_) scores_.stageEntered(state_.shotType, state_.difficulty, stageNumber_, state_.continuesUsed > 0);
+    if (recordable_) scores_.stageEntered(state_.shotType, state_.difficulty, stageNumber_, state_.continuesUsed > 0);
     if (music_) {  // the stage theme, from its beginning
         music_->setUnported(&unported_);
         music_->play(gui_.songPath(0));
@@ -196,6 +196,7 @@ void Stage::tick(const InputState& raw) {
     if (menus_.frozen()) return;
 
     ++state_.frame;
+    if (state_.cheat(MischiefFullPower)) state_.power = GameState::kMaxPower;
     rollScore(world_);
     background_.update(world_);
     player_->update(world_, in);
@@ -215,7 +216,7 @@ void Stage::tick(const InputState& raw) {
     if (gui_.ready() && gui_.hasDialogue()) {
         if (gui_.takeStageEndRequest() && stageNumber_ < 7) load(stageNumber_ + 1, state_.difficulty);
         else if (gui_.takeGameClearRequest()) {  // the last stage's end: the ending, then the results
-            if (state_.difficulty != Extra && !practiceRun_) {
+            if (state_.difficulty != Extra && recordable_) {
                 scores_.gameCleared(state_.shotType, state_.difficulty, state_.continuesUsed > 0);
                 unported_.hit("ending and staff roll");
             }
@@ -235,7 +236,7 @@ void Stage::runMenus(const MenuInput& edges) {
     // The player ran out of lives on the previous pass: the continue menu opens now, unless
     // there is nothing to continue with (Extra, or all three credits used).
     if (state_.continueMenu && !menus_.continueActive()) {
-        if (state_.continuesUsed >= 3 || state_.difficulty == Extra) {
+        if ((state_.continuesUsed >= 3 && !state_.cheat(MischiefContinues)) || state_.difficulty == Extra) {
             gameOver(false);
             return;
         }
@@ -254,6 +255,8 @@ void Stage::runMenus(const MenuInput& edges) {
 void Stage::startRun() {
     runStartStage_ = stageNumber_;
     practiceRun_ = !(stageNumber_ == 1 || stageNumber_ == 7);
+    recordable_ = !practiceRun_ && state_.mischief == 0;
+    if (!recordable_) world_.scores = nullptr;  // no spell history either
     bool loaded = false;
     if (!scorePath_.empty()) {
         if (std::FILE* f = std::fopen(scorePath_.c_str(), "rb")) {
@@ -297,6 +300,7 @@ void Stage::gameOver(bool cleared) {
     run.bombs = state_.bombsUsed;
     run.spellsCaptured = state_.spellsCaptured;
     run.completion = state_.completion;
+    run.recordable = recordable_;
     if (!vfs_ || !results_.start(world_, *vfs_, textures_, gui_, scores_, run)) {
         unported_.hit("results screen (result files missing)");
         saveScores();
@@ -308,7 +312,7 @@ void Stage::gameOver(bool cleared) {
 }
 
 void Stage::saveScores() {
-    if (scorePath_.empty() || practiceRun_) return;
+    if (scorePath_.empty() || !recordable_) return;
     const std::vector<std::uint8_t> bytes = scores_.save(rng_);
     if (std::FILE* f = std::fopen(scorePath_.c_str(), "wb")) {
         const bool ok = std::fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size();
@@ -360,7 +364,7 @@ void Stage::render(SpriteSink& s, float alpha, const HudInfo& hud) {
         gui_.draw(world_, s, ui_.white, hud.fps);
         gui_.drawStrings(world_, s);
         renderDiagnostics(s);
-        menus_.draw(anm_, s, 3 - state_.continuesUsed, captureReady_);
+        menus_.draw(anm_, s, state_.cheat(MischiefContinues) ? 9 : 3 - state_.continuesUsed, captureReady_);
         return;
     }
     // Without the game's GUI files: the port's own frame and diagnostic HUD.
@@ -398,6 +402,17 @@ void Stage::renderBombName(SpriteSink& s) {
 // With the game's panel on screen, only the list of features the data used that are not
 // ported yet, small, at the bottom of the side panel.
 void Stage::renderDiagnostics(SpriteSink& s) {
+    if (state_.mischief != 0) {  // say so: these scores are not saved
+        std::string t;
+        if (state_.cheat(MischiefLives)) t += " LIVES";
+        if (state_.cheat(MischiefBombs)) t += " BOMBS";
+        if (state_.cheat(MischiefInvincible)) t += " INVINCIBLE";
+        if (state_.cheat(MischiefFullPower)) t += " POWER";
+        if (state_.cheat(MischiefContinues)) t += " CONT";
+        s.fillRect(ui_.white, 420.0f, 352.0f, 216.0f, 23.0f, rgba(60, 0, 40, 170));
+        drawText(s, ui_, 424.0f, 355.0f, "MISCHIEF (SCORES NOT SAVED):", 1.0f, rgba(255, 140, 200));
+        drawText(s, ui_, 424.0f, 365.0f, t.substr(1, 34), 1.0f, rgba(255, 190, 220));
+    }
     if (unported_.counts().empty()) return;
     const float x = 424.0f;
     float y = 380.0f;
