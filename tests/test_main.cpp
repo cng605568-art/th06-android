@@ -5557,6 +5557,51 @@ static void testTitleScreens() {
     std::filesystem::remove_all(dir);
 }
 
+// The launcher's stage select: an unsaved game from any stage, with the stage's practice power.
+static void testStageSelect() {
+    const Bytes archive = syntheticStageArchive();
+    Vfs vfs;
+    vfs.mount(open("SYNTH_ST.DAT", archive));
+    TextureLibrary lib;
+    const UiArt ui = registerUiArt(lib);
+    RecordingBackend backend;
+    SoundPlayer sound(&backend);
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "th06_stage_select_test";
+    std::filesystem::create_directories(dir);
+    const std::string path = (dir / "score.dat").string();
+    std::filesystem::remove(path);
+    InputState idle, shot;
+    shot.shoot = true;
+    {
+        Stage st(lib, ui, &vfs, &sound);
+        st.setScorePath(path);
+        CHECK(st.quickStart(1, Hard, true));
+        CHECK(st.stageSelectRun() && !st.practiceRun() && !st.recordable() && st.state().difficulty == Hard);
+        CHECK(st.state().power == 0 && st.state().livesRemaining == 2 && st.state().bombs == 3);
+        st.tick(idle);
+        st.world().state->score = 123450;
+        st.endGameForTesting();  // the statistics page, no name entry, nothing saved
+        CHECK(st.inResults() && st.results().state() == ResultScreen::State::NameEntry);
+        st.tick(idle);
+        CHECK(st.results().state() == ResultScreen::State::Statistics);
+        for (int i = 0; i < 95; ++i) st.tick(idle);
+        st.tick(shot);
+        for (int i = 0; i < 200 && !st.quitRequested(); ++i) st.tick(idle);
+        CHECK(st.quitRequested() && !std::filesystem::exists(path));
+    }
+    {
+        Stage st(lib, ui, &vfs, &sound);
+        st.config().lives = 4;
+        CHECK(!st.quickStart(3, Normal, true));  // (no stage 3 in the synthetic data)
+        CHECK(st.stageSelectRun() && st.state().power == GameState::kMaxPower && st.state().livesRemaining == 4);
+        st.quickStart(2, Normal, true);
+        CHECK(st.state().power == 64);
+        CHECK(!st.quickStart(7, Normal, true) && st.session().difficulty == Extra && st.state().livesRemaining == 2);
+        CHECK(st.quickStart(1, Normal, false) && !st.stageSelectRun() && st.recordable());  // an ordinary game
+    }
+    std::filesystem::remove_all(dir);
+}
+
 static void testMischief() {
     // Player level: bombs, lives, invincibility.
     {
@@ -5767,6 +5812,7 @@ int main() {
         {"title: menus, options, select screens, practice, extra", testTitle},
         {"music room: musiccmt.txt parsing", testMusicRoomParse},
         {"title screens: music room, score viewer", testTitleScreens},
+        {"stage select: unsaved games from any stage", testStageSelect},
     };
     for (const Test& t : tests) {
         const int before = g_failures;

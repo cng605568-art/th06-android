@@ -160,7 +160,7 @@ bool App::init(int argc, char** argv) {
     // The game's title screen, unless the launcher asked for a quick start (or the title
     // files are missing).
     if (quickStart_ || !stage_->openTitle(true)) {
-        if (!stage_->quickStart(startStage_, startDifficulty_)) log::warn("Stage not started: {}", stage_->error());
+        if (!stage_->quickStart(startStage_, startDifficulty_, quickStart_)) log::warn("Stage not started: {}", stage_->error());
     }
 
     if (!createGpu(&err)) {
