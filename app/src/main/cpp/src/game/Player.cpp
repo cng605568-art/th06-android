@@ -6,6 +6,7 @@
 #include "game/BulletManager.hpp"
 #include "game/EffectManager.hpp"
 #include "game/EnemyManager.hpp"
+#include "game/Gui.hpp"
 #include "game/ItemManager.hpp"
 #include "game/Resources.hpp"
 
@@ -138,11 +139,12 @@ void Player::update(World& world, const InputState& in) {
 
     // Bomb: run it, or start one on a fresh press (also inside the deathbomb window).
     bomb_.clearBoxes();
+    const bool talking = world.gui && world.gui->msgActive();  // no shooting or bombing during dialogue
     const bool bombPressed = in.bomb && !previousBombInput_;
     previousBombInput_ = in.bomb;
     if (gs.bombActive) {
         bomb_.step(world, *this);
-    } else if (respawnCountdown_ != 0 && gs.bombs > 0 && bombPressed) {
+    } else if (respawnCountdown_ != 0 && gs.bombs > 0 && bombPressed && !talking) {
         bomb_.start(world, *this);
     }
 
@@ -177,7 +179,7 @@ void Player::update(World& world, const InputState& in) {
 
     if (state == Alive || state == Invulnerable) {
         move(world, in);
-        if (in.shoot && fireTimer_ < 0) fireTimer_ = 0;
+        if (in.shoot && fireTimer_ < 0 && !talking) fireTimer_ = 0;
     }
     world.anm->executeScript(sprite_);
     updateShots(world);

@@ -52,6 +52,7 @@ class App {
     //   --demo-touch      inject finger events (hold D-pad right + Shoot) through the
     //                     touch overlay -> virtual controller -> game input path
     int devFrames_ = 0;
+    int devTicks_ = 0;  // --ticks N: screenshot/exit once N game ticks have run
     std::string devScreenshot_;
     bool devTouch_ = false;
     int devBombFrame_ = -1;  // --demo-bomb N: tap the touch BOMB button on frame N

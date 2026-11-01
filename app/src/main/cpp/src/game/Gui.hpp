@@ -6,6 +6,10 @@
 // and names (faceNNx.anm, text.anm with run-time rendered text), the sliding BONUS / Full
 // Power Mode!! / Spell Card Bonus! messages, score popups, and the stage-start banner.
 //
+// Dialogue (msgN.dat) runs in the GUI too: portraits from the face files, lines rendered
+// into text.anm, the box, and the opcodes that drive the stage's end (results tally, next
+// stage).
+//
 // Update order follows the original: popups move in the ASCII pass (before everything),
 // the GUI itself updates after the bullets. Drawing: popups after bullets, then the GUI,
 // then all queued ASCII text on top.
@@ -18,6 +22,7 @@
 #include <vector>
 
 #include "core/ZunMath.hpp"
+#include "game/Input.hpp"
 #include "game/World.hpp"
 #include "gfx/AnmManager.hpp"
 #include "gfx/TextRenderer.hpp"
@@ -84,7 +89,7 @@ class Gui {
     bool ready() const { return ready_; }
 
     void updatePopups();           // ASCII pass (before the game manager)
-    void update(World& world);     // GUI pass (after the bullets)
+    void update(World& world, const InputState& input = {});  // GUI pass (after the bullets)
     void drawPopups(World& world, SpriteSink& sink);
     void draw(World& world, SpriteSink& sink, const SpriteRegion& white, float fps);
     void drawStrings(World& world, SpriteSink& sink);  // the queued ASCII text, last
@@ -100,6 +105,22 @@ class Gui {
     void showSpellBonus(std::int32_t value);
     void queueString(float x, float y, std::string_view text, std::uint32_t argb, float scale = 1.0f,
                      bool clipped = false);
+
+    // Dialogue. msgRead starts script character * 10 + n (the timeline's "read dialogue").
+    void msgRead(World& world, int n);
+    bool msgActive() const { return msg_.active; }
+    bool msgBlocksTimeline() const { return msg_.active && msg_.resume == 0; }
+    bool hasDialogue() const { return !msg_.offsets.empty(); }
+    // Set by the dialogue's stage-end opcode; the stage loads the next one and clears it.
+    bool takeStageEndRequest() {
+        const bool r = stageEndRequested_;
+        stageEndRequested_ = false;
+        return r;
+    }
+    bool tallyShown() const { return tallyOn_; }
+    std::int32_t tallyTotal() const { return tallyTotal_; }
+    int msgScript() const { return msg_.script; }
+    int msgTimer() const { return msg_.timer; }
 
     // Inspection (tests, HUD).
     BossHud bossHudState() const { return bossState_; }
@@ -128,6 +149,27 @@ class Gui {
     void drawBossHud(World& world, SpriteSink& sink);
     void drawNameWithBar(World& world, SpriteSink& sink, AnmVm& name, AnmVm& bar, float barDx, float length);
     void stopElement(AnmVm& vm);
+    void msgStep(World& world, const InputState& input);
+    void drawDialogue(World& world, SpriteSink& sink, const SpriteRegion& white);
+    void drawTally(World& world);
+
+    struct Msg {
+        std::vector<std::uint8_t> file;
+        std::vector<std::uint32_t> offsets;
+        bool active = false;
+        int script = -1;
+        std::uint32_t pc = 0;  // offset of the current instruction in file
+        std::int32_t timer = 0;
+        std::int32_t framesWaited = 0;
+        std::int32_t resume = 0;
+        bool skippable = true;
+        bool halted = false;
+        bool line1Used = false;
+        int fontSize = 15;
+        std::array<AnmVm, 2> portraits{};
+        std::array<AnmVm, 2> lines{};
+        std::array<AnmVm, 2> intro{};
+    };
 
     TextureLibrary& textures_;
     TextRenderer* text_;
@@ -151,6 +193,13 @@ class Gui {
     int nextPopup_ = 0, nextSmallPopup_ = 0;
     std::vector<QueuedString> strings_;
     std::uint32_t hiScore_ = 0;
+    const Vfs* vfs_ = nullptr;
+    std::array<std::vector<std::uint8_t>, 4> songs_{};
+    Msg msg_;
+    bool previousShoot_ = false;
+    bool tallyOn_ = false, tallyPending_ = false;
+    std::int32_t tallyTotal_ = 0;
+    bool stageEndRequested_ = false;
 };
 
 }  // namespace th06

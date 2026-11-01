@@ -1168,10 +1168,10 @@ void EnemyManager::despawn(World& world, Enemy& e) {
 void EnemyManager::runTimeline(World& world) {
     const EclFile& ecl = *world.ecl;
     GameState& gs = *world.state;
-    // Subrank rises at an interval that shortens with lives remaining (no dialogue ported,
-    // so a message is never active).
+    // Subrank rises at an interval that shortens with lives remaining (paused during dialogue).
+    const bool talking = world.gui && world.gui->msgActive();
     const std::int32_t interval = 10 * 4 * 60 - gs.livesRemaining * 4 * 60;
-    if (timelineTime_ != prevTimelineTime_ && interval > 0 && timelineTime_ % interval == 0) gs.increaseSubrank(100);
+    if (!talking && timelineTime_ != prevTimelineTime_ && interval > 0 && timelineTime_ % interval == 0) gs.increaseSubrank(100);
     prevTimelineTime_ = timelineTime_;
 
     TimelineInstr t;
@@ -1220,10 +1220,15 @@ void EnemyManager::runTimeline(World& world) {
                     }
                     break;
                 case timeline_op::MsgRead:
-                    world.unported->hit("dialogue (MSG scripts)");
+                    if (world.gui && world.gui->hasDialogue()) world.gui->msgRead(world, t.arg0);
+                    else world.unported->hit("dialogue (MSG scripts)");
                     break;
                 case timeline_op::MsgWait:
-                    break;  // no dialogue is ever active
+                    if (world.gui && world.gui->msgBlocksTimeline()) {
+                        timelineTime_--;
+                        return;
+                    }
+                    break;
                 case timeline_op::BossInterrupt: {
                     Enemy* b = boss(static_cast<int>(args.uintVar1));
                     if (b) b->runInterrupt = static_cast<std::int32_t>(args.uintVar2);
@@ -1364,7 +1369,7 @@ void EnemyManager::update(World& world) {
                 }
             }
             // The boss HUD's bar follows the boss (the last boss in slot order wins).
-            if (e.isBoss && e.maxLife > 0) gs.bossFillTarget = static_cast<float>(e.life) / static_cast<float>(e.maxLife);
+            if (e.isBoss && e.maxLife > 0 && !(world.gui && world.gui->msgActive())) gs.bossFillTarget = static_cast<float>(e.life) / static_cast<float>(e.maxLife);
             if (e.hitFlashTimer != 0) {
                 e.hitFlashTimer--;
                 e.primaryVm.colorAdd = false;

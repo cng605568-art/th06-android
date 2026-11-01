@@ -75,6 +75,7 @@ bool App::init(int argc, char** argv) {
         const std::string a = argv[i] ? argv[i] : "";
         const char* next = i + 1 < argc ? argv[i + 1] : nullptr;
         if (a == "--frames" && next) devFrames_ = std::atoi(argv[++i]);
+        else if (a == "--ticks" && next) devTicks_ = std::atoi(argv[++i]);
         else if (a == "--screenshot" && next) devScreenshot_ = argv[++i];
         else if (a == "--demo-touch") devTouch_ = true;
         else if (a == "--demo-bomb" && next) devBombFrame_ = std::atoi(argv[++i]);
@@ -360,7 +361,9 @@ void App::developerFrameHooks() {
             SDL_PushEvent(&e);
         }
     }
-    if (devFrames_ <= 0 || frameCount_ < static_cast<std::uint64_t>(devFrames_)) return;
+    const bool byFrames = devFrames_ > 0 && frameCount_ >= static_cast<std::uint64_t>(devFrames_);
+    const bool byTicks = devTicks_ > 0 && tickCount_ >= static_cast<std::uint64_t>(devTicks_);
+    if (!byFrames && !byTicks) return;
     if (!devScreenshot_.empty()) {
         std::vector<std::uint8_t> px(static_cast<std::size_t>(drawWidth_) * drawHeight_ * 4);
         glReadPixels(0, 0, drawWidth_, drawHeight_, GL_RGBA, GL_UNSIGNED_BYTE, px.data());

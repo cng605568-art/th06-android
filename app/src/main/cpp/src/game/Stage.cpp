@@ -151,14 +151,17 @@ void Stage::tick(const InputState& in) {
     enemies_->update(world_);
     effects_.update(world_);
     bullets_->update(world_);
-    gui_.update(world_);
+    gui_.update(world_, in);
     player_->bomb().updateGui();
     shake_.update(world_);
     if (sound_) sound_->flush();
 
-    // The original ends a stage through its post-boss dialogue; without MSG ported, the
-    // stage counts as cleared once the timeline has run out and every enemy is gone.
-    if (enemies_->timelineFinished() && enemies_->activeCount() == 0) {
+    // The stage ends through its post-boss dialogue (results, then the next stage). Without
+    // the dialogue file, it counts as cleared once the timeline has run out and every enemy
+    // is gone.
+    if (gui_.ready() && gui_.hasDialogue()) {
+        if (gui_.takeStageEndRequest() && stageNumber_ < 7) load(stageNumber_ + 1, state_.difficulty);
+    } else if (enemies_->timelineFinished() && enemies_->activeCount() == 0) {
         if (++clearTimer_ >= kClearDelay && stageNumber_ < 6) {
             state_.score += stageClearBonus(state_, stageNumber_);
             load(stageNumber_ + 1, state_.difficulty);  // keeps score, power, lives and bombs

@@ -776,6 +776,8 @@ static Bytes syntheticStageEcl() {
                 0, k % 2 ? 288.0f : 96.0f, -8.0f, 40, -1, 300);
     }
     e.spawn(600, timeline_op::EnemyCreate, 1, 192.0f, -24.0f, 1500, -1, 10000);
+    e.spawn(1300, timeline_op::MsgRead, 0, 0.0f, 0.0f, 0, 0, 0);  // dialogue, if msg1.dat exists
+    e.spawn(1301, timeline_op::MsgWait, 0, 0.0f, 0.0f, 0, 0, 0);
 
     e.sub();  // 0: fairy
     e.ins(0, ecl_op::AnmSetMain, {0});
@@ -2179,7 +2181,7 @@ static void testStageFromArchive() {
         r.unported = stage.unported().counts().size();
         r.itemsCollected = stage.items().collectedTotal();
         for (const auto& [name, n] : stage.unported().counts()) {
-            if (name != "particle effects" && name != "score popups and banners" && name != "game over / continue screen" &&
+            if (name != "dialogue (MSG scripts)" && name != "score popups and banners" && name != "game over / continue screen" &&
                 !name.starts_with("shot types")) {
                 std::fprintf(stderr, "  unexpected unported: %s\n", name.c_str());
             }
@@ -3147,6 +3149,117 @@ static void testSpellcardBonus() {
     CHECK(tw.state.score - before == static_cast<std::uint32_t>(bonus) && tw.enemies->spellcard().isActive == 0);
 }
 
+// msg1.dat: one script (Reimu's first). Times: 0 intro + first line, 60 wait, second line,
+// 61 wait 20, 62 results and stage end.
+static Bytes syntheticMsg() {
+    Bytes code;
+    auto ins = [&](std::uint16_t time, std::uint8_t op, const Bytes& args) {
+        putLe<std::uint16_t>(code, time);
+        code.push_back(op);
+        code.push_back(static_cast<std::uint8_t>(args.size()));
+        code.insert(code.end(), args.begin(), args.end());
+    };
+    auto lineArgs = [](std::int16_t color, std::int16_t line, const std::string& text) {
+        Bytes a;
+        putLe<std::int16_t>(a, color);
+        putLe<std::int16_t>(a, line);
+        a.insert(a.end(), text.begin(), text.end());
+        a.push_back(0);
+        return a;
+    };
+    auto i32 = [](std::int32_t v) {
+        Bytes a;
+        putLe<std::int32_t>(a, v);
+        return a;
+    };
+    ins(0, 8, lineArgs(1, 0, "BOSS"));
+    ins(0, 3, lineArgs(0, 0, "HELLO"));
+    ins(60, 4, i32(300));
+    ins(60, 3, lineArgs(1, 1, "WORLD"));
+    ins(61, 4, i32(20));
+    ins(62, 9, {});
+    ins(62, 11, {});
+    ins(63, 0, {});
+    Bytes b;
+    putLe<std::int32_t>(b, 1);
+    putLe<std::uint32_t>(b, 8);
+    b.insert(b.end(), code.begin(), code.end());
+    return b;
+}
+
+static void testDialogue() {
+    Bytes archive = syntheticStageArchive();
+    // A second archive member list with the dialogue added.
+    Vfs vfs;
+    vfs.mount(open("SYNTH_ST.DAT", archive));
+    const Bytes msgArchive = buildPbg3({{"msg1.dat", syntheticMsg()}});
+    dumpIfRequested("SYNTH_MSG.DAT", msgArchive);
+    vfs.mount(open("SYNTH_MSG.DAT", msgArchive));
+    TextureLibrary lib;
+    const UiArt ui = registerUiArt(lib);
+    Stage stage(lib, ui, &vfs, nullptr);
+    CHECK(stage.load(1, Normal));
+    Gui& gui = stage.gui();
+    World& world = stage.world();
+    GameState& gs = *world.state;
+    CHECK(gui.ready() && gui.hasDialogue());
+    if (!gui.ready() || !gui.hasDialogue()) return;
+    InputState idle, shoot;
+    shoot.shoot = true;
+    gui.msgRead(world, 0);
+    CHECK(gui.msgActive() && gui.msgScript() == 0 && gui.msgBlocksTimeline());
+    // Line 0 and the intro line were rendered; the box opens over 60 frames.
+    for (int f = 0; f < 60; ++f) gui.update(world, idle);
+    CHECK(gui.msgTimer() == 60);
+    {
+        RecordingSink sink;
+        gui.draw(world, sink, ui.white, 60.0f);
+        int box = 0;
+        for (const auto& it : sink.items) box += it.texture == ui.white.texture && it.s.y >= 384.0f && it.s.y < 432.0f && it.s.w == 288.0f;
+        CHECK(box == 12);  // 48 px of 4 px slices
+        gui.drawStrings(world, sink);
+    }
+    // The player cannot shoot or bomb while it runs.
+    stage.player().reset(world);
+    stage.tick(shoot);
+    CHECK(stage.player().activeBulletCount() == 0);
+    // The wait: holds the timer; a fresh Shoot after 8 frames passes it.
+    for (int f = 0; f < 10; ++f) gui.update(world, idle);
+    CHECK(gui.msgTimer() == 60);
+    gui.update(world, shoot);
+    CHECK(gui.msgTimer() == 61);
+    // The next wait runs out on its own after 20 frames; then results and stage end.
+    const std::uint32_t before = gs.score;
+    for (int f = 0; f < 22; ++f) gui.update(world, idle);
+    CHECK(gui.tallyShown());
+    gui.update(world, idle);  // the bonus is added one update after the results opcode
+    CHECK(gs.score - before == static_cast<std::uint32_t>(gui.tallyTotal()) &&
+          gui.tallyTotal() == static_cast<std::int32_t>(stageClearBonus(gs, 1)));
+    CHECK(gui.takeStageEndRequest() && !gui.takeStageEndRequest());  // asked once for the next stage
+    {
+        RecordingSink sink;
+        gui.draw(world, sink, ui.white, 60.0f);
+        bool clear = false, total = false;
+        for (const auto& q : gui.strings()) {
+            clear = clear || (q.text == "Stage Clear" && q.x == 74.0f && q.y == 128.0f);
+            total = total || (q.text.starts_with("Total     = ") && q.y == 256.0f);
+        }
+        CHECK(clear && total);
+        gui.drawStrings(world, sink);
+    }
+    // Skip (Ctrl, or BOMB on the touch pad) jumps the box open and passes waits.
+    gui.msgRead(world, 0);
+    InputState skip;
+    skip.skip = true;
+    gui.update(world, skip);
+    CHECK(gui.msgTimer() >= 60);
+    // A script number the file does not have is ignored (Marisa's first would be 10).
+    gs.shotType = 2;
+    gui.msgRead(world, 0);
+    CHECK(gui.msgScript() == 0);
+    gs.shotType = 0;
+}
+
 int main() {
     struct Test {
         const char* name;
@@ -3182,6 +3295,7 @@ int main() {
         {"GUI: popups, text queue, text rendering", testGuiUnits},
         {"GUI in a stage: panel, boss HUD, messages, names, popups", testGuiInStage},
         {"spell card capture bonus", testSpellcardBonus},
+        {"dialogue: lines, waits, results tally, stage end", testDialogue},
     };
     for (const Test& t : tests) {
         const int before = g_failures;

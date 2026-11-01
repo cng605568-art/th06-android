@@ -6,6 +6,8 @@
 #include <format>
 
 #include "core/Log.hpp"
+#include "game/EffectManager.hpp"
+#include "game/Resources.hpp"
 #include "io/Vfs.hpp"
 
 namespace th06 {
@@ -38,6 +40,18 @@ constexpr std::uint8_t kBombNameMarisaA[] = {0x96, 0x82, 0x95, 0x84, 0x81, 0x75,
 constexpr std::uint8_t kBombNameMarisaB[] = {0x97, 0xf6, 0x95, 0x84, 0x81, 0x75, 0x83, 0x7d, 0x83, 0x58, 0x83, 0x5e,
                                              0x81, 0x5b, 0x83, 0x58, 0x83, 0x70, 0x81, 0x5b, 0x83, 0x4e, 0x81, 0x76};
 constexpr std::uint8_t kNoteSign[] = {0x81, 0xf4};  // "♪"
+
+// Dialogue: text scripts for the two lines and the two intro (name/title) lines, and the
+// speaker colours as they appear on screen.
+constexpr int kScriptMsgLine = 0x702, kScriptMsgIntro = 0x704;
+constexpr std::uint32_t kMsgColors[4] = {0xfff0e8, 0xf0e8ff, 0x000000, 0x000000};
+
+template <class T>
+T readLe(const std::vector<std::uint8_t>& b, std::size_t at) {
+    T v{};
+    if (at + sizeof(T) <= b.size()) std::memcpy(&v, b.data() + at, sizeof(T));
+    return v;
+}
 
 std::span<const std::uint8_t> bombNameBytes(int shotType) {
     switch (shotType & 3) {
@@ -126,6 +140,7 @@ bool Gui::loadRun(World& world, const Vfs& vfs, int character) {
     load(kAnmFileFaceCharaB, kFaceChara[c][1], kAnmOffsetFaceCharaB, false);
     load(kAnmFileFaceCharaC, kFaceChara[c][2], kAnmOffsetFaceCharaC, false);
     character_ = character;
+    vfs_ = &vfs;
     ready_ = front && anm.fileLoaded(kAnmFileAscii) && anm.fileLoaded(kAnmFileText);
     if (!ready_) return false;
     for (int k = 0; k < kFrontSlots; ++k) {
@@ -180,12 +195,25 @@ void Gui::startStage(World& world, const Vfs& vfs, int stage, bool firstStage) {
     stopElement(bombName_);
     stopElement(spellName_);
 
-    // Stage title and first song from the stage file's header.
-    std::vector<std::uint8_t> title, song;
+    // Stage title and song names from the stage file's header.
+    std::vector<std::uint8_t> title;
+    songs_ = {};
     if (auto header = vfs.read(std::format("data/stage{}.std", stage_))) {
         title = fixedString(*header, 0x10, 128);
-        song = fixedString(*header, 0x90, 128);
+        for (int i = 0; i < 4; ++i) songs_[static_cast<std::size_t>(i)] = fixedString(*header, 0x90 + 128 * static_cast<std::size_t>(i), 128);
     }
+    const std::vector<std::uint8_t>& song = songs_[0];
+    // Dialogue scripts: a count, then one offset per script.
+    msg_ = Msg{};
+    if (auto file = vfs.read(std::format("data/msg{}.dat", stage_))) {
+        msg_.file = std::move(*file);
+        const auto count = readLe<std::int32_t>(msg_.file, 0);
+        for (std::int32_t i = 0; i < count && 4 + 4 * static_cast<std::size_t>(i + 1) <= msg_.file.size(); ++i) {
+            msg_.offsets.push_back(readLe<std::uint32_t>(msg_.file, 4 + 4 * static_cast<std::size_t>(i)));
+        }
+    }
+    tallyOn_ = tallyPending_ = false;
+    stageEndRequested_ = false;
     anm.setAndExecuteScript(stageName_, kScriptStageName);
     renderText(world, stageName_, title, 15, kStageNameRgb, Align::Centre);
     anm.setAndExecuteScript(songName_, kScriptSongName);
@@ -349,11 +377,11 @@ void Gui::updateBossHud(World& world) {
     }
 }
 
-void Gui::update(World& world) {
+void Gui::update(World& world, const InputState& input) {
     if (!ready_) return;
     AnmManager& anm = *world.anm;
     for (int k = 0; k < kFrontSlots; ++k) {
-        if (k == kSlotBossLabel) updateBossHud(world);  // (dialogue is not ported: never active)
+        if (k == kSlotBossLabel && !msg_.active) updateBossHud(world);  // frozen during dialogue
         else anm.executeScript(front_[static_cast<std::size_t>(k)]);
     }
     anm.executeScript(stageName_);
@@ -366,11 +394,18 @@ void Gui::update(World& world) {
     updateSlide(bonus_, 250);
     updateSlide(fullPower_, 180);
     updateSlide(spellBonus_, 280);
+    if (tallyPending_) {  // the stage-clear bonus, one update after the results opcode
+        tallyPending_ = false;
+        tallyTotal_ = static_cast<std::int32_t>(stageClearBonus(*world.state, stage_));
+        world.state->score += static_cast<std::uint32_t>(tallyTotal_);
+    }
+    msgStep(world, input);
+    previousShoot_ = input.shoot;
     hiScore_ = std::max(hiScore_, world.state->displayedScore);
 
     // The timer tick (the original checks it while drawing; at 60 Hz this is the same).
     const GameState& gs = *world.state;
-    if (gs.bossPresent || bossState_ != BossHud::Idle) {
+    if (!msg_.active && (gs.bossPresent || bossState_ != BossHud::Idle)) {
         const std::int32_t s = gs.bossSeconds;
         if (std::min(s, 99) < 10 && s != lastTimerSeen_) world.playSound(kSoundTimeout);
         lastTimerSeen_ = s;
@@ -416,6 +451,9 @@ void Gui::draw(World& world, SpriteSink& sink, const SpriteRegion& white, float 
     AnmManager& anm = *world.anm;
     const GameState& gs = *world.state;
 
+    if (tallyOn_) drawTally(world);
+    drawDialogue(world, sink, white);
+
     // Stage elements.
     if (stageName_.visible) {
         anm.drawWorld(sink, stageName_, gs.playfieldX, gs.playfieldY);
@@ -430,7 +468,7 @@ void Gui::draw(World& world, SpriteSink& sink, const SpriteRegion& white, float 
     drawNameWithBar(world, sink, spellName_, spellBar_, 128.0f - spellNameLength_ * 8.0f / 15.0f, spellNameLength_);
     if (loadingActive_) anm.drawScreen(sink, loading_);
 
-    drawBossHud(world, sink);
+    if (!msg_.active) drawBossHud(world, sink);
     drawPanel(world, sink, white, fps);
 
     // Sliding messages (clipped to the playfield).
@@ -502,6 +540,198 @@ void Gui::drawPanel(World& world, SpriteSink& sink, const SpriteRegion& white, f
     queueString(496.0f, 206.0f, std::format("{}", gs.grazes), 0xffffffffu);
     queueString(496.0f, 226.0f, std::format("{}", gs.stagePointItems), 0xffffffffu);
     queueString(512.0f, 464.0f, std::format("{:.2f}fps", fps), 0xffffffffu);
+}
+
+// ---- dialogue -------------------------------------------------------------------------
+
+void Gui::msgRead(World& world, int n) {
+    const GameState& gs = *world.state;
+    if (gs.difficulty == Easy && stage_ == 5 && n == 1) n = 3;
+    const int script = (gs.shotType / 2) * 10 + n;
+    if (script < 0 || script >= static_cast<int>(msg_.offsets.size())) return;
+    std::vector<std::uint8_t> file = std::move(msg_.file);
+    std::vector<std::uint32_t> offsets = std::move(msg_.offsets);
+    msg_ = Msg{};
+    msg_.file = std::move(file);
+    msg_.offsets = std::move(offsets);
+    msg_.active = true;
+    msg_.script = script;
+    msg_.pc = msg_.offsets[static_cast<std::size_t>(script)];
+    // Stage 6 and Extra swap in their final-boss art when the first dialogue starts.
+    if (n == 0 && vfs_ && (stage_ == 6 || stage_ == 7)) {
+        std::string err;
+        AnmManager& anm = *world.anm;
+        anm.releaseAnm(kAnmFileEffects);
+        if (!anm.loadAnm(*vfs_, kAnmFileEffects, stage_ == 6 ? "data/eff06.anm" : "data/eff07.anm", kAnmOffsetEffects, &err)) {
+            log::warn("GUI: {}", err);
+        }
+        if (stage_ == 7) {
+            anm.releaseAnm(kAnmFileFaceStageA);
+            if (!anm.loadAnm(*vfs_, kAnmFileFaceStageA, "data/face12c.anm", kAnmOffsetFaceStageA, &err)) log::warn("GUI: {}", err);
+        }
+    }
+}
+
+void Gui::msgStep(World& world, const InputState& input) {
+    if (!msg_.active) return;
+    AnmManager& anm = *world.anm;
+    GameState& gs = *world.state;
+    const std::vector<std::uint8_t>& f = msg_.file;
+    const bool skipHeld = input.skip || input.bomb;  // bombs are off during dialogue: BOMB doubles as skip
+    const bool shootPressed = input.shoot && !previousShoot_;
+    if (msg_.resume > 0) --msg_.resume;
+    if (msg_.skippable && skipHeld && msg_.pc + 4 <= f.size()) msg_.timer = readLe<std::uint16_t>(f, msg_.pc);
+
+    bool advanceTimer = true;
+    while (!msg_.halted) {
+        if (msg_.pc + 4 > f.size()) {  // ran off the file: treat as the end
+            msg_.active = false;
+            return;
+        }
+        const auto time = readLe<std::uint16_t>(f, msg_.pc);
+        if (msg_.timer < time) break;
+        const std::uint8_t op = f[msg_.pc + 2];
+        const std::uint8_t argSize = f[msg_.pc + 3];
+        const std::size_t a = msg_.pc + 4;
+        auto text = [&](std::size_t from) {
+            std::vector<std::uint8_t> t;
+            for (std::size_t i = from; i < a + argSize && i < f.size() && f[i] != 0; ++i) t.push_back(f[i]);
+            return t;
+        };
+        bool stop = false;
+        switch (op) {
+            case 0:  // end: everything disappears at once
+                msg_.active = false;
+                return;
+            case 1: {
+                const auto p = readLe<std::int16_t>(f, a), n = readLe<std::int16_t>(f, a + 2);
+                anm.setAndExecuteScript(msg_.portraits[p ? 1 : 0], (p ? kAnmOffsetFaceCharaB : kAnmOffsetFaceCharaA) + n);
+                break;
+            }
+            case 2: {
+                const auto p = readLe<std::int16_t>(f, a), n = readLe<std::int16_t>(f, a + 2);
+                anm.setActiveSprite(msg_.portraits[p ? 1 : 0], (p ? kAnmOffsetFaceStageA : kAnmOffsetFaceCharaA) + n);
+                break;
+            }
+            case 3: {
+                const auto c = readLe<std::int16_t>(f, a) & 3, line = readLe<std::int16_t>(f, a + 2) & 1;
+                if (line == 0 && msg_.line1Used) {
+                    const std::uint8_t space[] = {' '};
+                    renderText(world, msg_.lines[1], space, msg_.fontSize, kMsgColors[c], Align::Left);
+                }
+                anm.setAndExecuteScript(msg_.lines[static_cast<std::size_t>(line)], kScriptMsgLine + line);
+                renderText(world, msg_.lines[static_cast<std::size_t>(line)], text(a + 4), msg_.fontSize, kMsgColors[c], Align::Left);
+                msg_.framesWaited = 0;
+                if (line == 1) msg_.line1Used = true;
+                break;
+            }
+            case 4: {
+                const auto frames = readLe<std::int32_t>(f, a);
+                if ((msg_.skippable && skipHeld) || (shootPressed && msg_.framesWaited >= 8) || msg_.framesWaited >= frames) break;
+                ++msg_.framesWaited;
+                stop = true;
+                advanceTimer = false;
+                break;
+            }
+            case 5: {
+                const auto target = readLe<std::int16_t>(f, a);
+                const auto k = static_cast<std::int16_t>(readLe<std::uint8_t>(f, a + 2));
+                if (target == 0 || target == 1) msg_.portraits[static_cast<std::size_t>(target)].pendingInterrupt = k;
+                else if (target == 2 || target == 3) msg_.lines[static_cast<std::size_t>(target - 2)].pendingInterrupt = k;
+                break;
+            }
+            case 6: ++msg_.resume; break;
+            case 7: {
+                const auto t = readLe<std::int32_t>(f, a);
+                anm.setAndExecuteScript(songName_, kScriptSongName);
+                std::vector<std::uint8_t> note(std::begin(kNoteSign), std::end(kNoteSign));
+                if (t >= 0 && t < 4) note.insert(note.end(), songs_[static_cast<std::size_t>(t)].begin(), songs_[static_cast<std::size_t>(t)].end());
+                renderText(world, songName_, note, 16, kStageNameRgb, Align::Right);
+                world.unported->hit("background music");
+                break;
+            }
+            case 8: {
+                const auto c = readLe<std::int16_t>(f, a) & 3, line = readLe<std::int16_t>(f, a + 2) & 1;
+                anm.setAndExecuteScript(msg_.intro[static_cast<std::size_t>(line)], kScriptMsgIntro + line);
+                renderText(world, msg_.intro[static_cast<std::size_t>(line)], text(a + 4), 15, kMsgColors[c], Align::Right);
+                msg_.framesWaited = 0;
+                break;
+            }
+            case 9:  // stage results
+                tallyOn_ = true;
+                tallyPending_ = true;
+                if (stage_ <= 5) {
+                    if (anm.fileLoaded(kAnmFileLoading)) {
+                        anm.setAndExecuteScript(loading_, kAnmOffsetLoading);
+                        loadingActive_ = true;
+                    }
+                } else {
+                    gs.extendIndex = -1;
+                }
+                break;
+            case 10:  // wait here until another script starts
+                msg_.halted = true;
+                advanceTimer = false;
+                stop = true;
+                break;
+            case 11:  // stage end
+                gs.displayedScore = gs.score;
+                if (stage_ <= 4 || (stage_ == 5 && gs.difficulty != Easy)) stageEndRequested_ = true;
+                else world.unported->hit("ending and results screens");
+                msg_.halted = true;
+                advanceTimer = false;
+                stop = true;
+                break;
+            case 12: world.unported->hit("background music"); break;
+            case 13: msg_.skippable = readLe<std::int32_t>(f, a) != 0; break;
+            default: break;
+        }
+        if (stop) break;
+        msg_.pc += 4 + static_cast<std::uint32_t>(argSize);
+    }
+    if (msg_.halted) advanceTimer = false;
+    if (advanceTimer) ++msg_.timer;
+    for (AnmVm& vm : msg_.portraits) anm.executeScript(vm);
+    for (AnmVm& vm : msg_.lines) anm.executeScript(vm);
+    for (AnmVm& vm : msg_.intro) anm.executeScript(vm);
+    if (msg_.timer < 60 && msg_.skippable && skipHeld) msg_.timer = 60;
+}
+
+void Gui::drawDialogue(World& world, SpriteSink& sink, const SpriteRegion& white) {
+    if (!msg_.active || (stage_ == 6 && (msg_.script == 1 || msg_.script == 11))) return;
+    AnmManager& anm = *world.anm;
+    const GameState& gs = *world.state;
+    for (const AnmVm& vm : msg_.portraits) anm.drawScreen(sink, vm);
+    // The box: opens over the first second, darker at the top.
+    const float x0 = gs.playfieldX + (gs.playfieldW - 256.0f) / 2.0f - 16.0f;
+    const float h = msg_.timer < 60 ? static_cast<float>(msg_.timer) * 48.0f / 60.0f : 48.0f;
+    for (float y = 0.0f; y < h; y += 4.0f) {
+        const float sliceH = std::min(4.0f, h - y);
+        const float t = h > 0.0f ? (y + sliceH / 2.0f) / h : 0.0f;
+        const auto a = static_cast<std::uint8_t>(0xd0 - (0xd0 - 0x90) * t);
+        sink.fillRect(white, x0, 384.0f + y, 288.0f, sliceH, rgba(0, 0, 0, a));
+    }
+    for (const AnmVm& vm : msg_.lines) anm.drawScreen(sink, vm);
+    for (const AnmVm& vm : msg_.intro) anm.drawScreen(sink, vm);
+}
+
+void Gui::drawTally(World& world) {
+    const GameState& gs = *world.state;
+    const bool last = stage_ >= 6;
+    const float x = 74.0f;
+    queueString(x, 128.0f, last ? "All Clear!" : "Stage Clear", 0xffffff40u);
+    queueString(x, 160.0f, std::format("Stage * 1000 = {:>5}", stage_ * 1000), 0xffffffffu);
+    queueString(x, 176.0f, std::format("Power *  100 = {:>5}", gs.power * 100), 0xffe0e0ffu);
+    queueString(x, 192.0f, std::format("Graze *   10 = {:>5}", gs.grazes * 10), 0xffd0d0ffu);
+    queueString(x, 208.0f, std::format("    * Point Item {:>3}", gs.stagePointItems), 0xffff8080u);
+    if (last) {
+        queueString(x, 224.0f, std::format("Player    = {:>8}", gs.livesRemaining * 3'000'000), 0xffffff80u);
+        queueString(x, 240.0f, std::format("Bomb      = {:>8}", gs.bombs * 1'000'000), 0xffffff80u);
+    }
+    static constexpr const char* kRanks[5] = {"Easy Rank      * 0.5", "Normal Rank    * 1.0", "Hard Rank      * 1.2",
+                                              "Lunatic Rank   * 1.5", "Extra Rank     * 2.0"};
+    queueString(x, last ? 272.0f : 240.0f, kRanks[std::clamp(gs.difficulty, 0, 4)], 0xffff8080u);
+    queueString(x, last ? 288.0f : 256.0f, std::format("Total     = {:>8}", tallyTotal_), 0xffffffffu);
 }
 
 void Gui::drawStrings(World& world, SpriteSink& sink) {
