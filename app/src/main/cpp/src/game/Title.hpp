@@ -7,8 +7,9 @@
 //   effects, Default), then select00.jpg behind select01..05 / slpl00a..01b.anm for the
 //   difficulty, character, shot type and practice stage choices.
 // Animations are driven by interrupts as in the original; the code only tints and nudges
-// the item under the cursor. The original's demo play, replays, Result viewer, Music Room
-// and Key Config are not in the port: their items play the cancel sound.
+// the item under the cursor. Result (the score viewer) and Music Room are screens of their
+// own (the title hands over to them). The original's demo play, replays and Key Config are
+// not in the port: Replay plays the cancel sound.
 
 #include <array>
 #include <cstdint>
@@ -41,9 +42,9 @@ class Title {
     static constexpr int kVms = 122;
     enum class Sub {
         Startup, PreInput, MainMenu, DifficultyLoad, DifficultySelect, BackToTitle, CharacterSelect,
-        ShotSelect, PracticeSelect, Options, Quit,
+        ShotSelect, PracticeSelect, Options, Quit, Score, Music,
     };
-    enum class Result { None, StartGame, Quit, Failed };
+    enum class Result { None, StartGame, Quit, Failed, OpenScores, OpenMusicRoom };
 
     // The game the player chose.
     struct Choice {
@@ -59,7 +60,8 @@ class Title {
     bool start(World& world, const Vfs& vfs, TextureLibrary& textures, const ScoreFile& scores, GameConfig& config,
                TitleSession& session, int cursor, bool firstVisit);
     // One logic pass. StartGame: choice() holds the game (the title is gone). Quit: the
-    // player left. Failed: the select-screen files could not be loaded.
+    // player left. OpenScores / OpenMusicRoom: Result or Music Room was chosen (60 passes
+    // ago). Failed: the select-screen files could not be loaded.
     Result update(World& world, const InputState& in);
     void draw(World& world, Gui& gui, SpriteSink& sink, const SpriteRegion& white);
     // Releases the title and select files (when the game starts).

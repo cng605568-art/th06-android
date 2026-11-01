@@ -62,8 +62,7 @@ std::string entryText(const ScoreFile::Entry& e) {
 
 }  // namespace
 
-bool ResultScreen::start(World& world, const Vfs& vfs, TextureLibrary& textures, Gui& gui, ScoreFile& scores,
-                         const Run& run) {
+bool ResultScreen::loadFiles(World& world, const Vfs& vfs, TextureLibrary& textures) {
     AnmManager& anm = *world.anm;
     for (int i = 0; i < 4; ++i) {
         std::string err;
@@ -87,8 +86,6 @@ bool ResultScreen::start(World& world, const Vfs& vfs, TextureLibrary& textures,
             log::warn("Result screen: result.jpg: {}", err);
         }
     }
-    scores_ = &scores;
-    run_ = run;
     for (int i = 0; i < kVms; ++i) {
         AnmVm& vm = vms_[static_cast<std::size_t>(i)];
         vm = AnmVm{};  // position and offset (0, 0) first: what frame 0 sets is kept
@@ -101,6 +98,18 @@ bool ResultScreen::start(World& world, const Vfs& vfs, TextureLibrary& textures,
         vm.anchor = AnmAnchor::TopLeft;
         vm.visible = false;
     }
+    t_ = 0;
+    prevButtons_ = 0;
+    repeatCounter_ = 0;
+    return true;
+}
+
+bool ResultScreen::start(World& world, const Vfs& vfs, TextureLibrary& textures, Gui& gui, ScoreFile& scores,
+                         const Run& run) {
+    if (!loadFiles(world, vfs, textures)) return false;
+    scores_ = &scores;
+    run_ = run;
+    titleMode_ = false;
     (void)gui;
     state_ = State::NameEntry;
     t_ = 0;
@@ -135,8 +144,187 @@ ResultScreen::Edges ResultScreen::readInput(const InputState& in) {
     e.confirmRepeat = repeating(kShoot);
     e.cancelRepeat = repeating(kBomb | kEsc);
     e.esc = pressed(kEsc);
+    e.cancel = pressed(kBomb | kEsc);
     prevButtons_ = bits;
     return e;
+}
+
+// ---- the score viewer (from the title) ---------------------------------------------
+
+bool ResultScreen::startTitleMode(World& world, const Vfs& vfs, TextureLibrary& textures, ScoreFile& scores) {
+    if (!loadFiles(world, vfs, textures)) return false;
+    scores_ = &scores;
+    run_ = Run{};
+    titleMode_ = true;
+    state_ = State::MenuIntro;
+    menuCursor_ = 1;  // Normal
+    pageItem_ = 0;
+    rememberedCharacter_ = rememberedPage_ = 0;
+    renderedCharacter_ = renderedPage_ = 0;
+    spellsShown_ = false;
+    rank_ = 10;
+    return true;
+}
+
+void ResultScreen::renderShotNames(World& world, Gui& gui, int character) {
+    for (int s = 0; s < 2; ++s) {
+        AnmVm& vm = texts_[static_cast<std::size_t>(s)];
+        const char* text = kShotNames[character * 2 + s];
+        gui.renderText(world, vm, std::span(reinterpret_cast<const std::uint8_t*>(text), std::strlen(text)), 15, 0xffffffu,
+                       Gui::Align::Centre);
+        vm.color = 0xffffffffu;  // neither name is dimmed here
+    }
+}
+
+void ResultScreen::menuPass(World& world, const Edges& e) {
+    if (e.up) menuCursor_ = (menuCursor_ + 6) % 7, world.playSound(kSoundSelect);
+    if (e.down) menuCursor_ = (menuCursor_ + 1) % 7, world.playSound(kSoundSelect);
+    for (int k = 0; k < 7; ++k) {
+        AnmVm& vm = vms_[static_cast<std::size_t>(1 + k)];
+        if (k == menuCursor_) {
+            vm.color = 0xff505050u;
+            vm.posOffset = {-4.0f, -4.0f, 0.0f};
+        } else {
+            vm.color = 0xb0000000u;
+            vm.posOffset = {};
+        }
+    }
+    bool opened = false;
+    if (e.confirm) {
+        if (menuCursor_ <= 4) {  // a difficulty's tables (no sound)
+            interruptAll(static_cast<std::int16_t>(3 + menuCursor_));
+            pageItem_ = menuCursor_;
+            state_ = State::ScorePage;
+            spellsShown_ = false;
+            t_ = 0;
+            menuCursor_ = rememberedCharacter_;
+            renderedCharacter_ = renderedPage_ = -1;
+            opened = true;
+        } else if (menuCursor_ == 5) {  // the spell cards
+            interruptAll(8);
+            pageItem_ = 5;
+            state_ = State::SpellPage;
+            spellsShown_ = true;
+            t_ = 0;
+            menuCursor_ = rememberedPage_;
+            renderedCharacter_ = renderedPage_ = -1;
+            opened = true;
+        } else {  // Exit (the 60-pass wait counts from the menu's start)
+            interruptAll(2);
+            state_ = State::Exiting;
+            world.playSound(kSoundCancel);
+        }
+    }
+    if (e.cancel && !opened) {  // (the original also took it after opening a page)
+        menuCursor_ = 6;
+        world.playSound(kSoundCancel);
+    }
+}
+
+bool ResultScreen::titleUpdate(World& world, Gui& gui, const Edges& e) {
+    auto backToMenu = [&](int item) {
+        world.playSound(kSoundCancel);
+        state_ = State::MenuIntro;
+        t_ = 1;  // the first pass's colour reset is skipped
+        interruptAll(1);
+        menuCursor_ = item;
+    };
+    switch (state_) {
+        case State::MenuIntro:
+            if (t_ == 0) {
+                for (AnmVm& vm : vms_) {
+                    vm.pendingInterrupt = 1;
+                    vm.colorAdd = true;
+                    vm.color &= 0xff000000u;
+                }
+                for (int k = 0; k < 7; ++k) {
+                    AnmVm& vm = vms_[static_cast<std::size_t>(1 + k)];
+                    vm.color = k == menuCursor_ ? 0xff505050u : 0xb0000000u;
+                    vm.posOffset = k == menuCursor_ ? Vec3f{-4.0f, -4.0f, 0.0f} : Vec3f{};
+                }
+            }
+            if (t_ != 20) break;
+            state_ = State::Menu;
+            t_ = 0;
+            [[fallthrough]];
+        case State::Menu:
+            menuPass(world, e);
+            break;
+        case State::Exiting:
+            if (t_ >= 60) {
+                state_ = State::Done;
+                return true;
+            }
+            break;
+        case State::ScorePage:
+            if (t_ == 20 && renderedCharacter_ != menuCursor_) {
+                renderedCharacter_ = menuCursor_;
+                renderShotNames(world, gui, renderedCharacter_);
+            }
+            if (t_ < 30) break;
+            if (e.left || e.right) {  // Reimu <-> Marisa, and the page plays again
+                menuCursor_ = 1 - menuCursor_;
+                world.playSound(kSoundSelect);
+                t_ = 0;
+                interruptAll(static_cast<std::int16_t>(3 + pageItem_));
+            }
+            if (e.cancel) {
+                rememberedCharacter_ = menuCursor_;
+                backToMenu(pageItem_);
+            }
+            break;
+        case State::SpellPage:
+            if (t_ == 20 && renderedPage_ != menuCursor_) {
+                renderedPage_ = menuCursor_;
+                static constexpr char kUnknown[] = "\x81\x48\x81\x48\x81\x48\x81\x48\x81\x48";  // five full-width '?'
+                for (int n = 10 * renderedPage_; n < std::min(10 * renderedPage_ + 10, ScoreFile::kSpells); ++n) {
+                    const ScoreFile::Spell& sp = scores_->spell(n);
+                    std::span<const std::uint8_t> name;
+                    if (sp.attempts == 0) {
+                        name = std::span(reinterpret_cast<const std::uint8_t*>(kUnknown), sizeof kUnknown - 1);
+                    } else {
+                        const auto end = std::find(sp.name.begin(), sp.name.end(), std::uint8_t{0});
+                        name = std::span(sp.name.data(), static_cast<std::size_t>(end - sp.name.begin()));
+                    }
+                    gui.renderText(world, texts_[static_cast<std::size_t>(n % 10)], name, 15, 0xffffffu, Gui::Align::Left);
+                }
+            }
+            if (t_ < 30) break;
+            if (e.left || e.right) {
+                menuCursor_ = (menuCursor_ + (e.left ? 6 : 1)) % 7;
+                world.playSound(kSoundSelect);
+                t_ = 0;
+                interruptAll(8);
+            }
+            if (e.cancel) {
+                rememberedPage_ = menuCursor_;
+                backToMenu(5);
+            }
+            break;
+        default:
+            break;
+    }
+    for (AnmVm& vm : vms_) world.anm->executeScript(vm);
+    ++t_;
+    return false;
+}
+
+void ResultScreen::drawSpellList(Gui& gui, SpriteSink& sink, World& world) {
+    const Vec3f p = vms_[kVmTableAnchor].pos;
+    for (int i = 0; i < 10; ++i) {
+        const int n = 10 * renderedPage_ + i;
+        if (n >= ScoreFile::kSpells) break;
+        const ScoreFile::Spell& sp = scores_->spell(n);
+        const float y = p.y + 16.0f + 30.0f * static_cast<float>(i);
+        const std::uint32_t color = sp.attempts == 0   ? 0x80c0c0ffu
+                                    : sp.captures == 0 ? 0xffc0a0a0u
+                                                       : 0xfff0f0ffu - static_cast<std::uint32_t>(i) * 0x00080800u;
+        gui.queueString(p.x, y, std::format("No.{:02d}", n + 1), color);
+        AnmVm vm = texts_[static_cast<std::size_t>(i)];
+        vm.pos = {p.x + 96.0f, y, 0.0f};
+        world.anm->drawScreen(sink, vm);
+        gui.queueString(p.x + 368.0f, y, std::format("{:3d}/{:3d}", sp.captures, sp.attempts), color);
+    }
 }
 
 void ResultScreen::interruptAll(std::int16_t k) {
@@ -238,6 +426,7 @@ void ResultScreen::nameEntry(World& world, Gui& gui, const Edges& e) {
 bool ResultScreen::update(World& world, Gui& gui, const InputState& in) {
     if (state_ == State::Done) return true;
     const Edges e = readInput(in);
+    if (titleMode_) return titleUpdate(world, gui, e);
     switch (state_) {
         case State::NameEntry:
             nameEntry(world, gui, e);
@@ -265,6 +454,8 @@ bool ResultScreen::update(World& world, Gui& gui, const InputState& in) {
             break;
         case State::Done:
             return true;
+        default:
+            break;
     }
     for (AnmVm& vm : vms_) world.anm->executeScript(vm);
     ++t_;
@@ -364,6 +555,18 @@ void ResultScreen::draw(World& world, Gui& gui, SpriteSink& sink) {
         vm.pos = v.pos + v.posOffset;
         vm.rotation.z = 0.0f;  // drawn without rotation
         world.anm->drawScreen(sink, vm);
+    }
+    if (titleMode_) {
+        if (scores_ && vms_[kVmTableAnchor].pos.x < 640.0f) {
+            if (!spellsShown_ && renderedCharacter_ >= 0) {
+                shownDifficulty_ = pageItem_;
+                shownCharacter_ = renderedCharacter_;
+                drawTable(gui, sink, world);
+            } else if (spellsShown_ && renderedPage_ >= 0) {
+                drawSpellList(gui, sink, world);
+            }
+        }
+        return;
     }
     if (scores_) drawTable(gui, sink, world);
     if (state_ == State::NameEntry && rank_ < 10) drawKeys(gui);

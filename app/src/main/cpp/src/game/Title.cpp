@@ -323,6 +323,12 @@ Title::Result Title::update(World& world, const InputState& in) {
         case Sub::Quit:
             if (timer_ == 60) return Result::Quit;
             break;
+        case Sub::Score:
+            if (timer_ == 60) return Result::OpenScores;
+            break;
+        case Sub::Music:
+            if (timer_ == 60) return Result::OpenMusicRoom;
+            break;
     }
     if (r != Result::None) return r;  // the title is gone
     stepOverlay();
@@ -416,6 +422,17 @@ void Title::choose(World& world) {
             if (config_->defaultDifficulty == Extra) config_->defaultDifficulty = Normal;
             toSelect();
             break;
+        case 4:  // Result: the score viewer, after the background has faded to black
+            darken();
+            leave();
+            sub_ = Sub::Score;
+            world.playSound(kSoundSelect);
+            break;
+        case 5:  // Music Room
+            leave();
+            sub_ = Sub::Music;
+            world.playSound(kSoundSelect);
+            break;
         case 6:  // Option
             interruptAll(3);
             optCursor_ = 0;
@@ -428,7 +445,7 @@ void Title::choose(World& world) {
             sub_ = Sub::Quit;
             world.playSound(kSoundBack);
             break;
-        default:  // Replay, Result, Music Room: not in the port
+        default:  // Replay: there are no replays in the port
             world.playSound(kSoundBack);
             break;
     }
