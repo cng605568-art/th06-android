@@ -49,6 +49,12 @@ std::size_t Vfs::mountDirectory(const std::string& dir, bool preferNewClassic) {
             std::string ext = item.path().extension().string();
             std::transform(ext.begin(), ext.end(), ext.begin(),
                            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (ext == ".exe") {
+                std::string err;
+                auto exe = MappedFile::open(item.path().string(), &err);
+                if (exe && looksLikeGameExecutable(exe->bytes())) addExecutable(item.path().filename().string(), std::move(exe));
+                continue;
+            }
             if (ext != ".dat" || item.file_size(ec) < 8) continue;  // magic decides, not size
             std::string err;
             auto file = MappedFile::open(item.path().string(), &err);
@@ -107,6 +113,22 @@ std::vector<std::string> Vfs::describe() const {
         out.push_back(std::format("{} [{}] {} files", a->label(), a->format(), a->entries().size()));
     }
     return out;
+}
+
+void Vfs::addExecutable(std::string name, std::unique_ptr<MappedFile> file) {
+    if (!file) return;
+    log::info("Found program {} ({} KB)", name, file->bytes().size() / 1024);
+    executables_.emplace_back(std::move(name), std::move(file));
+}
+
+std::vector<std::span<const std::uint8_t>> Vfs::executables() const {
+    std::vector<std::span<const std::uint8_t>> out;
+    for (const auto& [name, file] : executables_) out.push_back(file->bytes());
+    return out;
+}
+
+bool Vfs::looksLikeGameExecutable(std::span<const std::uint8_t> bytes) {
+    return bytes.size() >= 256 * 1024 && bytes.size() <= 4 * 1024 * 1024 && bytes[0] == 'M' && bytes[1] == 'Z';
 }
 
 }  // namespace th06
