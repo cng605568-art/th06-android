@@ -34,6 +34,11 @@ void drawText(SpriteSink& sink, const UiArt& ui, float x, float y, std::string_v
               float scale, std::uint32_t color);
 float textWidth(std::string_view text, float scale);
 
+// Writes ASCII text in the built-in font straight into an image (x, y = top-left of the
+// first glyph; `scale` whole-pixel magnification). Characters outside the font are skipped.
+void rasterizeText(Image& img, int x, int y, std::string_view text, int scale, std::uint8_t r, std::uint8_t g,
+                   std::uint8_t b);
+
 // Validates the glyph table (used by unit tests).
 bool fontSelfTest(std::string* error);
 

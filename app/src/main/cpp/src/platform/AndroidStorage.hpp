@@ -1,7 +1,10 @@
 #pragma once
 
+#include <memory>
 #include <string>
 #include <vector>
+
+#include "gfx/TextRenderer.hpp"
 
 namespace th06 {
 
@@ -23,5 +26,9 @@ struct AndroidGameOptions {
 };
 // Calls GameActivity.getGameOptions() (the launcher's choices).
 AndroidGameOptions readAndroidGameOptions();
+
+// Renders the game's Shift-JIS strings with the system's CJK font through
+// GameActivity.renderText().
+std::unique_ptr<TextRenderer> makeAndroidTextRenderer();
 
 }  // namespace th06

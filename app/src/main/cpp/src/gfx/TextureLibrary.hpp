@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -33,6 +34,14 @@ class TextureLibrary {
     std::uint16_t add(std::string name, int width, int height, Producer producer,
                       TextureFilter filter = TextureFilter::Nearest);
 
+    // A texture the game draws into at run time (rendered text): its pixels live here and
+    // its version goes up on every change, so the GPU side re-uploads it. Same-name reuse
+    // as for add().
+    std::uint16_t addDynamic(std::string name, int width, int height);
+    Image* pixels(std::uint16_t id);  // null unless the texture is dynamic
+    void touch(std::uint16_t id);     // after changing pixels()
+    std::uint32_t version(std::uint16_t id) const { return items_.at(id).version; }
+
     std::size_t size() const { return items_.size(); }
     const std::string& name(std::uint16_t id) const { return items_.at(id).name; }
     int width(std::uint16_t id) const { return items_.at(id).width; }
@@ -49,6 +58,8 @@ class TextureLibrary {
         int height;
         Producer producer;
         TextureFilter filter;
+        std::shared_ptr<Image> dynamic;
+        std::uint32_t version = 0;
     };
     std::vector<Item> items_;
 };

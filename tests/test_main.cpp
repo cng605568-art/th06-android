@@ -31,6 +31,7 @@
 #include "game/Ecl.hpp"
 #include "game/EffectManager.hpp"
 #include "game/EnemyManager.hpp"
+#include "game/Gui.hpp"
 #include "game/ItemManager.hpp"
 #include "game/Player.hpp"
 #include "game/Resources.hpp"
@@ -41,6 +42,7 @@
 #include "gfx/AnmManager.hpp"
 #include "gfx/Image.hpp"
 #include "gfx/ProceduralArt.hpp"
+#include "gfx/TextRenderer.hpp"
 #include "gfx/TextureLibrary.hpp"
 #include "io/Archive.hpp"
 #include "io/BitReader.hpp"
@@ -805,6 +807,88 @@ static Bytes syntheticStageEcl() {
     return e.build();
 }
 
+// ascii.anm: digits 0..9 (8x8), the power-up glyph (sprite 10, 48x8), and one 14x16 cell
+// per printable character (sprite = code - 21).
+static Bytes syntheticAscii() {
+    std::vector<AnmSprite> sprites;
+    for (std::uint32_t d = 0; d < 10; ++d) sprites.push_back({d, d * 8.0f, 0.0f, 8, 8});
+    sprites.push_back({10, 80.0f, 0.0f, 48, 8});
+    for (std::uint32_t c = 33; c < 127; ++c) {
+        const std::uint32_t k = c - 33;
+        sprites.push_back({c - 21, (k % 16) * 14.0f, 16.0f + (k / 16) * 16.0f, 14, 16});
+    }
+    return buildAnmScripts(256, 256, "data/ascii.dds", sprites, {});
+}
+static Bytes syntheticAsciiTexture() {
+    Image img(256, 128);
+    paintBox(img, 0, 0, 128, 8, {255, 255, 255, 255});
+    for (int k = 0; k < 94; ++k) paintBox(img, (k % 16) * 14 + 2, 16 + (k / 16) * 16 + 2, 10, 12, {255, 255, 255, 255});
+    return ddsFromImage(img);
+}
+// text.anm: a blank texture the engine renders into; bands for the stage name (0), song (1),
+// bomb name (6) and spell name (7). Names stay until interrupt 1, then leave.
+static Bytes syntheticText() {
+    const std::vector<AnmSprite> sprites = {{0, 0, 0, 256, 16}, {1, 0, 16, 256, 16}, {6, 0, 96, 256, 16}, {7, 0, 112, 256, 16}};
+    std::vector<AnmScriptBytes> scripts;
+    for (std::uint32_t k : {0u, 1u}) {
+        AnmCode c;
+        c.ins(0, anm_op::SetSprite, {k});
+        c.ins(0, anm_op::MovePosition, {fbits(192.0f), fbits(k ? 400.0f : 180.0f), fbits(0.0f)});
+        c.ins(120, anm_op::Delete);
+        scripts.push_back({k, c.bytes});
+    }
+    for (std::uint32_t k : {6u, 7u}) {
+        AnmCode c;
+        c.ins(0, anm_op::SetSprite, {k});
+        c.ins(0, anm_op::MovePosition, {fbits(k == 6 ? 160.0f : 288.0f), fbits(k == 6 ? 440.0f : 40.0f), fbits(0.0f)});
+        c.ins(1, anm_op::Halt);
+        c.ins(1, anm_op::InterruptLabel, {1});
+        c.ins(20, anm_op::Delete);
+        scripts.push_back({k, c.bytes});
+    }
+    return buildAnmScripts(256, 128, "@", sprites, scripts);
+}
+// front.anm: frame tile, stars, life bar, labels; boss label enters for 10 frames and
+// leaves over 20.
+static Bytes syntheticFront() {
+    const std::vector<AnmSprite> sprites = {{0, 0, 0, 32, 32}, {1, 32, 0, 16, 16}, {2, 48, 0, 14, 8}, {3, 64, 0, 64, 16}, {4, 128, 0, 128, 16}};
+    std::vector<AnmScriptBytes> scripts;
+    for (std::uint32_t k = 0; k <= 24; ++k) {
+        AnmCode c;
+        const std::uint32_t sprite = k <= 8 && k >= 6 ? 0 : (k == 16 || k == 17) ? 1 : k == 21 ? 2 : k == 22 ? 4 : 3;
+        c.ins(0, anm_op::SetSprite, {sprite});
+        if (k == 6 || k == 7 || k == 8 || k == 16 || k == 17 || k == 22) c.ins(0, anm_op::AnchorTopLeft);
+        if (k <= 5 || (k >= 9 && k <= 15)) c.ins(0, anm_op::MovePosition, {fbits(520.0f), fbits(260.0f + 12.0f * k), fbits(0.0f)});
+        if (k == 19) {
+            c.ins(0, anm_op::MovePosition, {fbits(64.0f), fbits(24.0f), fbits(0.0f)});
+            c.ins(10, anm_op::Static);
+        } else if (k == 20) {
+            c.ins(20, anm_op::Delete);
+        } else {
+            c.ins(1, anm_op::Halt);
+        }
+        scripts.push_back({k, c.bytes});
+    }
+    return buildAnmScripts(256, 256, "data/front.dds", sprites, scripts);
+}
+static Bytes syntheticFrontTexture() {
+    Image img(256, 32);
+    paintBox(img, 0, 0, 32, 32, {60, 20, 60, 255});
+    paintDisc(img, 32, 0, 16, {255, 120, 160});
+    paintBox(img, 48, 0, 14, 8, {255, 255, 255, 255});
+    paintBox(img, 64, 0, 64, 16, {200, 200, 255, 255});
+    paintBox(img, 128, 0, 128, 16, {40, 10, 40, 255});
+    return ddsFromImage(img);
+}
+// stage1.std: just the header's stage title and first song name.
+static Bytes syntheticStd() {
+    Bytes b(0x490, 0);
+    const std::string title = "Synthetic Stage", song = "Test Song";
+    std::memcpy(b.data() + 0x10, title.data(), title.size());
+    std::memcpy(b.data() + 0x90, song.data(), song.size());
+    return b;
+}
+
 static Bytes syntheticStageArchive() {
     return buildPbg3({{"player00.anm", syntheticPlayer()},
                       {"player01.anm", syntheticPlayer()},  // Marisa: same synthetic art
@@ -817,7 +901,13 @@ static Bytes syntheticStageArchive() {
                       {"stg1enm.dds", syntheticEnemyTexture()},
                       {"stg1enm2.anm", syntheticEnemy2()},
                       {"stg1enm2.dds", syntheticEnemyTexture()},
-                      {"ecldata1.ecl", syntheticStageEcl()}});
+                      {"ecldata1.ecl", syntheticStageEcl()},
+                      {"ascii.anm", syntheticAscii()},
+                      {"ascii.dds", syntheticAsciiTexture()},
+                      {"text.anm", syntheticText()},
+                      {"front.anm", syntheticFront()},
+                      {"front.dds", syntheticFrontTexture()},
+                      {"stage1.std", syntheticStd()}});
 }
 
 // A World with the synthetic bullet/player art loaded straight from bytes.
@@ -2879,6 +2969,184 @@ static void testEffectOpcodes() {
     CHECK(!em.at(0).fading);
 }
 
+static void testGuiUnits() {
+    TextureLibrary lib;
+    FallbackTextRenderer text;
+    Gui gui(lib, &text);
+    // Score popups: a 512 ring that overwrites, rising 0.5 px a frame for 61 drawn frames.
+    gui.popup({100.0f, 200.0f, 0.0f}, 12345, 0xffffffffu);
+    CHECK(gui.popupAt(0).inUse && gui.popupAt(0).count == 5 && std::string(gui.popupAt(0).digits.data()) == "12345");
+    gui.popup({0.0f, 0.0f, 0.0f}, -1, 0xff80c0ffu);
+    CHECK(gui.popupAt(1).special && gui.popupAt(1).count == 1);
+    for (int i = 0; i < 60; ++i) gui.updatePopups();
+    CHECK(gui.popupAt(0).inUse && near(gui.popupAt(0).pos.y, 170.0f));
+    gui.updatePopups();
+    CHECK(!gui.popupAt(0).inUse);
+    for (int i = 0; i < Gui::kPopups; ++i) gui.popup({0.0f, 0.0f, 0.0f}, i, 0xffffffffu);
+    CHECK(std::string(gui.popupAt(2).digits.data()) == "0" && std::string(gui.popupAt(0).digits.data()) == "510");  // overwritten
+    for (int i = 0; i < 4; ++i) gui.popup({0.0f, 0.0f, 0.0f}, 100 + i, 0xffffffffu, true);
+    CHECK(std::string(gui.smallPopupAt(0).digits.data()) == "103" && std::string(gui.smallPopupAt(1).digits.data()) == "101");
+    // Text queue: at most 256 strings, 63 characters each.
+    for (int i = 0; i < 300; ++i) gui.queueString(0.0f, 0.0f, std::string(80, 'x'), 0xffffffffu);
+    CHECK(gui.strings().size() == 256 && gui.strings()[0].text.size() == 63);
+    // Fallback text renderer: ASCII glyphs drawn, cells of (F + 1) / 2 per byte.
+    Image band(64, 16);
+    const std::uint8_t hi[] = {'H', 'I'};
+    TextStyle style;
+    CHECK(text.render(hi, style, 0.0f, band));
+    int lit = 0;
+    for (int y = 0; y < 16; ++y)
+        for (int x = 0; x < 64; ++x) lit += band.pixel(x, y)[3] != 0;
+    CHECK(lit > 10);
+    finishTextBand(band);
+    bool quantised = true;
+    for (std::size_t i = 0; i < band.rgba.size(); i += 4) quantised = quantised && (band.rgba[i] & 7) == 0 && (band.rgba[i + 3] == 0 || band.rgba[i + 3] == 255);
+    CHECK(quantised);
+}
+
+static void testGuiInStage() {
+    const Bytes archive = syntheticStageArchive();
+    Vfs vfs;
+    vfs.mount(open("SYNTH_ST.DAT", archive));
+    TextureLibrary lib;
+    const UiArt ui = registerUiArt(lib);
+    RecordingBackend backend;
+    SoundPlayer sound(&backend);
+    Stage stage(lib, ui, &vfs, &sound);
+    CHECK(stage.load(1, Normal));
+    Gui& gui = stage.gui();
+    CHECK(gui.ready());
+    if (!gui.ready()) return;
+    World& world = stage.world();
+    GameState& gs = *world.state;
+
+    // The stage title was rendered into text.anm's blank texture band.
+    const AnmLoadedSprite* titleSprite = world.anm->sprite(kAnmOffsetText + 0);
+    CHECK(titleSprite != nullptr);
+    if (titleSprite) {
+        const Image* img = lib.pixels(titleSprite->texture);
+        int lit = 0;
+        for (int y = 0; y < 16 && img; ++y)
+            for (int x = 0; x < img->width; ++x) lit += img->pixel(x, y)[3] != 0;
+        CHECK(img && lit > 20 && lib.version(titleSprite->texture) > 0);
+    }
+    // First frame: the side panel, the "STAGE 1" caption with the title, scores.
+    {
+        RecordingSink sink;
+        stage.render(sink, 1.0f, HudInfo{60.0f, 1});
+        int front = 0, ascii = 0;
+        for (const auto& it : sink.items) {
+            front += lib.name(it.texture).starts_with("data/front");
+            ascii += lib.name(it.texture).starts_with("data/ascii");
+        }
+        CHECK(front > 100 && ascii > 20);  // frame tiles; nine-digit scores and the caption
+    }
+    InputState idle;
+    stage.tick(idle);
+    {
+        RecordingSink sink;
+        gui.draw(world, sink, ui.white, 60.0f);
+        bool caption = false, score = false;
+        for (const auto& q : gui.strings()) {
+            caption = caption || (q.text == "STAGE 1" && q.x == 168.0f && q.y == 198.0f);
+            score = score || (q.text == "000000000" && q.y == 82.0f);
+        }
+        CHECK(caption && score);
+        gui.drawStrings(world, sink);
+        CHECK(gui.strings().empty());
+    }
+
+    // Boss HUD: enters (10-frame label script), bar fills 0.01 a frame, drains 0.02.
+    gs.bossPresent = true;
+    gs.bossFillTarget = 1.0f;
+    gs.bossSeconds = 30;
+    gui.update(world);
+    CHECK(gui.bossHudState() == Gui::BossHud::Entering && gui.bossHudOpacity() == 0);
+    for (int i = 0; i < 10; ++i) gui.update(world);
+    CHECK(gui.bossHudState() == Gui::BossHud::Shown && gui.bossFill() > 0.0f && gui.bossFill() < 0.02f);
+    for (int i = 0; i < 120; ++i) gui.update(world);
+    CHECK(near(gui.bossFill(), 1.0f) && gui.bossHudOpacity() == 255);
+    gs.bossFillTarget = 0.5f;
+    for (int i = 0; i < 10; ++i) gui.update(world);
+    CHECK(near(gui.bossFill(), 0.8f, 1e-4f));
+    {
+        RecordingSink sink;
+        gui.draw(world, sink, ui.white, 60.0f);
+        bool timer = false;
+        for (const auto& q : gui.strings()) timer = timer || (q.text == "30" && q.x == 384.0f && q.color == 0xffa0d0ffu);
+        CHECK(timer);
+        gui.drawStrings(world, sink);
+    }
+    gs.bossPresent = false;
+    for (int i = 0; i < 25; ++i) gui.update(world);
+    CHECK(gui.bossHudState() == Gui::BossHud::Idle && gui.bossFill() == 0.0f);
+
+    // Sliding messages: BONUS comes in from the right over 30 frames and stays 250.
+    gui.showBonus(4020);
+    gui.update(world);
+    CHECK(gui.bonusMessage().shown && gui.bonusMessage().x == 416.0f);
+    for (int i = 0; i < 30; ++i) gui.update(world);
+    CHECK(gui.bonusMessage().x == 104.0f);
+    for (int i = 0; i < 219; ++i) gui.update(world);
+    CHECK(gui.bonusMessage().shown);
+    gui.update(world);
+    CHECK(!gui.bonusMessage().shown);
+    gui.showSpellBonus(380000);
+    {
+        RecordingSink sink;
+        gui.draw(world, sink, ui.white, 60.0f);
+        bool big = false;
+        for (const auto& q : gui.strings()) big = big || (q.text == "+380000" && q.scale == 2.0f && q.clipped);
+        CHECK(big);
+        gui.drawStrings(world, sink);
+    }
+
+    // Bombs show the name from text.anm (rendered) and leave on interrupt 1.
+    InputState bomb;
+    bomb.bomb = true;
+    stage.tick(bomb);
+    CHECK(gui.bombName().visible && near(gui.bombNameLength(), 16.0f * 7.5f + 16.0f));
+    for (int i = 0; i < 320; ++i) stage.tick(idle);
+    CHECK(!gui.bombName().visible);
+
+    // Popups from item pickups: a point item high up is worth the top value, in yellow.
+    Player& pl = stage.player();
+    stage.items().spawn(world, pl.positionCenter, ItemPoint, ItemState::Falling);
+    const int before = gui.activePopups();
+    stage.tick(idle);
+    CHECK(gui.activePopups() == before + 1);
+}
+
+static void testSpellcardBonus() {
+    TestWorld tw;
+    CHECK(tw.ok);
+    if (!tw.ok) return;
+    FallbackTextRenderer text;
+    Gui gui(tw.lib, &text);
+    tw.world.gui = &gui;
+    EclBuilder e;
+    e.spawn(0, timeline_op::EnemyCreate, 0, 192.0f, 100.0f, 1000, -2, 0);
+    e.sub();
+    e.ins(0, ecl_op::BossSet, {0});
+    e.ins(0, ecl_op::TimerCallbackThreshold, {600});
+    e.ins(0, ecl_op::SpellcardStart, {(5u << 16) | 2u, 0x54534554u, 0u});  // portrait 2, card 5, "TEST"
+    e.ins(120, ecl_op::SpellcardEnd);
+    e.ins(1000, ecl_op::EnemyDelete);
+    std::string err;
+    CHECK(tw.ecl.load(e.build(), &err));
+    tw.enemies->startStage(tw.world);
+    tw.enemies->update(tw.world);
+    CHECK(tw.enemies->spellcard().isActive == 1 && tw.enemies->spellcard().captureScore == 200000 && tw.state.bossPresent);
+    CHECK(tw.state.bossFillTarget == 1.0f);
+    for (int f = 0; f < 118; ++f) tw.enemies->update(tw.world);
+    const std::uint32_t before = tw.state.score;
+    tw.enemies->update(tw.world);  // time 120: the card ends, captured
+    const std::int32_t s = tw.state.bossSeconds;
+    const std::int32_t bonus = 200000 + 200000 * s / 10;
+    CHECK(s == (600 - 119) / 60 && gui.spellBonusMessage().shown && gui.spellBonusMessage().value == bonus);
+    CHECK(tw.state.score - before == static_cast<std::uint32_t>(bonus) && tw.enemies->spellcard().isActive == 0);
+}
+
 int main() {
     struct Test {
         const char* name;
@@ -2911,6 +3179,9 @@ int main() {
         {"sound queue (PlaySoundByIdx / PlaySounds)", testSoundQueue},
         {"fixed 60 Hz timestep at 60/90/120/144 Hz", testFixedTimestep},
         {"whole stage from a synthetic PBG3 archive", testStageFromArchive},
+        {"GUI: popups, text queue, text rendering", testGuiUnits},
+        {"GUI in a stage: panel, boss HUD, messages, names, popups", testGuiInStage},
+        {"spell card capture bonus", testSpellcardBonus},
     };
     for (const Test& t : tests) {
         const int before = g_failures;

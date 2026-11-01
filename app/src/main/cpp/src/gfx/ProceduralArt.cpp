@@ -165,6 +165,34 @@ Image buildUiAtlas() {
 
 }  // namespace
 
+void rasterizeText(Image& img, int x, int y, std::string_view text, int scale, std::uint8_t r, std::uint8_t g,
+                   std::uint8_t b) {
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        const char c = canonical(text[i]);
+        for (const Glyph& gl : kGlyphs) {
+            if (gl.ch != c) continue;
+            for (int row = 0; row < 7; ++row) {
+                for (int col = 0; col < 5; ++col) {
+                    if (gl.rows[row][col] != '#') continue;
+                    for (int sy = 0; sy < scale; ++sy) {
+                        for (int sx = 0; sx < scale; ++sx) {
+                            const int px = x + static_cast<int>(i) * 6 * scale + col * scale + sx;
+                            const int py = y + row * scale + sy;
+                            if (px < 0 || py < 0 || px >= img.width || py >= img.height) continue;
+                            std::uint8_t* p = img.pixel(px, py);
+                            p[0] = r;
+                            p[1] = g;
+                            p[2] = b;
+                            p[3] = 255;
+                        }
+                    }
+                }
+            }
+            break;
+        }
+    }
+}
+
 SpriteRegion UiArt::glyph(char c) const {
     c = canonical(c);
     int index = static_cast<unsigned char>(c) - 32;

@@ -7,6 +7,7 @@
 #include <cstring>
 
 #include "game/EffectManager.hpp"
+#include "game/Gui.hpp"
 #include "game/ItemManager.hpp"
 #include "game/Player.hpp"
 
@@ -742,6 +743,7 @@ restart_sub_changed:
                 if (id >= 0) {
                     if (id < 4) bosses_[static_cast<std::size_t>(id)] = &e;
                     world.state->bossPresent = true;
+                    world.state->bossFillTarget = 1.0f;
                     e.isBoss = true;
                     e.bossId = static_cast<std::uint8_t>(id);
                 } else {
@@ -842,17 +844,35 @@ restart_sub_changed:
                 goto restart_sub_changed;
             }
             case ecl_op::EnemyLifeSet: e.life = e.maxLife = ecl.argAt<std::int32_t>(at, 0); break;
-            case ecl_op::SpellcardStart:
-                world.unported->hit("spellcard name/bonus display");
+            case ecl_op::SpellcardStart: {
+                std::vector<std::uint8_t> name;  // NUL-terminated Shift-JIS after two shorts
+                const std::span<const std::uint8_t> bytes = ecl.bytes();
+                for (std::size_t i = at + sizeof(EclRawInstr) + 4; i < at + static_cast<std::size_t>(cur.offsetToNext) &&
+                                                                   i < bytes.size() && bytes[i] != 0;
+                     ++i) {
+                    name.push_back(bytes[i]);
+                }
+                if (world.gui) world.gui->spellStart(world, ecl.argAt<std::int16_t>(at, 0), name);
                 spellcard_.isCapturing = true;
                 spellcard_.isActive = 1;
                 spellcard_.idx = ecl.argAt<std::int16_t>(at, 2);
+                spellcard_.captureScore = spellcardBaseBonus(spellcard_.idx);
                 world.bullets->removeAllBullets(world, true);
                 e.resetRank();
                 break;
+            }
             case ecl_op::SpellcardEnd:
                 if (spellcard_.isActive) {
-                    if (spellcard_.isActive == 1) world.bullets->despawnBullets(world, 12800, true);
+                    if (world.gui && spellcard_.isActive <= 2) world.gui->spellNameExit();
+                    if (spellcard_.isActive == 1) {
+                        world.bullets->despawnBullets(world, 12800, true);
+                        if (spellcard_.isCapturing) {  // capture: base + a tenth of it per second left
+                            const std::int32_t bonus =
+                                spellcard_.captureScore + spellcard_.captureScore * world.state->bossSeconds / 10;
+                            if (world.gui) world.gui->showSpellBonus(bonus);
+                            world.state->score += static_cast<std::uint32_t>(bonus);
+                        }
+                    }
                     spellcard_.isActive = 0;
                 }
                 break;
@@ -893,7 +913,7 @@ restart_sub_changed:
                 if (world.items) world.items->spawn(world, e.position, ecl.argAt<std::int32_t>(at, 0), ItemState::Falling);
                 break;
             case ecl_op::StdUnpause: world.unported->hit("stage backgrounds (STD)"); break;
-            case ecl_op::BossSetLifeCount: world.unported->hit("boss HUD (life count, timer)"); break;
+            case ecl_op::BossSetLifeCount: world.state->bossLifeCount = ecl.argAt<std::int32_t>(at, 0); break;
             case ecl_op::EnemyCreate: {
                 const auto a = ecl.argAt<EclRawInstrEnemyCreateArgs>(at, 0);
                 const Vec3f pos{readFloat(world, e, a.x), readFloat(world, e, a.y), readFloat(world, e, a.z)};
@@ -1058,7 +1078,7 @@ bool EnemyManager::handleLifeCallback(World& world, Enemy& e) {
 }
 
 bool EnemyManager::handleTimerCallback(World& world, Enemy& e) {
-    if (e.isBoss) world.unported->hit("boss HUD (life count, timer)");
+    if (e.isBoss) world.state->bossSeconds = (e.timerCallbackThreshold - e.phaseTimer) / 60;
     if (e.phaseTimer < e.timerCallbackThreshold) return false;
     if (e.lifeCallbackThreshold > 0) {
         e.life = e.lifeCallbackThreshold;
@@ -1077,6 +1097,16 @@ bool EnemyManager::handleTimerCallback(World& world, Enemy& e) {
     e.resetRank();
     e.stackDepth = 0;
     return true;
+}
+
+std::int32_t EnemyManager::spellcardBaseBonus(int idx) {
+    if (idx < 7) return 200'000;   // stages 1-2
+    if (idx < 14) return 250'000;  // stage 3
+    if (idx < 32) return 300'000;  // stage 4
+    if (idx < 40) return 400'000;  // stage 5
+    if (idx < 46) return 500'000;  // stage 6
+    if (idx < 51) return 600'000;  // stage 6 (last cards)
+    return 700'000;                // Extra
 }
 
 void EnemyManager::releaseEffects(World& world, Enemy& e) {
@@ -1333,6 +1363,8 @@ void EnemyManager::update(World& world) {
                     e.deathCallbackSub = -1;
                 }
             }
+            // The boss HUD's bar follows the boss (the last boss in slot order wins).
+            if (e.isBoss && e.maxLife > 0) gs.bossFillTarget = static_cast<float>(e.life) / static_cast<float>(e.maxLife);
             if (e.hitFlashTimer != 0) {
                 e.hitFlashTimer--;
                 e.primaryVm.colorAdd = false;

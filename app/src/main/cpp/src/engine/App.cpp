@@ -122,7 +122,10 @@ bool App::init(int argc, char** argv) {
         log::warn("Audio disabled: {}", err);
     }
 
-    stage_ = std::make_unique<Stage>(textures_, ui_, vfs_.get(), sound_.get());
+#if defined(__ANDROID__)
+    text_ = makeAndroidTextRenderer();
+#endif
+    stage_ = std::make_unique<Stage>(textures_, ui_, vfs_.get(), sound_.get(), text_.get());
 #if defined(__ANDROID__)
     {
         const AndroidGameOptions o = readAndroidGameOptions();

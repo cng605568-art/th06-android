@@ -17,6 +17,7 @@ class BulletManager;
 class EnemyManager;
 class EclFile;
 class EffectManager;
+class Gui;
 class ItemManager;
 class Player;
 class ScreenShake;
@@ -68,6 +69,11 @@ struct GameState {
     std::int32_t bombs = 3;
     std::int32_t startingBombs = 3;
     bool bossPresent = false;
+    // Boss HUD inputs written by the enemies: life-bar target (life / max life), the life
+    // count from ECL, and whole seconds left on the boss timer (also the capture bonus's s).
+    float bossFillTarget = 0.0f;
+    std::int32_t bossLifeCount = 0;
+    std::int32_t bossSeconds = 0;
     bool bombActive = false;  // a player bomb is running (see game/Bomb)
     std::uint32_t bombsUsed = 0;
     std::uint32_t deaths = 0;
@@ -162,6 +168,7 @@ struct World {
     UnportedFeatures* unported = nullptr;
     ScreenShake* shake = nullptr;
     EffectManager* effects = nullptr;
+    Gui* gui = nullptr;
 
     void playSound(int idx) const {
         if (sound && idx >= 0) sound->playSound(idx);

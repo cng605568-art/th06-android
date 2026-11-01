@@ -5,6 +5,7 @@
 
 #include "game/EffectManager.hpp"
 #include "game/EnemyManager.hpp"
+#include "game/Gui.hpp"
 #include "game/ItemManager.hpp"
 #include "game/Player.hpp"
 #include "game/ScreenShake.hpp"
@@ -92,9 +93,9 @@ void Bomb::startVm(World& world, AnmVm& vm, int script) {
 }
 
 void Bomb::showName(World& world) {
-    // The portrait comes from the character's face files, which belong to the dialogue
-    // system (not ported yet); the name banner is drawn by the stage HUD.
-    world.unported->hit("bomb portrait");
+    // With the game's GUI files the portrait and name come from face/text ANM scripts;
+    // otherwise the stage draws its own banner from nameVisibility().
+    if (world.gui && world.gui->ready()) world.gui->showBomb(world, type_);
     nameTimer_ = 0;
     nameLeaving_ = -1;
     world.playSound(kSoundBombStart);
@@ -117,6 +118,7 @@ void Bomb::step(World& world, Player& player) {
     GameState& gs = *world.state;
     if (timer_ >= duration_) {
         nameLeaving_ = 0;  // interrupt 1: the name banner leaves
+        if (world.gui) world.gui->endBombName();
         gs.bombActive = false;
         if (type_ == kMarisaB) moveMultiplier_ = 1.0f;
         return;

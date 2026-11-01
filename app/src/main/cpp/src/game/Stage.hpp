@@ -15,6 +15,7 @@
 #include "game/BulletManager.hpp"
 #include "game/Ecl.hpp"
 #include "game/EffectManager.hpp"
+#include "game/Gui.hpp"
 #include "game/EnemyManager.hpp"
 #include "game/ItemManager.hpp"
 #include "game/Input.hpp"
@@ -24,6 +25,7 @@
 #include "game/World.hpp"
 #include "gfx/AnmManager.hpp"
 #include "gfx/ProceduralArt.hpp"
+#include "gfx/TextRenderer.hpp"
 #include "gfx/TextureLibrary.hpp"
 
 namespace th06 {
@@ -38,7 +40,9 @@ struct HudInfo {
 
 class Stage {
   public:
-    Stage(TextureLibrary& textures, const UiArt& ui, const Vfs* vfs, SoundPlayer* sound);
+    // `text` renders the game's Shift-JIS strings (platform font); null uses the built-in
+    // ASCII fallback.
+    Stage(TextureLibrary& textures, const UiArt& ui, const Vfs* vfs, SoundPlayer* sound, TextRenderer* text = nullptr);
 
     // Loads stage 1..7 at the given difficulty. On failure the stage shows why instead.
     bool load(int stageNumber, int difficulty);
@@ -62,6 +66,8 @@ class Stage {
     ItemManager& items() { return *items_; }
     ScreenShake& shake() { return shake_; }
     EffectManager& effects() { return effects_; }
+    Gui& gui() { return gui_; }
+    World& world() { return world_; }
     Player& player() { return *player_; }
     AnmManager& anm() { return anm_; }
     int stageNumber() const { return stageNumber_; }
@@ -70,6 +76,7 @@ class Stage {
     void renderHud(SpriteSink& sink, const HudInfo& hud);
     void renderMessage(SpriteSink& sink);
     void renderBombName(SpriteSink& sink);
+    void renderDiagnostics(SpriteSink& sink);
 
     SoundPlayer* sound_;
     const Vfs* vfs_;
@@ -84,6 +91,10 @@ class Stage {
     std::unique_ptr<Player> player_;
     ScreenShake shake_;
     EffectManager effects_;
+    FallbackTextRenderer fallbackText_;
+    Gui gui_;
+    bool guiLoadedOnce_ = false;
+    int loadedGuiCharacter_ = -1;
     EclFile ecl_;
     ShotData shots_;
     bool shotsSearched_ = false;

@@ -27,7 +27,7 @@ constexpr int kClearDelay = 180;
 
 }  // namespace
 
-Stage::Stage(TextureLibrary& textures, const UiArt& ui, const Vfs* vfs, SoundPlayer* sound)
+Stage::Stage(TextureLibrary& textures, const UiArt& ui, const Vfs* vfs, SoundPlayer* sound, TextRenderer* text)
     : sound_(sound),
       vfs_(vfs),
       ui_(ui),
@@ -36,7 +36,8 @@ Stage::Stage(TextureLibrary& textures, const UiArt& ui, const Vfs* vfs, SoundPla
       bullets_(std::make_unique<BulletManager>()),
       enemies_(std::make_unique<EnemyManager>()),
       items_(std::make_unique<ItemManager>()),
-      player_(std::make_unique<Player>()) {
+      player_(std::make_unique<Player>()),
+      gui_(textures, text ? text : &fallbackText_) {
     world_.anm = &anm_;
     world_.bullets = bullets_.get();
     world_.enemies = enemies_.get();
@@ -48,6 +49,7 @@ Stage::Stage(TextureLibrary& textures, const UiArt& ui, const Vfs* vfs, SoundPla
     world_.unported = &unported_;
     world_.shake = &shake_;
     world_.effects = &effects_;
+    world_.gui = &gui_;
 }
 
 bool Stage::load(int stageNumber, int difficulty) {
@@ -119,6 +121,15 @@ bool Stage::load(int stageNumber, int difficulty) {
     state_.grazes = 0;
     state_.stagePointItems = 0;
     player_->reset(world_);
+    // The game's own GUI (side panel, boss HUD, names, popups); loaded with the first stage
+    // of a run and again when the character changes.
+    const bool newRun = !guiLoadedOnce_ || gui_.ready() != true || loadedGuiCharacter_ != character;
+    if (newRun) {
+        gui_.loadRun(world_, *vfs_, character);
+        loadedGuiCharacter_ = character;
+        guiLoadedOnce_ = true;
+    }
+    gui_.startStage(world_, *vfs_, stageNumber_, newRun);
     if (!shots_.loaded) unported_.hit("shot types (needs 東方紅魔郷.exe 1.02h in the game folder)");
     enemies_->startStage(world_);
     clearTimer_ = 0;
@@ -133,12 +144,14 @@ void Stage::tick(const InputState& in) {
     previousPause_ = in.pause;
     if (!ready_ || paused_) return;
 
+    gui_.updatePopups();
     ++state_.frame;
     rollScore(world_);
     player_->update(world_, in);
     enemies_->update(world_);
     effects_.update(world_);
     bullets_->update(world_);
+    gui_.update(world_);
     player_->bomb().updateGui();
     shake_.update(world_);
     if (sound_) sound_->flush();
@@ -164,9 +177,20 @@ void Stage::render(SpriteSink& s, float alpha, const HudInfo& hud) {
         player_->drawHits(world_, s, alpha);
         effects_.draw(world_, s, alpha);
         bullets_->draw(world_, s, alpha);
-        renderBombName(s);
+        gui_.drawPopups(world_, s);
+        if (!gui_.ready()) renderBombName(s);
     }
-    // Frame (also clips sprites that overhang the playfield).
+    if (ready_ && gui_.ready()) {
+        gui_.draw(world_, s, ui_.white, hud.fps);
+        gui_.drawStrings(world_, s);
+        renderDiagnostics(s);
+        if (paused_) {
+            const std::string_view t = "PAUSED";
+            drawText(s, ui_, kGameRegionX + (kGameRegionWidth - textWidth(t, 3.0f)) * 0.5f, 220, t, 3.0f, rgba(255, 255, 255));
+        }
+        return;
+    }
+    // Without the game's GUI files: the port's own frame and diagnostic HUD.
     const auto frame = rgba(46, 18, 40);
     s.fillRect(ui_.white, 0, 0, 640, kGameRegionY, frame);
     s.fillRect(ui_.white, 0, kGameRegionY + kGameRegionHeight, 640, 480 - kGameRegionY - kGameRegionHeight, frame);
@@ -196,6 +220,26 @@ void Stage::renderBombName(SpriteSink& s) {
     const auto a = static_cast<std::uint8_t>(255.0f * std::min(v * 1.5f, 1.0f));
     s.fillRect(ui_.white, x, y, w, 14.0f, rgba(20, 10, 40, static_cast<std::uint8_t>(a * 0.7f)));
     drawText(s, ui_, x + 8.0f, y + 3.0f, name, 1.0f, rgba(240, 240, 255, a));
+}
+
+// With the game's panel on screen, only the list of features the data used that are not
+// ported yet, small, at the bottom of the side panel.
+void Stage::renderDiagnostics(SpriteSink& s) {
+    if (unported_.counts().empty()) return;
+    const float x = 424.0f;
+    float y = 380.0f;
+    const auto n = static_cast<float>(std::min<std::size_t>(unported_.counts().size(), 6));
+    s.fillRect(ui_.white, x - 4.0f, y - 4.0f, 216.0f, 16.0f + 9.0f * n, rgba(0, 0, 0, 170));
+    drawText(s, ui_, x, y, "NOT PORTED YET:", 1.0f, rgba(255, 210, 120));
+    y += 11.0f;
+    int shown = 0;
+    for (const auto& [name, count] : unported_.counts()) {
+        if (++shown > 6) break;
+        std::string t = name.substr(0, std::min<std::size_t>(name.find(" ("), name.size()));
+        for (char& c : t) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
+        drawText(s, ui_, x + 4.0f, y, t.substr(0, 34), 1.0f, rgba(220, 190, 140));
+        y += 9.0f;
+    }
 }
 
 void Stage::renderHud(SpriteSink& s, const HudInfo& hud) {

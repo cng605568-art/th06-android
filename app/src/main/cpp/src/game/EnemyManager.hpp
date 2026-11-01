@@ -174,6 +174,7 @@ class EnemyManager {
     void killAllNonBoss(World& world);
     void despawn(World& world, Enemy& e);
     void releaseEffects(World& world, Enemy& e);
+    static std::int32_t spellcardBaseBonus(int idx);
     void driveEffects(World& world, Enemy& e);
     void batWingTrail(World& world, Enemy& e);
     void dropDeathItem(World& world, Enemy& e, bool hitByBomb);

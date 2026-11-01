@@ -15,8 +15,28 @@ std::uint16_t TextureLibrary::add(std::string name, int width, int height, Produ
             return static_cast<std::uint16_t>(i);
         }
     }
-    items_.push_back(Item{std::move(name), width, height, std::move(producer), filter});
+    items_.push_back(Item{std::move(name), width, height, std::move(producer), filter, nullptr, 0});
     return static_cast<std::uint16_t>(items_.size() - 1);
+}
+
+std::uint16_t TextureLibrary::addDynamic(std::string name, int width, int height) {
+    for (std::size_t i = 0; i < items_.size(); ++i) {
+        const Item& it = items_[i];
+        if (it.dynamic && it.name == name && it.width == width && it.height == height) return static_cast<std::uint16_t>(i);
+    }
+    auto image = std::make_shared<Image>(width, height);  // fully transparent
+    Item item{std::move(name), width, height, [image]() -> std::optional<Image> { return *image; }, TextureFilter::Nearest,
+              image, 0};
+    items_.push_back(std::move(item));
+    return static_cast<std::uint16_t>(items_.size() - 1);
+}
+
+Image* TextureLibrary::pixels(std::uint16_t id) {
+    return id < items_.size() ? items_[id].dynamic.get() : nullptr;
+}
+
+void TextureLibrary::touch(std::uint16_t id) {
+    if (id < items_.size()) ++items_[id].version;
 }
 
 std::optional<Image> TextureLibrary::build(std::uint16_t id) const {
@@ -67,9 +87,17 @@ std::optional<LoadedAnm> loadAnm(const Vfs& vfs, TextureLibrary& lib, std::strin
     }
     auto anm = parseAnm(*bytes, error);
     if (!anm) return std::nullopt;
-    if (anm->imageName.starts_with('@')) {
-        if (error) *error = std::string(path) + " draws into a render target, not an image";
-        return std::nullopt;
+    if (anm->imageName.starts_with('@')) {  // a blank texture the engine draws into (text)
+        if (anm->textureWidth <= 0 || anm->textureHeight <= 0) {
+            if (error) *error = std::string(path) + ": blank texture without a size";
+            return std::nullopt;
+        }
+        LoadedAnm out;
+        out.texture = lib.addDynamic(std::string(path) + "|blank", anm->textureWidth, anm->textureHeight);
+        out.anm = std::move(*anm);
+        log::info("Loaded {}: {} sprites on a blank {}x{} texture", path, out.anm.sprites.size(),
+                  out.anm.textureWidth, out.anm.textureHeight);
+        return out;
     }
 
     const std::string image = resolveImage(vfs, anm->imageName);

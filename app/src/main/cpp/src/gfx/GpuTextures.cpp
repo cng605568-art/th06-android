@@ -37,6 +37,19 @@ void GpuTextures::sync(const TextureLibrary& library) {
                        image->width, image->height, maxSize);
         }
         textures_.push_back(tex);
+        versions_.push_back(library.version(id));
+    }
+    // Textures the game draws into (rendered text) are sent again when they change.
+    for (std::size_t id = 0; id < textures_.size(); ++id) {
+        const auto tid = static_cast<std::uint16_t>(id);
+        if (versions_[id] == library.version(tid) || !textures_[id]) continue;
+        versions_[id] = library.version(tid);
+        if (auto image = library.build(tid)) {
+            glBindTexture(GL_TEXTURE_2D, textures_[id]);
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, image->width, image->height, GL_RGBA, GL_UNSIGNED_BYTE,
+                            image->rgba.data());
+        }
     }
     gl::check("GpuTextures::sync");
 }
@@ -64,6 +77,7 @@ void GpuTextures::destroy() {
 
 void GpuTextures::abandon() {
     textures_.clear();
+    versions_.clear();
     placeholder_ = 0;
 }
 

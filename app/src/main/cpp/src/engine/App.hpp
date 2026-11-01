@@ -55,6 +55,7 @@ class App {
     std::string devScreenshot_;
     bool devTouch_ = false;
     int devBombFrame_ = -1;  // --demo-bomb N: tap the touch BOMB button on frame N
+    std::unique_ptr<TextRenderer> text_;  // platform text (null: built-in fallback); outlives stage_
     int startStage_ = 1;
     int startDifficulty_ = 1;
     int shotType_ = 0;

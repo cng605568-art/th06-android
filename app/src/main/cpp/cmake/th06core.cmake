@@ -50,6 +50,8 @@ add_library(th06_core STATIC
   ${TH06_SRC}/game/Bomb.cpp
   ${TH06_SRC}/game/ScreenShake.cpp
   ${TH06_SRC}/game/EffectManager.cpp
+  ${TH06_SRC}/game/Gui.cpp
+  ${TH06_SRC}/gfx/TextRenderer.cpp
   ${TH06_SRC}/game/Stage.cpp
   ${TH06_SRC}/third_party_impl.cpp)
 target_include_directories(th06_core PUBLIC "${TH06_SRC}")

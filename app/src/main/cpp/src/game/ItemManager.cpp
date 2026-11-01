@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include "game/BulletManager.hpp"
+#include "game/Gui.hpp"
 #include "game/Player.hpp"
 #include "game/Resources.hpp"
 
@@ -167,7 +168,7 @@ void ItemManager::update(World& world) {
 
 void ItemManager::fullPowerReached(World& world) {
     world.bullets->removeAllBullets(world, true);  // every bullet and laser becomes a star
-    world.unported->hit("score popups and banners");
+    if (world.gui) world.gui->showFullPower();
 }
 
 void ItemManager::collect(World& world, Item& it) {
@@ -178,7 +179,9 @@ void ItemManager::collect(World& world, Item& it) {
             const bool big = it.type == ItemPowerBig;
             if (gs.power >= GameState::kMaxPower) {
                 gs.fullPowerChain = std::min(gs.fullPowerChain + (big ? 8 : 1), 30);
-                gs.score += fullPowerScore(gs.fullPowerChain);
+                const std::uint32_t v = fullPowerScore(gs.fullPowerChain);
+                gs.score += v;
+                if (world.gui) world.gui->popup(it.pos, static_cast<std::int32_t>(v), v >= 12800 ? 0xffffff00u : 0xffffffffu);
             } else {
                 const int before = gs.powerLevel();
                 if (!big) gs.fullPowerChain = 0;
@@ -188,18 +191,23 @@ void ItemManager::collect(World& world, Item& it) {
                     fullPowerReached(world);
                 }
                 gs.score += 10;
-                if (gs.powerLevel() != before) world.playSound(kSoundPowerUp);
+                const bool levelUp = gs.powerLevel() != before;
+                if (levelUp) world.playSound(kSoundPowerUp);
+                if (world.gui) world.gui->popup(it.pos, levelUp ? -1 : 10, levelUp ? 0xff80c0ffu : 0xffffffffu);
             }
             if (!big) gs.increaseSubrank(1);
-            world.unported->hit("score popups and banners");
             break;
         }
         case ItemPoint: {
-            gs.score += pointItemValue(gs.difficulty, it.pos.y);
+            const std::uint32_t v = pointItemValue(gs.difficulty, it.pos.y);
+            gs.score += v;
             ++gs.stagePointItems;
             ++gs.totalPointItems;
             gs.increaseSubrank(it.pos.y < kCollectLineY ? 30 : 3);
-            world.unported->hit("score popups and banners");
+            if (world.gui) {
+                const bool top = v == pointItemValue(gs.difficulty, 0.0f);
+                world.gui->popup(it.pos, static_cast<std::int32_t>(v), top ? 0xffffff00u : 0xffffffffu);
+            }
             break;
         }
         case ItemBomb:
@@ -210,18 +218,23 @@ void ItemManager::collect(World& world, Item& it) {
             if (gs.power < GameState::kMaxPower) {
                 fullPowerReached(world);
                 world.playSound(kSoundPowerUp);
+                if (world.gui) world.gui->popup(it.pos, -1, 0xff80c0ffu);
             }
             gs.power = GameState::kMaxPower;
             gs.score += 1000;
+            if (world.gui) world.gui->popup(it.pos, 1000, 0xffffffffu);
             break;
         case ItemLife:
             if (gs.livesRemaining < GameState::kMaxLives) ++gs.livesRemaining;
             gs.increaseSubrank(200);
             world.playSound(kSoundExtend);
             break;
-        case ItemStar:
-            gs.score += gs.bombActive ? 100u : (gs.grazes / 3) * 10 + 500;
+        case ItemStar: {
+            const std::uint32_t v = gs.bombActive ? 100u : (gs.grazes / 3) * 10 + 500;
+            gs.score += v;
+            if (world.gui) world.gui->popup(it.pos, static_cast<std::int32_t>(v), 0xffffffffu, true);
             break;
+        }
         default:
             break;
     }

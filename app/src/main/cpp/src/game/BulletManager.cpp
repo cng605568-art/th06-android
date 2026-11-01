@@ -2,6 +2,7 @@
 
 #include <cmath>
 
+#include "game/Gui.hpp"
 #include "game/ItemManager.hpp"
 #include "game/Player.hpp"
 
@@ -464,6 +465,7 @@ std::int32_t BulletManager::despawnBullets(World& world, std::int32_t maxBonusSc
     for (Bullet& b : *bullets_) {
         if (b.state == Inactive) continue;
         if (awardPoints && world.items) world.items->spawn(world, b.pos, ItemStar, ItemState::Magnet);
+        if (world.gui) world.gui->popup(b.pos, bulletScore, bulletScore >= 12800 ? 0xffffff00u : 0xffffffffu);
         total += bulletScore;
         bulletScore += 10;
         if (bulletScore > maxBonusScore) bulletScore = maxBonusScore;
@@ -484,7 +486,7 @@ std::int32_t BulletManager::despawnBullets(World& world, std::int32_t maxBonusSc
         if (l.inUse) l.hitboxEndDelay = 0;
     }
     world.state->score += static_cast<std::uint32_t>(total);
-    if (total != 0) world.unported->hit("score popups and banners");
+    if (total != 0 && world.gui) world.gui->showBonus(total);
     return total;
 }
 
