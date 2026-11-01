@@ -33,9 +33,12 @@ precision mediump float;
 in vec2 vUv;
 in vec4 vColor;
 uniform sampler2D uTexture;
+uniform float uColorAdd;  // 0: D3DTOP_MODULATE, 1: D3DTOP_ADD
 out vec4 fragColor;
 void main() {
-    fragColor = texture(uTexture, vUv) * vColor;
+    vec4 tex = texture(uTexture, vUv);
+    vec3 rgb = mix(tex.rgb * vColor.rgb, min(tex.rgb + vColor.rgb, vec3(1.0)), uColorAdd);
+    fragColor = vec4(rgb, tex.a * vColor.a);
 }
 )";
 
@@ -46,6 +49,7 @@ bool SpriteBatch::create(std::string* error) {
     if (!program_) return false;
     uTransform_ = glGetUniformLocation(program_, "uTransform");
     uTexture_ = glGetUniformLocation(program_, "uTexture");
+    uColorAdd_ = glGetUniformLocation(program_, "uColorAdd");
 
     glGenVertexArrays(1, &vao_);
     glGenBuffers(1, &vbo_);
@@ -118,11 +122,14 @@ void SpriteBatch::drawTexture(GLuint texture, Blend blend, const SpriteInstance&
 void SpriteBatch::flush() {
     if (pending_.empty()) return;
     glBindTexture(GL_TEXTURE_2D, currentTexture_);
-    if (currentBlend_ == Blend::Additive) {
+    const bool additive = currentBlend_ == Blend::Additive || currentBlend_ == Blend::AdditiveColorAdd;
+    const bool colorAdd = currentBlend_ == Blend::AlphaColorAdd || currentBlend_ == Blend::AdditiveColorAdd;
+    if (additive) {
         glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ZERO, GL_ONE);
     } else {
         glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
     }
+    glUniform1f(uColorAdd_, colorAdd ? 1.0f : 0.0f);
     const auto bytes = static_cast<GLsizeiptr>(pending_.size() * sizeof(SpriteInstance));
     // Orphan the buffer so the driver never stalls on a draw still reading the old data.
     glBufferData(GL_ARRAY_BUFFER, kMaxInstances * sizeof(SpriteInstance), nullptr, GL_STREAM_DRAW);

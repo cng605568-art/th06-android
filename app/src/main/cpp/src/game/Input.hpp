@@ -13,6 +13,7 @@ struct InputState {
     bool focus = false;
     bool bomb = false;
     bool pause = false;
+    bool skip = false;  // dialogue fast-forward (Ctrl on a keyboard)
 };
 
 }  // namespace th06

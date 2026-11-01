@@ -26,6 +26,16 @@ struct AnmSprite {
     float x = 0, y = 0, w = 0, h = 0;
 };
 
+// One animation script. Instructions are {i16 time, u8 opcode, u8 argBytes, args...};
+// opcode 1 (set sprite) and 16 (random sprite) take a sprite ID as their first i32.
+// The engine uses a script's first sprite: e.g. bullet colours are that sprite + colour,
+// exactly as the original engine offsets the script's sprite by the bullet's colour.
+struct AnmScript {
+    std::uint32_t id = 0;
+    std::uint32_t offset = 0;       // byte offset of the first instruction in the file
+    std::int32_t firstSprite = -1;  // -1: the script never sets a sprite
+};
+
 struct AnmFile {
     int textureWidth = 0;
     int textureHeight = 0;
@@ -35,7 +45,12 @@ struct AnmFile {
     std::string imageName;
     std::string alphaName;
     std::vector<AnmSprite> sprites;
-    std::vector<std::uint32_t> scriptIds;
+    std::vector<AnmScript> scripts;
+
+    // Index into `sprites` of the sprite with this ID, or -1.
+    int spriteIndexById(std::int64_t id) const;
+    // First sprite ID set by the script with this ID, or -1.
+    std::int32_t scriptFirstSprite(std::uint32_t scriptId) const;
 };
 
 std::optional<AnmFile> parseAnm(std::span<const std::uint8_t> bytes, std::string* error);
