@@ -136,7 +136,7 @@ bool App::init(int argc, char** argv) {
     if (audio_.isOpen()) {
         music_ = std::make_unique<MusicPlayer>(vfs_.get(), &audio_);
         stage_->setMusic(music_.get());
-        if (vfs_->looseFileCount() == 0) log::info("No bgm/*.wav in the game folder: music is silent");
+        if (vfs_->looseFileCount() == 0) log::info("No bgm/*.wav in the game folder: only replaced songs play");
     }
 #if defined(__ANDROID__)
     {
@@ -153,6 +153,8 @@ bool App::init(int argc, char** argv) {
     if (char* pref = SDL_GetPrefPath("th06", "th06-android")) {  // app storage on Android
         stage_->setScorePath(std::string(pref) + "score.dat");
         stage_->setConfigPath(std::string(pref) + "th06.cfg");
+        // The launcher's replaced music: <files>/music/th06_NN.wav (+ .pos loop points).
+        if (music_) music_->setOverrideDir(std::string(pref) + "music/");
         SDL_free(pref);
     }
     // The game's title screen, unless the launcher asked for a quick start (or the title
