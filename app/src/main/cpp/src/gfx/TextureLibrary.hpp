@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -27,8 +28,19 @@ class TextureLibrary {
 
     // width/height are the dimensions sprite UVs are normalised against. Game art stays
     // pixel-exact (Nearest); generated UI shapes that get scaled use Linear.
+    // Adding a name that is already registered with the same size and filter returns the
+    // existing id (the name must therefore identify the pixels, e.g. path + decode rules),
+    // so reloading a stage does not register its textures again.
     std::uint16_t add(std::string name, int width, int height, Producer producer,
                       TextureFilter filter = TextureFilter::Nearest);
+
+    // A texture the game draws into at run time (rendered text): its pixels live here and
+    // its version goes up on every change, so the GPU side re-uploads it. Same-name reuse
+    // as for add().
+    std::uint16_t addDynamic(std::string name, int width, int height);
+    Image* pixels(std::uint16_t id);  // null unless the texture is dynamic
+    void touch(std::uint16_t id);     // after changing pixels()
+    std::uint32_t version(std::uint16_t id) const { return items_.at(id).version; }
 
     std::size_t size() const { return items_.size(); }
     const std::string& name(std::uint16_t id) const { return items_.at(id).name; }
@@ -46,6 +58,8 @@ class TextureLibrary {
         int height;
         Producer producer;
         TextureFilter filter;
+        std::shared_ptr<Image> dynamic;
+        std::uint32_t version = 0;
     };
     std::vector<Item> items_;
 };

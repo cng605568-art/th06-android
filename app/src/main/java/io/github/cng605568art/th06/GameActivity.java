@@ -1,6 +1,10 @@
 package io.github.cng605568art.th06;
 
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -12,6 +16,7 @@ import android.view.WindowManager;
 import org.libsdl.app.SDL;
 import org.libsdl.app.SDLActivity;
 
+import java.nio.charset.Charset;
 import java.util.List;
 
 /**
@@ -88,6 +93,60 @@ public class GameActivity extends SDLActivity {
             out[i * 3 + 2] = e.format;
         }
         return out;
+    }
+
+    private static Charset sjis;
+    private static Paint textPaint;
+
+    /**
+     * Renders a Shift-JIS string from the game's files into a width x height ARGB band, the
+     * way the original lays it out: every byte is (fontSize + 1) / 2 pixels wide, so a
+     * full-width character takes two cells; a black shadow sits 1.5 px right, 1 px down.
+     */
+    public static synchronized int[] renderText(byte[] text, int fontSize, int rgb, int shadow, float startX,
+                                                int width, int height) {
+        if (sjis == null) {
+            try {
+                sjis = Charset.forName("windows-31j");
+            } catch (Exception e) {
+                sjis = Charset.forName("Shift_JIS");
+            }
+            textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            textPaint.setTypeface(Typeface.create(Typeface.MONOSPACE, Typeface.BOLD));
+        }
+        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        float cell = (fontSize + 1) / 2f;
+        textPaint.setTextSize(cell * 2f * 0.92f);
+        float baseline = height * 0.8f;
+        float x = startX;
+        for (int i = 0; i < text.length; ) {
+            int b = text[i] & 0xff;
+            int n = ((b >= 0x81 && b <= 0x9f) || (b >= 0xe0 && b <= 0xfc)) && i + 1 < text.length ? 2 : 1;
+            String ch = new String(text, i, n, sjis);
+            if (!ch.trim().isEmpty()) {
+                float w = textPaint.measureText(ch);
+                float dx = x + Math.max(0f, (cell * n - w) / 2f);
+                textPaint.setColor(0xff000000 | shadow);
+                canvas.drawText(ch, dx + 1.5f, baseline + 1f, textPaint);
+                textPaint.setColor(0xff000000 | rgb);
+                canvas.drawText(ch, dx, baseline, textPaint);
+            }
+            x += cell * n;
+            i += n;
+        }
+        int[] pixels = new int[width * height];
+        bitmap.getPixels(pixels, 0, width, 0, 0, width, height);
+        bitmap.recycle();
+        return pixels;
+    }
+
+    /** Launcher choices: {shot type 0..3, difficulty 0..3, stage 1..7 (7 = Extra)}. */
+    public static int[] getGameOptions() {
+        Context ctx = SDL.getContext();
+        if (ctx == null) return new int[] {0, 1, 1, 0};
+        return new int[] {GameOptions.shotType(ctx), GameOptions.difficulty(ctx), GameOptions.stage(ctx),
+                GameOptions.mischief(ctx)};
     }
 
     /** Opens one selected archive read-only; ownership of the fd passes to native code. */

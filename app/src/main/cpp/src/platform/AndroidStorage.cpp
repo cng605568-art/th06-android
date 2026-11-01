@@ -94,4 +94,64 @@ int openAndroidDataSource(const std::string& uri) {
     return fd;
 }
 
+namespace {
+
+class AndroidTextRenderer final : public TextRenderer {
+  public:
+    bool render(std::span<const std::uint8_t> sjis, const TextStyle& style, float startX, Image& band) override {
+        if (sjis.empty() || band.empty()) return false;
+        ActivityClass a;
+        const jmethodID mid = a.method("renderText", "([BIIIFII)[I");
+        if (!mid) return false;
+        jbyteArray bytes = a.env->NewByteArray(static_cast<jsize>(sjis.size()));
+        a.env->SetByteArrayRegion(bytes, 0, static_cast<jsize>(sjis.size()), reinterpret_cast<const jbyte*>(sjis.data()));
+        auto pixels = static_cast<jintArray>(a.env->CallStaticObjectMethod(
+            a.cls, mid, bytes, style.fontSize, static_cast<jint>(style.rgb), static_cast<jint>(style.shadow), startX,
+            band.width, band.height));
+        a.env->DeleteLocalRef(bytes);
+        if (a.clearException() || !pixels) return false;
+        const jsize n = a.env->GetArrayLength(pixels);
+        bool ok = false;
+        if (n == band.width * band.height) {
+            std::vector<jint> argb(static_cast<std::size_t>(n));
+            a.env->GetIntArrayRegion(pixels, 0, n, argb.data());
+            for (jsize i = 0; i < n; ++i) {
+                const auto v = static_cast<std::uint32_t>(argb[static_cast<std::size_t>(i)]);
+                std::uint8_t* p = band.rgba.data() + static_cast<std::size_t>(i) * 4;
+                p[0] = static_cast<std::uint8_t>(v >> 16);
+                p[1] = static_cast<std::uint8_t>(v >> 8);
+                p[2] = static_cast<std::uint8_t>(v);
+                p[3] = static_cast<std::uint8_t>(v >> 24);
+            }
+            ok = true;
+        }
+        a.env->DeleteLocalRef(pixels);
+        return ok;
+    }
+};
+
+}  // namespace
+
+std::unique_ptr<TextRenderer> makeAndroidTextRenderer() { return std::make_unique<AndroidTextRenderer>(); }
+
+AndroidGameOptions readAndroidGameOptions() {
+    AndroidGameOptions out;
+    ActivityClass a;
+    const jmethodID mid = a.method("getGameOptions", "()[I");
+    if (!mid) return out;
+    auto array = static_cast<jintArray>(a.env->CallStaticObjectMethod(a.cls, mid));
+    if (a.clearException() || !array) return out;
+    const jsize n = a.env->GetArrayLength(array);
+    if (n >= 3) {
+        jint v[4] = {0, 1, 1, 0};
+        a.env->GetIntArrayRegion(array, 0, n >= 4 ? 4 : 3, v);
+        out.shotType = v[0];
+        out.difficulty = v[1];
+        out.stage = v[2];
+        out.mischief = static_cast<std::uint32_t>(v[3]);
+    }
+    a.env->DeleteLocalRef(array);
+    return out;
+}
+
 }  // namespace th06

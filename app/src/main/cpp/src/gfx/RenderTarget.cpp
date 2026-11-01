@@ -16,6 +16,11 @@ bool RenderTarget::create(int width, int height, std::string* error) {
     glGenFramebuffers(1, &framebuffer_);
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer_);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture_, 0);
+    // Depth for the 3D stage background (its quads hide each other by depth).
+    glGenRenderbuffers(1, &depth_);
+    glBindRenderbuffer(GL_RENDERBUFFER, depth_);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depth_);
     const GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     if (status != GL_FRAMEBUFFER_COMPLETE) {
@@ -28,6 +33,7 @@ bool RenderTarget::create(int width, int height, std::string* error) {
 
 void RenderTarget::destroy() {
     if (framebuffer_) glDeleteFramebuffers(1, &framebuffer_);
+    if (depth_) glDeleteRenderbuffers(1, &depth_);
     if (texture_) glDeleteTextures(1, &texture_);
     abandon();
 }
@@ -35,6 +41,7 @@ void RenderTarget::destroy() {
 void RenderTarget::abandon() {
     framebuffer_ = 0;
     texture_ = 0;
+    depth_ = 0;
 }
 
 void RenderTarget::bind() const {
