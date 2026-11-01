@@ -13,8 +13,12 @@ GLuint upload(int w, int h, const void* rgba, TextureFilter filter) {
     const GLint f = filter == TextureFilter::Linear ? GL_LINEAR : GL_NEAREST;
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, f);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, f);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    // Game art wraps, as Direct3D's default texture addressing did: scrolling ANM sprites
+    // (spell-card backgrounds, laser beams) push their UVs past 1 and must tile, not smear
+    // the edge texels. The port's own smoothly scaled UI art keeps its edges.
+    const GLint wrap = filter == TextureFilter::Linear ? GL_CLAMP_TO_EDGE : GL_REPEAT;
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
     return tex;
