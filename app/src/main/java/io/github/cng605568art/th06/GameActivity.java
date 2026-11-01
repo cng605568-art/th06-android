@@ -144,9 +144,9 @@ public class GameActivity extends SDLActivity {
     /** Launcher choices: {shot type 0..3, difficulty 0..3, stage 1..7 (7 = Extra)}. */
     public static int[] getGameOptions() {
         Context ctx = SDL.getContext();
-        if (ctx == null) return new int[] {0, 1, 1, 0};
+        if (ctx == null) return new int[] {0, 1, 1, 0, 0};
         return new int[] {GameOptions.shotType(ctx), GameOptions.difficulty(ctx), GameOptions.stage(ctx),
-                GameOptions.mischief(ctx)};
+                GameOptions.mischief(ctx), GameOptions.quickStart(ctx) ? 1 : 0};
     }
 
     /** Opens one selected archive read-only; ownership of the fd passes to native code. */

@@ -131,7 +131,7 @@ bool Stage::load(int stageNumber, int difficulty) {
     player_->reset(world_);
     // The game's own GUI (side panel, boss HUD, names, popups); loaded with the first stage
     // of a run and again when the character changes.
-    const bool newRun = !guiLoadedOnce_ || gui_.ready() != true || loadedGuiCharacter_ != character;
+    const bool newRun = !guiLoadedOnce_ || gui_.ready() != true || loadedGuiCharacter_ != character || runStartStage_ == 0;
     if (newRun) {
         gui_.loadRun(world_, *vfs_, character);
         loadedGuiCharacter_ = character;
@@ -141,7 +141,7 @@ bool Stage::load(int stageNumber, int difficulty) {
     if (runStartStage_ == 0) startRun();
     gui_.setHiScore(std::max(gui_.hiScore(), state_.displayedScore));
     if (recordable_) scores_.stageEntered(state_.shotType, state_.difficulty, stageNumber_, state_.continuesUsed > 0);
-    if (music_) {  // the stage theme, from its beginning
+    if (music_) {  // the stage theme, from its beginning (unless the music is off)
         music_->setUnported(&unported_);
         music_->play(gui_.songPath(0));
     }
@@ -174,7 +174,12 @@ void Stage::tick(const InputState& raw) {
                           in.shoot && !previousInput_.shoot, (in.pause && !previousInput_.pause) || menuPress_,
                           in.quit && !previousInput_.quit};
     previousInput_ = in;
+    const bool menuPress = menuPress_;
     menuPress_ = false;
+    if (inTitle_) {
+        tickTitle(in, menuPress);
+        return;
+    }
     if (music_ && ready_) music_->tick();
     if (!ready_ || quitRequested_) return;
     if (inEnding_) {
@@ -189,7 +194,7 @@ void Stage::tick(const InputState& raw) {
     if (inResults_) {
         if (results_.update(world_, gui_, in)) {
             saveScores();
-            quitRequested_ = true;  // to the title (the launcher)
+            leaveGame();  // to the title
         }
         if (sound_) sound_->flush();
         return;
@@ -199,7 +204,7 @@ void Stage::tick(const InputState& raw) {
     if (menus_.frozen() || state_.continueMenu) runMenus(edges);
     else gui_.updatePopups();
     // Game over: the stage is gone (the result screen has taken the enemy art's slots).
-    if (quitRequested_ || inResults_ || inEnding_) return;
+    if (quitRequested_ || inResults_ || inEnding_ || inTitle_) return;
     // The game manager: the pause check, then the freeze.
     if (!menus_.frozen() && !state_.continueMenu && edges.menu) menus_.openPause();
     if (menus_.frozen()) return;
@@ -223,12 +228,17 @@ void Stage::tick(const InputState& raw) {
     // the dialogue file, it counts as cleared once the timeline has run out and every enemy
     // is gone.
     if (gui_.ready() && gui_.hasDialogue()) {
-        if (gui_.takeStageEndRequest() && stageNumber_ < 7) load(stageNumber_ + 1, state_.difficulty);
-        else if (gui_.takeGameClearRequest()) gameCleared();  // the last stage's end
+        if (gui_.takeStageEndRequest() && stageNumber_ < 7) {
+            if (practiceRun_) practiceOver();  // a practice run is one stage
+            else load(stageNumber_ + 1, state_.difficulty);
+        } else if (gui_.takeGameClearRequest()) {
+            gameCleared();  // the last stage's end
+        }
     } else if (enemies_->timelineFinished() && enemies_->activeCount() == 0) {
         if (++clearTimer_ >= kClearDelay && stageNumber_ < 6) {
-            state_.score += stageClearBonus(state_, stageNumber_);
-            load(stageNumber_ + 1, state_.difficulty);  // keeps score, power, lives and bombs
+            state_.score += stageClearBonus(state_, stageNumber_, state_.startingLives);
+            if (practiceRun_) practiceOver();
+            else load(stageNumber_ + 1, state_.difficulty);  // keeps score, power, lives and bombs
         }
     } else {
         clearTimer_ = 0;
@@ -239,27 +249,34 @@ void Stage::runMenus(const MenuInput& edges) {
     // The player ran out of lives on the previous pass: the continue menu opens now, unless
     // there is nothing to continue with (Extra, or all three credits used).
     if (state_.continueMenu && !menus_.continueActive()) {
-        if ((state_.continuesUsed >= 3 && !state_.cheat(MischiefContinues)) || state_.difficulty == Extra) {
+        if (practiceRun_ || (state_.continuesUsed >= 3 && !state_.cheat(MischiefContinues)) || state_.difficulty == Extra) {
             gameOver(false);
             return;
         }
         menus_.openContinue();
     }
     switch (menus_.update(anm_, edges)) {
-        case StageMenus::Result::Quit: quitRequested_ = true; break;
+        case StageMenus::Result::Quit: leaveGame(); break;  // nothing is saved
         case StageMenus::Result::Continue: applyContinue(); break;
         case StageMenus::Result::GiveUp: gameOver(false); break;
         default: break;
     }
 }
 
-// The first stage of a game: score.dat (the port's own, else the player's PC file), the
-// HUD's hi-score, and whether this is a full game (stage 1 or Extra) or a practice run.
+// The first stage of a game: score.dat (the port's own, else the player's PC file) and the
+// HUD's hi-score (in practice, the stage's practice best).
 void Stage::startRun() {
     runStartStage_ = stageNumber_;
-    practiceRun_ = !(stageNumber_ == 1 || stageNumber_ == 7);
-    recordable_ = !practiceRun_ && state_.mischief == 0;
+    recordable_ = state_.mischief == 0;
     if (!recordable_) world_.scores = nullptr;  // no spell history either
+    loadScores();
+    const std::uint32_t hi = practiceRun_ ? scores_.practice(state_.shotType, std::clamp(stageNumber_ - 1, 0, 5), std::min(state_.difficulty, 3))
+                                          : scores_.hiScore(state_.difficulty, state_.shotType);
+    gui_.setHiScore(hi);
+}
+
+void Stage::loadScores() {
+    scores_ = ScoreFile{};
     bool loaded = false;
     if (!scorePath_.empty()) {
         if (std::FILE* f = std::fopen(scorePath_.c_str(), "rb")) {
@@ -277,9 +294,6 @@ void Stage::startRun() {
             log::info("High scores from the game folder's score.dat: {}", loaded ? "read" : "not valid");
         }
     }
-    const std::uint32_t hi = practiceRun_ ? scores_.practice(state_.shotType, std::clamp(stageNumber_ - 1, 0, 5), std::min(state_.difficulty, 3))
-                                          : scores_.hiScore(state_.difficulty, state_.shotType);
-    gui_.setHiScore(hi);
 }
 
 // The last stage is over (stage 6, Easy's stage 5, or Extra): a practice run ends, Extra
@@ -317,12 +331,12 @@ void Stage::startEnding() {
 }
 
 // The game ended: a full game goes to the result screen (name entry, statistics), a
-// practice run straight back to the title (the launcher).
+// practice run straight back to the title.
 void Stage::gameOver(bool cleared) {
     state_.continueMenu = false;
     state_.displayedScore = state_.score;
     if (practiceRun_) {
-        quitRequested_ = true;
+        practiceOver();
         return;
     }
     if (music_ && !endingMusic_) music_->stop();
@@ -341,7 +355,7 @@ void Stage::gameOver(bool cleared) {
     if (!vfs_ || !results_.start(world_, *vfs_, textures_, gui_, scores_, run)) {
         unported_.hit("results screen (result files missing)");
         saveScores();
-        quitRequested_ = true;
+        leaveGame();
         return;
     }
     inResults_ = true;
@@ -377,8 +391,175 @@ void Stage::applyContinue() {
     gs.extendIndex = 0;
 }
 
+// ---- the title and the start and end of a game ---------------------------------------
+
+namespace {
+
+std::vector<std::uint8_t> readFile(const std::string& path) {
+    std::vector<std::uint8_t> bytes;
+    if (std::FILE* f = std::fopen(path.c_str(), "rb")) {
+        std::uint8_t buf[4096];
+        for (std::size_t n; (n = std::fread(buf, 1, sizeof buf, f)) > 0;) bytes.insert(bytes.end(), buf, buf + n);
+        std::fclose(f);
+    }
+    return bytes;
+}
+
+bool writeFile(const std::string& path, const std::vector<std::uint8_t>& bytes) {
+    std::FILE* f = std::fopen(path.c_str(), "wb");
+    if (!f) return false;
+    const bool ok = std::fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size();
+    return std::fclose(f) == 0 && ok;
+}
+
+}  // namespace
+
+void Stage::setConfigPath(std::string path) {
+    configPath_ = std::move(path);
+    if (!configPath_.empty()) {
+        const std::vector<std::uint8_t> bytes = readFile(configPath_);
+        if (!bytes.empty() && !config_.load(bytes)) log::warn("{} is not valid; using the default settings", configPath_);
+        saveConfig();  // as the original, written back at every start
+    }
+    applyConfig();
+}
+
+void Stage::saveConfig() {
+    if (configPath_.empty()) return;
+    if (!writeFile(configPath_, config_.save())) log::warn("Could not write {}", configPath_);
+}
+
+void Stage::applyConfig() {
+    if (sound_) sound_->setEnabled(config_.sound != 0);
+    if (music_ && music_->enabled() != (config_.music != GameConfig::MusicOff)) {
+        music_->setEnabled(config_.music != GameConfig::MusicOff);
+    }
+}
+
+// The title object is created: back from a game (cursor on Extra Start after an Extra game,
+// on Practice Start after practice), or at start-up.
+bool Stage::openTitle(bool firstVisit) {
+    if (!vfs_ || !vfs_->hasFormat("PBG3")) return false;
+    std::string err;
+    if (!anm_.fileLoaded(kAnmFileAscii) && !anm_.loadAnm(*vfs_, kAnmFileAscii, "data/ascii.anm", kAnmOffsetAscii, &err)) {
+        log::warn("ascii.anm not loaded ({}): the title has no text", err);
+    }
+    // What is left of the game (enemy art, result and staff-roll files) shares the title's
+    // script numbers.
+    for (const int slot : {kAnmFileEnemy, kAnmFileEnemy2, 11, 12, 44, 45, 46}) anm_.releaseAnm(slot);
+    loadScores();  // the Extra lock and the practice stages come from score.dat
+    applyConfig();
+    const int cursor = session_.difficulty == Extra ? 1 : 0;
+    if (!title_.start(world_, *vfs_, textures_, scores_, config_, session_, cursor, firstVisit)) {
+        title_.release(world_);
+        log::warn("Title screen files missing: starting a game directly");
+        return false;
+    }
+    inTitle_ = true;
+    inResults_ = inEnding_ = false;
+    quitRequested_ = false;
+    state_.continueMenu = false;
+    menus_.reset();
+    clearInput_ = true;
+    return true;
+}
+
+void Stage::tickTitle(const InputState& in, bool menuPress) {
+    InputState t = in;
+    if (menuPress) t.pause = true;  // Android Back is Esc (Cancel)
+    if (music_) music_->tick();
+    const Title::Result r = title_.update(world_, t);
+    if (title_.takeConfigChanged()) saveConfig();
+    applyConfig();
+    if (sound_) sound_->flush();
+    switch (r) {
+        case Title::Result::StartGame:
+            startFromTitle();
+            break;
+        case Title::Result::Quit:
+            saveConfig();
+            title_.release(world_);
+            inTitle_ = false;
+            quitRequested_ = true;
+            break;
+        case Title::Result::Failed:
+            title_.release(world_);
+            inTitle_ = false;
+            ready_ = false;
+            error_ = "THE SELECT SCREEN FILES (DATA/SELECT0N.ANM) ARE MISSING";
+            break;
+        case Title::Result::None:
+            break;
+    }
+}
+
+void Stage::startFromTitle() {
+    const Title::Choice c = title_.choice();
+    title_.release(world_);
+    inTitle_ = false;
+    saveConfig();  // the remembered difficulty
+    setShotType(c.shotType);
+    newRun(c.stage, c.lives, c.bombs, c.practice);
+    if (!load(c.stage, c.stage == 7 ? Extra : c.difficulty)) log::warn("Stage not started: {}", error_);
+}
+
+bool Stage::quickStart(int stageNumber, int difficulty) {
+    stageNumber = std::clamp(stageNumber, 1, 7);
+    const int d = stageNumber == 7 ? Extra : std::clamp(difficulty, 0, 3);
+    const bool practice = stageNumber != 1 && stageNumber != 7;
+    session_.difficulty = d;
+    session_.character = state_.shotType / 2;
+    session_.shot = state_.shotType % 2;
+    session_.practice = practice;
+    if (practice) session_.practiceStage = stageNumber - 1;
+    const bool full = d != Extra && !practice;
+    newRun(stageNumber, full ? config_.lives : 2, full ? config_.bombs : 3, practice);
+    return load(stageNumber, d);
+}
+
+// Everything a game starts from: the starting lives and bombs (kept for continues, the
+// respawn bombs and the stage-clear penalty), and in practice the stage's power.
+void Stage::newRun(int stageNumber, int lives, int bombs, bool practice) {
+    const std::uint32_t mischief = state_.mischief;
+    const int shotType = state_.shotType;
+    state_ = GameState{};
+    state_.mischief = mischief;
+    state_.shotType = shotType;
+    state_.livesRemaining = state_.startingLives = std::clamp(lives, 0, 4);
+    state_.bombs = state_.startingBombs = std::clamp(bombs, 0, 3);
+    state_.practice = practice;
+    if (practice) state_.power = stageNumber <= 1 ? 0 : stageNumber == 2 ? 64 : GameState::kMaxPower;
+    practiceRun_ = practice;
+    runStartStage_ = 0;
+    quitRequested_ = inResults_ = inEnding_ = endingMusic_ = false;
+    world_.scores = &scores_;
+}
+
+// A practice run ends (its stage is over, or the player is): the best score for that
+// stage, and score.dat is written either way (with the stage progress and spell history).
+void Stage::practiceOver() {
+    state_.continueMenu = false;
+    state_.displayedScore = state_.score;
+    if (recordable_) {
+        std::uint32_t& best = scores_.practice(state_.shotType, std::clamp(stageNumber_ - 1, 0, 5), std::min(state_.difficulty, 3));
+        if (state_.score > best) best = state_.score;
+        saveScores();
+    }
+    leaveGame();
+}
+
+// Back to the title (or, without the title files, to the launcher).
+void Stage::leaveGame() {
+    if (music_) music_->stop();
+    if (!openTitle(false)) quitRequested_ = true;
+}
+
 void Stage::render(SpriteSink& s, float alpha, const HudInfo& hud) {
     anm_.beginFrame();
+    if (inTitle_) {
+        title_.draw(world_, gui_, s, ui_.white);
+        return;
+    }
     if (inEnding_) {
         ending_.draw(world_, s, ui_.white);
         return;

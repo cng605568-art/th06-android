@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <SDL.h>
 
@@ -42,16 +44,21 @@ class App {
     bool capturePlayfield();
     void renderFrame(float alpha);
     void developerFrameHooks();
+    void parseDevKeys(const std::string& spec);
+    void applyDevKeys(InputState& in);
     void logStats() const;
 
     // Desktop developer options (ignored on Android):
     //   --size WxH        window size, e.g. --size 2400x1080 to check phone layouts
     //   --frames N        quit after N rendered frames
     //   --screenshot F    write the last frame to F (binary PPM)
-    //   --stage N         start at stage N (1..7, 7 = Extra)
-    //   --difficulty D    0 Easy, 1 Normal, 2 Hard, 3 Lunatic, 4 Extra
-    //   --shot S          0 Reimu A, 1 Reimu B, 2 Marisa A, 3 Marisa B
-    // On Android these three come from the launcher.
+    //   --stage N         start at stage N (1..7, 7 = Extra), skipping the title
+    //   --difficulty D    0 Easy, 1 Normal, 2 Hard, 3 Lunatic, 4 Extra (skips the title)
+    //   --shot S          0 Reimu A, 1 Reimu B, 2 Marisa A, 3 Marisa B (skips the title)
+    //   --quick           skip the title with the defaults
+    //   --keys T:K,...    press button K (up, down, left, right, shoot, bomb, pause, quit)
+    //                     once game tick T is reached, briefly
+    // On Android the quick start and these three come from the launcher.
     //   --demo-touch      inject finger events (hold D-pad right + Shoot) through the
     //                     touch overlay -> virtual controller -> game input path
     int devFrames_ = 0;
@@ -64,6 +71,13 @@ class App {
     int devGameOverFrame_ = -1;  // --demo-gameover N: ends the game on frame N (result screen)
     int devClearFrame_ = -1;     // --demo-clear N: clears the game on frame N (ending)
     std::unique_ptr<TextRenderer> text_;  // platform text (null: built-in fallback); outlives stage_
+    bool quickStart_ = false;
+    struct DevKey {
+        std::uint64_t tick;
+        std::string key;
+        int samplesLeft;
+    };
+    std::vector<DevKey> devKeys_;
     int startStage_ = 1;
     int startDifficulty_ = 1;
     int shotType_ = 0;

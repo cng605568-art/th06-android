@@ -73,6 +73,13 @@ class MusicPlayer {
     bool fading() const { return fadeFrames_ > 0; }
     float gain() const { return gain_; }
     void setUnported(UnportedFeatures* u) { unported_ = u; }
+    // The Option menu's music switch: while off, play requests are ignored (the music
+    // stops). MIDI mode plays the WAV files: the port has no MIDI synthesiser.
+    void setEnabled(bool on) {
+        enabled_ = on;
+        if (!on) stop();
+    }
+    bool enabled() const { return enabled_; }
 
     // "bgm/th06_02.mid" -> "bgm/th06_02.wav" (the three characters after the last dot).
     static std::string withExtension(std::string_view path, std::string_view ext);
@@ -85,6 +92,7 @@ class MusicPlayer {
     bool playing_ = false;
     std::int32_t fadeFrames_ = 0, fadeLeft_ = 0;
     float gain_ = 1.0f;
+    bool enabled_ = true;
 };
 
 }  // namespace th06

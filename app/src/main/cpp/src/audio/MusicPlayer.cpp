@@ -99,7 +99,7 @@ std::string MusicPlayer::withExtension(std::string_view path, std::string_view e
 bool MusicPlayer::play(std::string_view songPath) {
     stop();
     current_ = std::string(songPath);
-    if (!vfs_ || !backend_ || songPath.empty()) return false;
+    if (!enabled_ || !vfs_ || !backend_ || songPath.empty()) return false;
     const std::span<const std::uint8_t> wav = vfs_->looseFile(withExtension(songPath, "wav"));
     if (wav.empty()) {
         if (unported_) unported_->hit("background music (needs the bgm folder with th06_NN.wav)");

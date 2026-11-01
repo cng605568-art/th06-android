@@ -485,7 +485,7 @@ void Player::respawn(World& world) {
         return;
     }
     if (!gs.cheat(MischiefLives)) --gs.livesRemaining;
-    gs.bombs = gs.difficulty == Extra ? 3 : gs.startingBombs;
+    gs.bombs = gs.difficulty == Extra || gs.practice ? 3 : gs.startingBombs;
     spawnStep();
 }
 

@@ -44,6 +44,8 @@
 #include "game/ScoreFile.hpp"
 #include "game/ResultScreen.hpp"
 #include "game/Ending.hpp"
+#include "game/GameConfig.hpp"
+#include "game/Title.hpp"
 #include "gfx/Anm.hpp"
 #include "gfx/AnmManager.hpp"
 #include "gfx/Image.hpp"
@@ -1196,6 +1198,142 @@ static Bytes syntheticStageArchive() {
                       {"stage1.std", syntheticStd()},
                       {"stg1bg.anm", syntheticStageBg()},
                       {"stg1bg.dds", syntheticStageBgTexture()}});
+}
+
+// The title (the TL archive): title01..04.anm and select01..05 / slpl00a..01b.anm over one
+// texture of grey bars, cards and portraits, with title00.jpg / select00.jpg stand-ins.
+// Each instance's script sets its sprite and position, halts, and answers the interrupts
+// it is given: 'v' shows it, 'h' hides it, 'f' fades it out over 30 frames, 'm' moves it
+// to the corner.
+static Bytes titleScript(float x, float y, std::uint32_t sprite, std::initializer_list<std::pair<int, char>> labels) {
+    AnmCode c;
+    c.ins(0, anm_op::SetSprite, {sprite});
+    c.ins(0, anm_op::MovePosition, {fbits(x), fbits(y), fbits(0.0f)});
+    c.ins(0, anm_op::Halt);
+    for (const auto& [label, action] : labels) {
+        c.ins(0, anm_op::InterruptLabel, {static_cast<std::uint32_t>(label)});
+        switch (action) {
+            case 'v': c.ins(0, anm_op::Halt); break;
+            case 'h': c.ins(0, anm_op::HaltInvisible); break;
+            case 'f':
+                c.ins(0, anm_op::AlphaInterpLinear, {0, 30});
+                c.ins(30, anm_op::Halt);
+                break;
+            case 'm':
+                c.ins(0, anm_op::MovePosition, {fbits(170.0f), fbits(60.0f), fbits(0.0f)});
+                c.ins(0, anm_op::Halt);
+                break;
+        }
+    }
+    return c.bytes;
+}
+// Sprites share the files' index offsets with their scripts, so each file only has as many
+// as fit before the next file's offset (as in the game's files).
+static Bytes titleAnm(const std::vector<Bytes>& scripts, const std::vector<AnmSprite>& sprites) {
+    std::vector<AnmScriptBytes> s;
+    for (std::size_t k = 0; k < scripts.size(); ++k) s.push_back({static_cast<std::uint32_t>(k), scripts[k]});
+    return buildAnmScripts(256, 256, "data/title.dds", sprites, s);
+}
+static const std::vector<AnmSprite> kMenuSprites = {{0, 0, 0, 160, 20}, {1, 0, 24, 40, 16}, {2, 48, 24, 112, 16}};
+static const std::vector<AnmSprite> kLogoSprites = {{0, 0, 48, 256, 56}, {1, 0, 24, 40, 16}};
+static Bytes syntheticTitleTexture() {
+    Image img(256, 256);
+    paintBox(img, 0, 0, 160, 20, {150, 150, 150, 255});
+    paintBox(img, 0, 24, 40, 16, {140, 140, 140, 255});
+    paintBox(img, 48, 24, 112, 16, {140, 140, 140, 255});
+    paintBox(img, 0, 48, 256, 56, {120, 40, 90, 255});
+    paintBox(img, 0, 112, 200, 40, {150, 150, 150, 255});
+    paintBox(img, 0, 160, 96, 96, {220, 150, 170, 255});
+    paintBox(img, 112, 160, 144, 64, {130, 130, 130, 255});
+    return ddsFromImage(img);
+}
+static Bytes syntheticTitleFile(int file) {
+    // Instance k of the title runs script 0x100 + k; the files hold V0-26, V27-30, V31-33
+    // and V34-79.
+    static constexpr int kFirst[4] = {0, 27, 31, 34}, kCount[4] = {27, 4, 3, 46};
+    std::vector<Bytes> scripts;
+    for (int k = 0; k < kCount[file]; ++k) {
+        const int v = kFirst[file] + k;
+        // The Option rows and their values (Option menu only).
+        int row = -1, value = 0;
+        if (v >= 8 && v <= 12) row = v - 8;
+        else if (v == 13) row = 8;
+        else if (v >= 72 && v <= 74) row = v - 67;
+        else if (v >= 14 && v <= 18) row = 0, value = v - 14 + 1;
+        else if (v >= 19 && v <= 22) row = 1, value = v - 19 + 1;
+        else if (v >= 23 && v <= 24) row = 2, value = v - 23 + 1;
+        else if (v >= 25 && v <= 26) row = 4, value = v - 25 + 1;
+        else if (v >= 75 && v <= 76) row = 5, value = v - 75 + 1;
+        else if (v >= 77 && v <= 79) row = 3, value = v - 77 + 1;
+        if (v < 8) {  // the main menu (sprites: 0 item, 1 value, 2 label; 0 logo in title02)
+            scripts.push_back(titleScript(470.0f, 250.0f + 26.0f * static_cast<float>(v), 0, {{1, 'h'}, {2, 'v'}, {3, 'h'}, {4, 'f'}}));
+        } else if (row >= 0 && value == 0) {
+            scripts.push_back(titleScript(200.0f, 150.0f + 32.0f * static_cast<float>(row), 2, {{1, 'h'}, {2, 'h'}, {3, 'v'}, {4, 'h'}}));
+        } else if (row >= 0) {
+            scripts.push_back(titleScript(310.0f + 48.0f * static_cast<float>(value), 150.0f + 32.0f * static_cast<float>(row), 1,
+                                          {{1, 'h'}, {2, 'h'}, {3, 'v'}, {4, 'h'}}));
+        } else if (v == 27) {  // the logo, on every page
+            scripts.push_back(titleScript(320.0f, 90.0f, 0, {{-1, 'v'}}));
+        } else {  // decorations and the key-config page: never shown here
+            scripts.push_back(titleScript(-100.0f, -100.0f, 1, {}));
+        }
+    }
+    return titleAnm(scripts, file == 1 || file == 2 ? kLogoSprites : kMenuSprites);
+}
+// The select screens: V80 + j runs script 0x150 + j.
+static Bytes selectScript(int v) {
+    if (v == 80) return titleScript(320.0f, 24.0f, 0, {{-1, 'v'}});
+    if (v >= 81 && v <= 84) {
+        return titleScript(320.0f, 150.0f + 56.0f * static_cast<float>(v - 81), 0,
+                           {{6, 'v'}, {18, 'h'}, {7, 'h'}, {8, 'm'}, {4, 'f'}, {13, 'v'}, {19, 'v'}});
+    }
+    if (v == 85) return titleScript(320.0f, 240.0f, 0, {{18, 'v'}, {6, 'h'}, {7, 'h'}, {8, 'm'}, {4, 'f'}, {13, 'v'}, {19, 'v'}});
+    if (v >= 86 && v <= 89) {
+        const int c = (v - 86) / 2, part = (v - 86) % 2;
+        return titleScript(200.0f + 240.0f * static_cast<float>(c), 260.0f + 100.0f * static_cast<float>(part), 0,
+                           {{7, 'v'}, {9, 'v'}, {10, 'v'}, {11, 'h'}, {12, 'h'}, {13, 'v'}, {19, 'v'}, {6, 'h'}, {18, 'h'}, {4, 'f'}});
+    }
+    if (v >= 92) {
+        return titleScript(440.0f, 300.0f + 80.0f * static_cast<float>((v - 92) % 2), 0,
+                           {{13, 'v'}, {19, 'v'}, {7, 'h'}, {6, 'h'}, {18, 'h'}});
+    }
+    return titleScript(-100.0f, -100.0f, 0, {});  // V90, V91
+}
+// One sprite per file: a card, a portrait or a shot-type panel.
+static Bytes syntheticSelectFile(std::initializer_list<int> instances, AnmSprite sprite) {
+    std::vector<Bytes> scripts;
+    for (const int v : instances) scripts.push_back(selectScript(v));
+    return titleAnm(scripts, {sprite});
+}
+static Bytes syntheticTitleBackground(std::uint8_t r, std::uint8_t g, std::uint8_t b) {
+    Image img(640, 480);
+    for (int y = 0; y < 480; ++y)
+        for (int x = 0; x < 640; ++x) {
+            std::uint8_t* p = img.pixel(x, y);
+            p[0] = static_cast<std::uint8_t>(r + y / 12);
+            p[1] = static_cast<std::uint8_t>(g + x / 20);
+            p[2] = b;
+            p[3] = 255;
+        }
+    return bmpFromImage(img);
+}
+static Bytes syntheticTitleArchive() {
+    return buildPbg3({{"title01.anm", syntheticTitleFile(0)},
+                      {"title02.anm", syntheticTitleFile(1)},
+                      {"title03.anm", syntheticTitleFile(2)},
+                      {"title04.anm", syntheticTitleFile(3)},
+                      {"title.dds", syntheticTitleTexture()},
+                      {"title00.jpg", syntheticTitleBackground(20, 30, 90)},
+                      {"select00.jpg", syntheticTitleBackground(20, 70, 40)},
+                      {"select01.anm", syntheticSelectFile({80, 81, 82}, {0, 0, 112, 200, 40})},
+                      {"select02.anm", syntheticSelectFile({83, 84}, {0, 0, 112, 200, 40})},
+                      {"select03.anm", syntheticSelectFile({90, 91}, {0, 0, 24, 40, 16})},
+                      {"select04.anm", syntheticSelectFile({92, 93, 94, 95}, {0, 112, 160, 144, 64})},
+                      {"select05.anm", syntheticSelectFile({85}, {0, 0, 112, 200, 40})},
+                      {"slpl00a.anm", syntheticSelectFile({86}, {0, 0, 160, 96, 96})},
+                      {"slpl00b.anm", syntheticSelectFile({87}, {0, 0, 160, 96, 96})},
+                      {"slpl01a.anm", syntheticSelectFile({88}, {0, 0, 160, 96, 96})},
+                      {"slpl01b.anm", syntheticSelectFile({89}, {0, 0, 160, 96, 96})}});
 }
 
 // A World with the synthetic bullet/player art loaded straight from bytes.
@@ -4844,6 +4982,339 @@ static void testResultScreen() {
 
 // ---- launcher mischief options -----------------------------------------------------------
 
+static void testGameConfig() {
+    GameConfig c;
+    const std::vector<std::uint8_t> fresh = c.save();
+    CHECK(fresh.size() == 0x38 && fresh[0x14] == 0x02 && fresh[0x15] == 0x01 && fresh[0x18] == 2 && fresh[0x19] == 3);
+    CHECK(fresh[0x06] == 4 && fresh[0x08] == 0xff && fresh[0x10] == 3);  // menu button 4, Up unset, skip 3
+    c.lives = 4;
+    c.bombs = 0;
+    c.music = GameConfig::MusicOff;
+    c.sound = 0;
+    c.defaultDifficulty = Extra;
+    GameConfig back;
+    CHECK(back.load(c.save()) && back == c);
+    std::vector<std::uint8_t> bad = c.save();
+    bad[0x18] = 5;  // lives out of range: rebuilt from defaults
+    CHECK(!back.load(bad) && back == GameConfig{});
+    bad = c.save();
+    bad[0x14] = 0x03;  // wrong version
+    CHECK(!back.load(bad) && back.lives == 2);
+    bad = c.save();
+    bad.push_back(0);
+    CHECK(!back.load(bad));
+}
+
+static void testTitle() {
+    const Bytes stArc = syntheticStageArchive(), tlArc = syntheticTitleArchive();
+    dumpIfRequested("SYNTH_TL.DAT", tlArc);
+    Vfs vfs;
+    vfs.mount(open("SYNTH_ST.DAT", stArc));
+    vfs.mount(open("SYNTH_TL.DAT", tlArc));
+    TextureLibrary lib;
+    const UiArt ui = registerUiArt(lib);
+    RecordingBackend backend;
+    SoundPlayer sound(&backend);
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "th06_title_test";
+    std::filesystem::create_directories(dir);
+    const std::string scorePath = (dir / "score.dat").string(), cfgPath = (dir / "th06.cfg").string();
+    std::filesystem::remove(scorePath);
+    std::filesystem::remove(cfgPath);
+    InputState idle, shot, esc, up, down, left, right, qKey;
+    shot.shoot = true;
+    esc.pause = true;
+    up.up = true;
+    down.down = true;
+    left.left = true;
+    right.right = true;
+    qKey.quit = true;
+    auto lastSound = [&] { return backend.plays.empty() ? -1 : backend.plays.back().voice; };
+    using Sub = Title::Sub;
+
+    // 1. A first start: no score.dat (Extra locked), default settings.
+    {
+        Stage st(lib, ui, &vfs, &sound);
+        st.setScorePath(scorePath);
+        st.setConfigPath(cfgPath);
+        CHECK(std::filesystem::exists(cfgPath) && std::filesystem::file_size(cfgPath) == 0x38);
+        CHECK(st.openTitle(true) && st.inTitle());
+        const Title& t = st.title();
+        auto tick = [&](const InputState& in, int n = 1) {
+            for (int i = 0; i < n; ++i) st.tick(in);
+        };
+        auto press = [&](const InputState& in) {
+            st.tick(in);
+            st.tick(idle);
+        };
+        tick(idle);  // the transition pass: Startup, then "press a key"
+        CHECK(t.sub() == Sub::PreInput && t.whiteFadeAlpha() == 255 && t.drawsBackground() && !t.extraUnlocked());
+        CHECK(!t.vm(0).visible && t.vm(27).visible && t.vm(0).colorAdd && t.vm(0).color == 0xff000000u);
+        tick(idle);
+        CHECK(t.whiteFadeAlpha() == 253);  // 255 - 255 * 1 / 200
+        press(down);  // arrows do not open the menu
+        CHECK(t.sub() == Sub::PreInput);
+        tick(shot);  // a fresh title takes the key at once; the menu's pass runs too
+        CHECK(t.sub() == Sub::MainMenu && t.timer() == 1 && t.cursor() == 0 && t.overlayAlpha() == 1);
+        CHECK(t.vm(0).visible && t.vm(0).color == 0xffff0000u && t.vm(0).posOffset.x == -4.0f && t.vm(0).posOffset.y == -4.0f);
+        CHECK(t.vm(3).color == 0x80300000u && t.vm(3).posOffset.x == 0.0f);
+        tick(idle);
+        tick(down);  // Extra Start is locked: skipped both ways
+        CHECK(t.cursor() == 2 && lastSound() == 12);
+        tick(idle);
+        tick(up);
+        CHECK(t.cursor() == 0);
+        tick(idle);
+        tick(shot);  // choices wait 20 passes
+        CHECK(t.sub() == Sub::MainMenu);
+        tick(idle, 14);
+        tick(esc);  // Cancel: the cursor goes to Quit
+        CHECK(t.sub() == Sub::MainMenu && t.cursor() == 7 && lastSound() == 11);
+        tick(idle);
+        tick(up);
+        tick(shot);  // Option
+        CHECK(t.sub() == Sub::Options && t.optionCursor() == 0 && lastSound() == 10);
+        tick(idle);
+        CHECK(t.vm(8).visible && !t.vm(0).visible);
+        CHECK(t.vm(8).color == 0xff0000ffu && t.vm(8).posOffset.x == -6.0f);     // the row under the cursor
+        CHECK(t.vm(16).color == 0xff0000ffu && t.vm(16).posOffset.x == -6.0f);   // its value (2 lives)
+        CHECK(t.vm(14).color == 0xff202050u && t.vm(14).posOffset.x == -4.0f);   // its other values
+        CHECK(t.vm(22).color == 0x800000ffu && t.vm(22).posOffset.x == -2.0f);   // other rows: their value
+        CHECK(t.vm(19).color == 0x80202050u && t.vm(19).posOffset.x == 0.0f && t.vm(9).color == 0x80202050u);
+        tick(right);  // changes wait 32 passes
+        CHECK(st.config().lives == 2);
+        tick(idle, 31);
+        tick(right);
+        CHECK(st.config().lives == 3 && lastSound() == 12);
+        tick(idle);
+        tick(left);
+        tick(idle);
+        tick(left);
+        CHECK(st.config().lives == 1);
+        tick(idle);
+        tick(right);
+        tick(idle);
+        tick(right);
+        tick(idle);
+        for (int i = 0; i < 3; ++i) press(down);
+        CHECK(t.optionCursor() == 3);
+        tick(right);  // MIDI (played as WAV here)
+        CHECK(st.config().music == GameConfig::MusicMidi);
+        tick(idle);
+        tick(right);  // off
+        CHECK(st.config().music == GameConfig::MusicOff);
+        tick(idle);
+        tick(left);
+        CHECK(st.config().music == GameConfig::MusicMidi);
+        tick(idle);
+        tick(left);
+        tick(idle);
+        tick(down);
+        tick(idle);
+        tick(left);  // sound effects off: the output stops
+        CHECK(st.config().sound == 0 && !sound.enabled());
+        const std::size_t heard = backend.plays.size();
+        press(down);
+        CHECK(backend.plays.size() == heard);
+        tick(up);
+        tick(idle);
+        tick(right);  // on again: what was queued plays now
+        CHECK(sound.enabled() && backend.plays.size() > heard);
+        tick(idle);
+        for (int r = 0; r < 2; ++r) press(left);  // the colour row means nothing on a phone
+        tick(esc);  // Cancel: to Quit
+        CHECK(t.optionCursor() == 8);
+        tick(idle);
+        tick(shot);  // Quit: back to the main menu on Option, the settings saved
+        CHECK(t.sub() == Sub::MainMenu && t.cursor() == 6 && t.timer() == 1);
+        {
+            std::ifstream f(cfgPath, std::ios::binary);
+            const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+            GameConfig saved;
+            CHECK(saved.load(bytes) && saved.lives == 3 && saved.music == GameConfig::MusicWav && saved.sound == 1);
+        }
+        // Start, then back out of the difficulty select.
+        tick(idle, 20);
+        for (int i = 0; i < 5; ++i) press(up);
+        CHECK(t.cursor() == 0);
+        tick(shot);
+        CHECK(t.sub() == Sub::DifficultyLoad && t.overlayAlpha() == 67 && lastSound() == 10);  // 64 + 191 / 60
+        tick(idle, 59);
+        CHECK(t.sub() == Sub::DifficultyLoad && t.overlayAlpha() == 255);
+        tick(idle);  // the 60th pass: the select screen, fading in from black
+        CHECK(t.sub() == Sub::DifficultySelect && t.selectCursor() == 1 && t.overlayAlpha() == 250);
+        CHECK(!t.vm(0).visible && t.vm(82).visible && t.drawsBackground());
+        tick(idle);
+        CHECK(t.vm(82).color == 0xff000000u && t.vm(82).posOffset.x == -6.0f && t.vm(81).color == 0x60000000u && !t.vm(85).visible);
+        tick(down);
+        tick(idle);
+        tick(esc);  // back to the title: the cursor is remembered as the default difficulty
+        CHECK(t.sub() == Sub::BackToTitle && st.config().defaultDifficulty == 2 && t.cursor() == 0 && lastSound() == 11);
+        tick(idle, 35);
+        CHECK(t.sub() == Sub::BackToTitle);
+        tick(idle);
+        CHECK(t.sub() == Sub::Startup);
+        tick(idle);  // the title reloads, then "press a key" waits 30 passes
+        CHECK(t.sub() == Sub::PreInput && t.vm(27).visible && !t.vm(82).visible);
+        tick(shot);
+        CHECK(t.sub() == Sub::PreInput);
+        tick(idle, 27);
+        tick(shot);
+        CHECK(t.sub() == Sub::MainMenu);
+        // Q quits (after the 20-pass lock), 60 passes later.
+        tick(idle, 20);
+        tick(qKey);
+        CHECK(t.sub() == Sub::Quit && lastSound() == 11);
+        tick(idle, 59);
+        CHECK(!st.quitRequested());
+        tick(idle);
+        CHECK(st.quitRequested() && !st.inTitle());
+    }
+
+    // 2. With a score.dat: Marisa A cleared Hard without continues (Extra unlocked), Marisa B
+    // reached stage 5 on Normal (practice stages 1-4).
+    {
+        ScoreFile sf;
+        sf.clear(2).noContinue[Hard] = ScoreFile::kStageCleared;
+        sf.clear(2).cleared[Hard] = ScoreFile::kStageCleared;
+        sf.clear(3).cleared[Normal] = 4;
+        sf.practice(3, 0, Normal) = 4567;
+        ZunRng rng(1);
+        const std::vector<std::uint8_t> bytes = sf.save(rng);
+        std::ofstream(scorePath, std::ios::binary).write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    }
+    {
+        Stage st(lib, ui, &vfs, &sound);
+        st.setScorePath(scorePath);
+        st.setConfigPath(cfgPath);  // 3 lives, Hard remembered
+        CHECK(st.config().lives == 3 && st.config().defaultDifficulty == 2);
+        CHECK(st.openTitle(true));
+        const Title& t = st.title();
+        auto tick = [&](const InputState& in, int n = 1) {
+            for (int i = 0; i < n; ++i) st.tick(in);
+        };
+        auto press = [&](const InputState& in) {
+            st.tick(in);
+            st.tick(idle);
+        };
+        tick(idle);
+        CHECK(t.extraUnlocked() && t.extraUnlocked(2) && !t.extraUnlocked(3) && !t.extraUnlocked(0));
+        tick(shot);
+        tick(idle, 20);
+        press(down);
+        CHECK(t.cursor() == 1);  // Extra Start is open now
+        press(up);
+        tick(shot);  // Start
+        tick(idle, 60);
+        CHECK(t.sub() == Sub::DifficultySelect && t.selectCursor() == 2);  // Hard, remembered
+        tick(shot);
+        CHECK(t.sub() == Sub::CharacterSelect && st.session().difficulty == Hard && t.selectCursor() == 0);
+        tick(idle);
+        CHECK(t.vm(83).pos.x == 170.0f && t.vm(86).visible && !t.vm(88).visible);  // the chosen card moves aside
+        tick(left);  // ignored for 30 passes
+        CHECK(t.selectCursor() == 0);
+        tick(idle, 29);
+        tick(left);
+        CHECK(t.selectCursor() == 1 && lastSound() == 12);
+        tick(idle);
+        CHECK(t.vm(88).visible && !t.vm(86).visible);
+        tick(shot);
+        CHECK(t.sub() == Sub::ShotSelect && st.session().character == 1 && t.selectCursor() == 0);
+        tick(idle);
+        CHECK(t.vm(94).color == 0xff202020u && t.vm(94).posOffset.x == -6.0f && t.vm(95).color == 0xa0000000u && t.vm(95).visible);
+        tick(down);
+        CHECK(t.selectCursor() == 1);
+        tick(idle, 30);
+        tick(shot);  // Marisa B on Hard: the game starts
+        CHECK(!st.inTitle() && st.ready() && st.stageNumber() == 1 && !st.practiceRun());
+        CHECK(st.state().shotType == 3 && st.state().difficulty == Hard && st.state().livesRemaining == 3 &&
+              st.state().startingLives == 3 && st.state().bombs == 3);
+        // Quit from the pause menu: back to the title (cursor on Start), nothing saved.
+        tick(idle);  // (the pass after a stage load sees no input)
+        press(esc);
+        tick(idle, 4);
+        press(down);
+        press(shot);
+        tick(idle, 4);
+        press(up);
+        press(shot);
+        for (int i = 0; i < 40 && !st.inTitle(); ++i) tick(idle);
+        CHECK(st.inTitle() && !st.quitRequested() && t.cursor() == 0 && t.sub() == Sub::Startup);
+        // Practice Start: Normal, Marisa B, four stages offered.
+        tick(idle);
+        tick(shot);
+        tick(idle, 20);
+        press(down);
+        press(down);
+        CHECK(t.cursor() == 2);
+        tick(shot);
+        tick(idle, 60);
+        press(up);  // Hard -> Normal
+        tick(shot);
+        CHECK(t.selectCursor() == 1);  // Marisa, as last time
+        tick(idle, 30);
+        tick(shot);
+        CHECK(t.sub() == Sub::ShotSelect && t.selectCursor() == 1);  // B, as last time
+        tick(idle, 30);
+        tick(shot);
+        CHECK(t.sub() == Sub::PracticeSelect && t.practiceStages() == 4 && t.selectCursor() == 0);
+        tick(idle);
+        {
+            RecordingSink sink;
+            st.render(sink, 1.0f, HudInfo{60.0f, 1});
+            int glyphs = 0;
+            for (const auto& it : sink.items) glyphs += lib.name(it.texture).starts_with("data/ascii");
+            CHECK(glyphs == 4 * 15);  // "STAGE n  000004567" (spaces are not drawn)
+        }
+        press(down);
+        CHECK(t.selectCursor() == 1);
+        tick(up);
+        tick(idle, 30);
+        tick(esc);  // back to the shot select, with the select sound
+        CHECK(t.sub() == Sub::ShotSelect && lastSound() == 10);
+        tick(idle, 30);
+        tick(shot);
+        tick(idle, 30);
+        tick(shot);  // stage 1
+        CHECK(!st.inTitle() && st.ready() && st.practiceRun() && st.state().practice);
+        CHECK(st.state().livesRemaining == 2 && st.state().bombs == 3 && st.state().power == 0 && st.gui().hiScore() == 4567);
+        st.world().state->score = 99990;
+        st.endGameForTesting();  // a practice game over: the best is saved, back to the title
+        CHECK(st.inTitle() && t.cursor() == 2);
+        {
+            std::ifstream f(scorePath, std::ios::binary);
+            const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+            ScoreFile back;
+            CHECK(back.load(bytes) && back.practice(3, 0, Normal) == 99990 && back.clear(2).noContinue[Hard] == ScoreFile::kStageCleared);
+        }
+        // Extra Start: only the unlocked character and shot type can be chosen.
+        tick(idle);
+        tick(shot);
+        tick(idle, 20);
+        press(up);
+        CHECK(t.cursor() == 1);
+        tick(shot);
+        tick(idle, 60);
+        tick(idle);
+        CHECK(t.sub() == Sub::DifficultySelect && t.selectCursor() == 0 && !t.vm(81).visible && t.vm(85).visible &&
+              t.vm(85).posOffset.x == -6.0f);
+        tick(shot);
+        CHECK(t.selectCursor() == 1 && st.config().defaultDifficulty == Extra);  // Marisa (Reimu is locked)
+        tick(idle, 30);
+        tick(left);
+        CHECK(t.selectCursor() == 1);
+        tick(idle);
+        tick(shot);
+        CHECK(t.selectCursor() == 0);  // B is locked: A
+        tick(down);
+        CHECK(t.selectCursor() == 0);
+        tick(idle, 30);
+        tick(shot);
+        const Title::Choice& c = t.choice();
+        CHECK(!st.inTitle() && c.stage == 7 && c.difficulty == Extra && c.shotType == 2 && c.lives == 2 && c.bombs == 3 && !c.practice);
+    }
+    std::filesystem::remove_all(dir);
+}
+
 static void testMischief() {
     // Player level: bombs, lives, invincibility.
     {
@@ -5050,6 +5521,8 @@ int main() {
         {"result screen: name entry, statistics, saving", testResultScreen},
         {"mischief: lives, bombs, invincible, power, continues", testMischief},
         {"ending: script, text slots, waits, scroll, fades, staff roll", testEnding},
+        {"th06.cfg: format, defaults, rebuild rules", testGameConfig},
+        {"title: menus, options, select screens, practice, extra", testTitle},
     };
     for (const Test& t : tests) {
         const int before = g_failures;

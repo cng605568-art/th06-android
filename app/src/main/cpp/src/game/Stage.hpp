@@ -25,8 +25,10 @@
 #include "game/StageMenu.hpp"
 #include "game/ResultScreen.hpp"
 #include "game/Ending.hpp"
+#include "game/GameConfig.hpp"
 #include "game/ScoreFile.hpp"
 #include "game/ShotData.hpp"
+#include "game/Title.hpp"
 #include "game/World.hpp"
 #include "gfx/AnmManager.hpp"
 #include "gfx/ProceduralArt.hpp"
@@ -49,7 +51,17 @@ class Stage {
     // ASCII fallback.
     Stage(TextureLibrary& textures, const UiArt& ui, const Vfs* vfs, SoundPlayer* sound, TextRenderer* text = nullptr);
 
-    // Loads stage 1..7 at the given difficulty. On failure the stage shows why instead.
+    // Opens the game's title screen (the menus before a game); every game then returns to
+    // it. False if the title files are missing (then start a game with quickStart()).
+    bool openTitle(bool firstVisit = true);
+    bool inTitle() const { return inTitle_; }
+    const Title& title() const { return title_; }
+    // A new game straight away, without the title (the launcher's quick start): stage 1..7
+    // at the given difficulty, with the shot type set by setShotType(). A game started at
+    // stage 2..6 is a practice run.
+    bool quickStart(int stageNumber, int difficulty);
+    // Loads stage 1..7 at the given difficulty (also the next stage of a game). On failure
+    // the stage shows why instead.
     bool load(int stageNumber, int difficulty);
     bool ready() const { return ready_; }
     const std::string& error() const { return error_; }
@@ -76,9 +88,10 @@ class Stage {
     // The app went to the background: open the pause menu (unless a menu is already up).
     // The original simply stopped; pausing is kinder to a player coming back.
     void pauseNow() {
-        if (ready_ && !menus_.frozen()) menus_.openPause();
+        if (ready_ && !inTitle_ && !inResults_ && !inEnding_ && !menus_.frozen()) menus_.openPause();
     }
-    // The player chose Quit (or gave up at game over): back to the launcher.
+    // The player chose Quit on the title (or, without the title, left the game): back to
+    // the launcher.
     bool quitRequested() const { return quitRequested_; }
     // The playfield snapshot behind the menus: the app copies the last rendered playfield
     // into `captureTexture()` when asked and reports success.
@@ -91,20 +104,26 @@ class Stage {
     // player's PC score.dat in the game folder is used if the port has none yet) and
     // written when the result screen closes. Empty: scores are not saved.
     void setScorePath(std::string path) { scorePath_ = std::move(path); }
+    // Where th06.cfg (the Option menu's settings) is kept: read now, written when the
+    // settings change. Empty: defaults, not saved.
+    void setConfigPath(std::string path);
+    const GameConfig& config() const { return config_; }
+    GameConfig& config() { return config_; }
+    TitleSession& session() { return session_; }
     const ScoreFile& scores() const { return scores_; }
     bool inResults() const { return inResults_; }
     const ResultScreen& results() const { return results_; }
     ResultScreen& results() { return results_; }
-    // A game started at stage 2..6 is a practice run: nothing is saved (nor with mischief on).
+    // Practice Start (or a quick start at stage 2..6): one stage, its best score saved.
     bool practiceRun() const { return practiceRun_; }
     bool recordable() const { return recordable_; }
     // Developer hooks: the game ends now, as after giving up (desktop --demo-gameover), or
     // as when the last stage's boss dialogue ends (the ending, then the results).
     void endGameForTesting() {
-        if (ready_ && !inResults_ && !inEnding_) gameOver(false);
+        if (ready_ && !inTitle_ && !inResults_ && !inEnding_) gameOver(false);
     }
     void clearGameForTesting() {
-        if (ready_ && !inResults_ && !inEnding_) gameCleared();
+        if (ready_ && !inTitle_ && !inResults_ && !inEnding_) gameCleared();
     }
     bool inEnding() const { return inEnding_; }
     const Ending& ending() const { return ending_; }
@@ -136,6 +155,14 @@ class Stage {
     void gameCleared();
     void startEnding();
     void saveScores();
+    void loadScores();
+    void saveConfig();
+    void applyConfig();
+    void tickTitle(const InputState& in, bool menuPress);
+    void startFromTitle();
+    void newRun(int stageNumber, int lives, int bombs, bool practice);
+    void practiceOver();
+    void leaveGame();
 
     SoundPlayer* sound_;
     const Vfs* vfs_;
@@ -179,6 +206,11 @@ class Stage {
     Ending ending_;
     bool inEnding_ = false;
     bool endingMusic_ = false;  // the result screen keeps what the ending left playing
+    Title title_;
+    bool inTitle_ = false;
+    TitleSession session_;
+    GameConfig config_;
+    std::string configPath_;
     TextureLibrary& textures_;
     std::string error_;
     int stageNumber_ = 1;

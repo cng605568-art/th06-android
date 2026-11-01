@@ -143,12 +143,13 @@ AndroidGameOptions readAndroidGameOptions() {
     if (a.clearException() || !array) return out;
     const jsize n = a.env->GetArrayLength(array);
     if (n >= 3) {
-        jint v[4] = {0, 1, 1, 0};
-        a.env->GetIntArrayRegion(array, 0, n >= 4 ? 4 : 3, v);
+        jint v[5] = {0, 1, 1, 0, 0};
+        a.env->GetIntArrayRegion(array, 0, n >= 5 ? 5 : n, v);
         out.shotType = v[0];
         out.difficulty = v[1];
         out.stage = v[2];
         out.mischief = static_cast<std::uint32_t>(v[3]);
+        out.quickStart = v[4] != 0;
     }
     a.env->DeleteLocalRef(array);
     return out;
