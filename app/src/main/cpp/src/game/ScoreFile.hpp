@@ -84,6 +84,7 @@ class ScoreFile {
     }
 
     const Spell& spell(int i) const { return spells_[static_cast<std::size_t>(i)]; }
+    Spell& spell(int i) { return spells_[static_cast<std::size_t>(i)]; }
     // A spell card declared in live play: a changed name resets its record; then one more
     // attempt (up to 9999).
     void spellDeclared(int i, std::span<const std::uint8_t> name, std::uint32_t captureBonus);

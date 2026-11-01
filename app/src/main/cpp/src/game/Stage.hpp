@@ -26,6 +26,7 @@
 #include "game/ResultScreen.hpp"
 #include "game/Ending.hpp"
 #include "game/GameConfig.hpp"
+#include "game/MusicRoom.hpp"
 #include "game/ScoreFile.hpp"
 #include "game/ShotData.hpp"
 #include "game/Title.hpp"
@@ -56,6 +57,11 @@ class Stage {
     bool openTitle(bool firstVisit = true, int cursor = -1);
     bool inTitle() const { return inTitle_; }
     const Title& title() const { return title_; }
+    // The title's own screens: the Music Room and the score viewer (Result).
+    bool inMusicRoom() const { return inMusicRoom_; }
+    const MusicRoom& musicRoom() const { return musicRoom_; }
+    // The title or one of its screens is up (Android Back is Cancel there).
+    bool inMenus() const { return inTitle_ || inMusicRoom_ || (inResults_ && results_.titleMode()); }
     // A new game straight away, without the title (the launcher's quick start): stage 1..7
     // at the given difficulty, with the shot type set by setShotType(). A game started at
     // stage 2..6 is a practice run.
@@ -155,7 +161,9 @@ class Stage {
     void gameCleared();
     void startEnding();
     void saveScores();
+    void writeScores();
     void loadScores();
+    bool tickTitleScreens(const InputState& in, bool menuPress);
     void saveConfig();
     void applyConfig();
     void tickTitle(const InputState& in, bool menuPress);
@@ -208,6 +216,8 @@ class Stage {
     bool endingMusic_ = false;  // the result screen keeps what the ending left playing
     Title title_;
     bool inTitle_ = false;
+    MusicRoom musicRoom_;
+    bool inMusicRoom_ = false;
     TitleSession session_;
     GameConfig config_;
     std::string configPath_;

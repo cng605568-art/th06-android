@@ -58,6 +58,7 @@ add_library(th06_core STATIC
   ${TH06_SRC}/game/ResultScreen.cpp
   ${TH06_SRC}/game/Ending.cpp
   ${TH06_SRC}/game/Title.cpp
+  ${TH06_SRC}/game/MusicRoom.cpp
   ${TH06_SRC}/game/GameConfig.cpp
   ${TH06_SRC}/gfx/TextRenderer.cpp
   ${TH06_SRC}/game/Stage.cpp

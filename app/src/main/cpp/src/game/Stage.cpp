@@ -180,6 +180,7 @@ void Stage::tick(const InputState& raw) {
         tickTitle(in, menuPress);
         return;
     }
+    if (tickTitleScreens(in, menuPress)) return;
     if (music_ && ready_) music_->tick();
     if (!ready_ || quitRequested_) return;
     if (inEnding_) {
@@ -363,7 +364,11 @@ void Stage::gameOver(bool cleared) {
 }
 
 void Stage::saveScores() {
-    if (scorePath_.empty() || !recordable_) return;
+    if (recordable_) writeScores();
+}
+
+void Stage::writeScores() {
+    if (scorePath_.empty()) return;
     const std::vector<std::uint8_t> bytes = scores_.save(rng_);
     if (std::FILE* f = std::fopen(scorePath_.c_str(), "wb")) {
         const bool ok = std::fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size();
@@ -444,6 +449,10 @@ bool Stage::openTitle(bool firstVisit, int cursor) {
     if (!anm_.fileLoaded(kAnmFileAscii) && !anm_.loadAnm(*vfs_, kAnmFileAscii, "data/ascii.anm", kAnmOffsetAscii, &err)) {
         log::warn("ascii.anm not loaded ({}): the title has no text", err);
     }
+    // text.anm: the Music Room's comments and the score viewer's names.
+    if (!anm_.fileLoaded(kAnmFileText) && !anm_.loadAnm(*vfs_, kAnmFileText, "data/text.anm", kAnmOffsetText, &err)) {
+        log::warn("text.anm not loaded ({})", err);
+    }
     // What is left of the game (enemy art, result and staff-roll files) shares the title's
     // script numbers.
     for (const int slot : {kAnmFileEnemy, kAnmFileEnemy2, 11, 12, 44, 45, 46}) anm_.releaseAnm(slot);
@@ -488,17 +497,52 @@ void Stage::tickTitle(const InputState& in, bool menuPress) {
             ready_ = false;
             error_ = "THE SELECT SCREEN FILES (DATA/SELECT0N.ANM) ARE MISSING";
             break;
-        case Title::Result::OpenScores:  // (the score viewer and the Music Room come next)
+        case Title::Result::OpenScores:  // the score viewer; the title theme plays on
             title_.release(world_);
-            if (!openTitle(false, 4)) quitRequested_ = true;
+            inTitle_ = false;
+            loadScores();
+            if (vfs_ && results_.startTitleMode(world_, *vfs_, textures_, scores_)) {
+                inResults_ = true;
+                clearInput_ = true;
+            } else if (!openTitle(false, 4)) {
+                quitRequested_ = true;
+            }
             break;
         case Title::Result::OpenMusicRoom:
             title_.release(world_);
-            if (!openTitle(false, 5)) quitRequested_ = true;
+            inTitle_ = false;
+            if (vfs_ && musicRoom_.start(world_, *vfs_, textures_, gui_)) {
+                inMusicRoom_ = true;
+                clearInput_ = true;
+            } else if (!openTitle(false, 5)) {
+                quitRequested_ = true;
+            }
             break;
         case Title::Result::None:
             break;
     }
+}
+
+// The Music Room and the score viewer run before any game (and without one loaded).
+bool Stage::tickTitleScreens(const InputState& in, bool menuPress) {
+    const bool scoreViewer = inResults_ && results_.titleMode();
+    if (!inMusicRoom_ && !scoreViewer) return false;
+    InputState t = in;
+    if (menuPress) t.pause = true;  // Android Back is Esc (Cancel)
+    if (music_) music_->tick();
+    if (inMusicRoom_) {
+        if (musicRoom_.update(world_, gui_, t)) {  // back at once; the track plays on until the title
+            musicRoom_.release(world_);
+            inMusicRoom_ = false;
+            if (!openTitle(false, 5)) quitRequested_ = true;
+        }
+    } else if (results_.update(world_, gui_, t)) {
+        writeScores();  // (always, as the original)
+        inResults_ = false;
+        if (!openTitle(false, 4)) quitRequested_ = true;
+    }
+    if (sound_) sound_->flush();
+    return true;
 }
 
 void Stage::startFromTitle() {
@@ -575,6 +619,10 @@ void Stage::render(SpriteSink& s, float alpha, const HudInfo& hud) {
     if (inResults_) {
         results_.draw(world_, gui_, s);
         gui_.drawStrings(world_, s);
+        return;
+    }
+    if (inMusicRoom_) {
+        musicRoom_.draw(world_, gui_, s);
         return;
     }
     // The playfield is cleared to the fog colour (the background is drawn into it).

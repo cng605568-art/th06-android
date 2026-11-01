@@ -9,6 +9,9 @@
 //      cards captured, slowdown;
 //   3. a 60-frame exit to the title, writing score.dat.
 // The port records no replays, so the save-replay prompt after the statistics is skipped.
+// From the title's "Result" item the same screen is a score viewer: a menu (Easy ... Extra,
+// Spell Card, Exit), the score tables per difficulty for Reimu or Marisa (Left/Right), and
+// the spell-card history in 7 pages of 10 (Left/Right); Exit writes score.dat.
 
 #include <array>
 #include <cstdint>
@@ -29,7 +32,7 @@ struct World;
 class ResultScreen {
   public:
     static constexpr int kVms = 38, kTexts = 16;
-    enum class State { NameEntry, Statistics, StatisticsFade, Exiting, Done };
+    enum class State { NameEntry, Statistics, StatisticsFade, Exiting, Done, MenuIntro, Menu, ScorePage, SpellPage };
 
     struct Run {
         int difficulty = 1, shotType = 0;
@@ -45,6 +48,9 @@ class ResultScreen {
     // Loads result.jpg and result00..03.anm (the game's art must be gone: they reuse the
     // enemy slots) and starts the first page. False if the files are missing.
     bool start(World& world, const Vfs& vfs, TextureLibrary& textures, Gui& gui, ScoreFile& scores, const Run& run);
+    // The score viewer (title mode). False if the files are missing.
+    bool startTitleMode(World& world, const Vfs& vfs, TextureLibrary& textures, ScoreFile& scores);
+    bool titleMode() const { return titleMode_; }
     // One pass. True once the screen has finished (score.dat should be written now).
     bool update(World& world, Gui& gui, const InputState& in);
     void draw(World& world, Gui& gui, SpriteSink& sink);
@@ -54,6 +60,10 @@ class ResultScreen {
     int rank() const { return rank_; }  // of the new entry (>= 10: not in the table)
     int keyCursor() const { return key_; }
     int nameCursor() const { return cursor_; }
+    int menuCursor() const { return menuCursor_; }  // also the character / spell page on a page
+    int pageItem() const { return pageItem_; }
+    int shownCharacter() const { return renderedCharacter_; }
+    int shownSpellPage() const { return renderedPage_; }
     std::string name() const;  // the entry's name as typed (8 bytes)
     const AnmVm& vm(int i) const { return vms_[static_cast<std::size_t>(i)]; }
 
@@ -64,8 +74,14 @@ class ResultScreen {
     struct Edges {
         bool up = false, down = false, left = false, right = false;  // pressed or repeating
         bool confirm = false, confirmRepeat = false, cancelRepeat = false, esc = false;
+        bool cancel = false;  // Bomb or Esc, pressed
     };
     Edges readInput(const InputState& in);
+    bool loadFiles(World& world, const Vfs& vfs, TextureLibrary& textures);
+    bool titleUpdate(World& world, Gui& gui, const Edges& e);
+    void menuPass(World& world, const Edges& e);
+    void renderShotNames(World& world, Gui& gui, int character);
+    void drawSpellList(Gui& gui, SpriteSink& sink, World& world);
     void interruptAll(std::int16_t k);
     void nameEntry(World& world, Gui& gui, const Edges& e);
     void finishNameEntry(World& world);
@@ -89,6 +105,14 @@ class ResultScreen {
     // Input: previous buttons and the auto-repeat counter (whole input unchanged).
     std::uint32_t prevButtons_ = 0;
     int repeatCounter_ = 0;
+    // The score viewer.
+    bool titleMode_ = false;
+    int menuCursor_ = 1;
+    int pageItem_ = 0;             // 0-4 the difficulty shown, 5 the spell cards
+    int rememberedCharacter_ = 0;  // shared by the five score pages
+    int rememberedPage_ = 0;
+    int renderedCharacter_ = 0, renderedPage_ = 0;  // -1 until a page has rendered its names
+    bool spellsShown_ = false;     // the last page opened was the spell cards
 };
 
 }  // namespace th06

@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <map>
 #include <memory>
@@ -46,6 +47,7 @@
 #include "game/Ending.hpp"
 #include "game/GameConfig.hpp"
 #include "game/Title.hpp"
+#include "game/MusicRoom.hpp"
 #include "gfx/Anm.hpp"
 #include "gfx/AnmManager.hpp"
 #include "gfx/Image.hpp"
@@ -872,7 +874,7 @@ static Bytes syntheticResultAnm(int file) {
         if (v == 14) {
             c.ins(0, anm_op::MovePosition, {fbits(800.0f), fbits(48.0f), fbits(0.0f)});
             c.ins(1, anm_op::Halt);
-            for (std::uint32_t l = 3; l <= 7; ++l) c.ins(1, anm_op::InterruptLabel, {l});
+            for (std::uint32_t l = 3; l <= 8; ++l) c.ins(1, anm_op::InterruptLabel, {l});  // score pages, spell cards
             c.ins(2, anm_op::MovePosition, {fbits(40.0f), fbits(48.0f), fbits(0.0f)});
             c.ins(2, anm_op::Halt);
             c.ins(2, anm_op::InterruptLabel, {2});
@@ -1317,6 +1319,36 @@ static Bytes syntheticTitleBackground(std::uint8_t r, std::uint8_t g, std::uint8
         }
     return bmpFromImage(img);
 }
+// The Music Room: music00.anm (one decoration), music01.anm (16 blank title bands) and
+// music02.anm (one more), music.jpg, and a musiccmt.txt with 17 tracks.
+static Bytes syntheticMusicDeco() {
+    AnmCode c;
+    c.ins(0, anm_op::SetSprite, {0});
+    c.ins(0, anm_op::MovePosition, {fbits(320.0f), fbits(48.0f), fbits(0.0f)});
+    c.ins(1, anm_op::Halt);
+    return buildAnmScripts(256, 256, "data/title.dds", {{0, 0, 48, 256, 56}}, {{0, c.bytes}});
+}
+static Bytes syntheticMusicTitles(int bands) {
+    std::vector<AnmSprite> sprites;
+    for (int i = 0; i < bands; ++i) sprites.push_back({static_cast<std::uint32_t>(i), 0, 16.0f * static_cast<float>(i), 256, 16});
+    return buildAnmScripts(256, 16 * bands, "@", sprites, {});
+}
+static std::string musicComment() {
+    std::string s = "Header text before the first track is ignored.\r\n";
+    for (int t = 1; t <= 17; ++t) {
+        s += std::format("@bgm/th06_{:02d}.mid\r\n", t);
+        s += std::format("No.{} Track title {}\r\n", t, t);
+        if (t == 1) {
+            s += "A first comment line that runs past the thirty-two byte split.\r\n";
+            s += "\r\n\r\n";  // blank lines vanish
+            s += "Second line\n";
+            for (int k = 3; k <= 8; ++k) s += std::format("Line {}\r", k);  // the 8th is dropped
+        } else {
+            s += std::format("Comment of track {}\r\n", t);
+        }
+    }
+    return s;
+}
 static Bytes syntheticTitleArchive() {
     return buildPbg3({{"title01.anm", syntheticTitleFile(0)},
                       {"title02.anm", syntheticTitleFile(1)},
@@ -1333,7 +1365,12 @@ static Bytes syntheticTitleArchive() {
                       {"slpl00a.anm", syntheticSelectFile({86}, {0, 0, 160, 96, 96})},
                       {"slpl00b.anm", syntheticSelectFile({87}, {0, 0, 160, 96, 96})},
                       {"slpl01a.anm", syntheticSelectFile({88}, {0, 0, 160, 96, 96})},
-                      {"slpl01b.anm", syntheticSelectFile({89}, {0, 0, 160, 96, 96})}});
+                      {"slpl01b.anm", syntheticSelectFile({89}, {0, 0, 160, 96, 96})},
+                      {"music00.anm", syntheticMusicDeco()},
+                      {"music01.anm", syntheticMusicTitles(16)},
+                      {"music02.anm", syntheticMusicTitles(1)},
+                      {"music.jpg", syntheticTitleBackground(60, 20, 70)},
+                      {"musiccmt.txt", toBytes(musicComment())}});
 }
 
 // A World with the synthetic bullet/player art loaded straight from bytes.
@@ -5315,6 +5352,188 @@ static void testTitle() {
     std::filesystem::remove_all(dir);
 }
 
+static void testMusicRoomParse() {
+    const auto tracks = MusicRoom::parse(toBytes(musicComment()));
+    CHECK(tracks.size() == 17);
+    CHECK(tracks[0].path == "bgm/th06_01.mid" && tracks[0].title == "No.1 Track title 1" && tracks[0].lines[0].empty());
+    CHECK(tracks[0].lines[1] == "A first comment line that runs past the thirty-two byte split.");
+    CHECK(tracks[0].lines[2] == "Second line" && tracks[0].lines[7] == "Line 7");  // blank lines gone; 7 lines
+    CHECK(tracks[1].path == "bgm/th06_02.mid" && tracks[1].lines[1] == "Comment of track 2" && tracks[1].lines[2].empty());
+    CHECK(tracks[16].title == "No.17 Track title 17");
+    // An eighth comment line is skipped; a line starting with '@' ends the comment; the end of
+    // the file keeps what was read; fields are capped.
+    const std::string longPath(80, 'p'), longTitle(50, 't'), longLine(90, 'l');
+    const auto odd = MusicRoom::parse(toBytes("@" + longPath + "\n" + longTitle + "\n" + longLine + "\n@second\nTitle 2\nhalf a li"));
+    CHECK(odd.size() == 2 && odd[0].path.size() == 63 && odd[0].title.size() == 33 && odd[0].lines[1].size() == 64);
+    CHECK(odd[1].path == "second" && odd[1].lines[1] == "half a li");
+    CHECK(MusicRoom::parse(toBytes("no tracks here")).empty());
+}
+
+static void testTitleScreens() {
+    const Bytes stArc = syntheticStageArchive(), tlArc = syntheticTitleArchive();
+    Vfs vfs;
+    vfs.mount(open("SYNTH_ST.DAT", stArc));
+    vfs.mount(open("SYNTH_TL.DAT", tlArc));
+    TextureLibrary lib;
+    const UiArt ui = registerUiArt(lib);
+    RecordingBackend backend;
+    SoundPlayer sound(&backend);
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "th06_title_screens_test";
+    std::filesystem::create_directories(dir);
+    const std::string scorePath = (dir / "score.dat").string();
+    std::filesystem::remove(scorePath);
+    {  // a spell card seen on the last page
+        ScoreFile sf;
+        ScoreFile::Spell& sp = sf.spell(60);
+        sp.present = true;
+        sp.attempts = 3;
+        sp.captures = 1;
+        const std::string name = "Test Card";
+        std::copy(name.begin(), name.end(), sp.name.begin());
+        ZunRng rng(1);
+        const std::vector<std::uint8_t> bytes = sf.save(rng);
+        std::ofstream(scorePath, std::ios::binary).write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    }
+    InputState idle, shot, esc, up, down, left, right;
+    shot.shoot = true;
+    esc.pause = true;
+    up.up = true;
+    down.down = true;
+    left.left = true;
+    right.right = true;
+    Stage st(lib, ui, &vfs, &sound);
+    st.setScorePath(scorePath);
+    CHECK(st.openTitle(true));
+    const Title& t = st.title();
+    auto tick = [&](const InputState& in, int n = 1) {
+        for (int i = 0; i < n; ++i) st.tick(in);
+    };
+    auto press = [&](const InputState& in) {
+        st.tick(in);
+        st.tick(idle);
+    };
+    auto toItem = [&](int item) {  // from "press a key" to the item, then choose it
+        tick(idle);
+        tick(shot);
+        tick(idle, 20);
+        while (t.cursor() != item) press(down);
+        tick(shot);
+    };
+
+    // Music Room: after the title's 60-pass exit (no fade to black).
+    toItem(5);
+    CHECK(t.sub() == Title::Sub::Music && t.overlayAlpha() > 0 && t.overlayAlpha() <= 64);
+    tick(idle, 59);
+    CHECK(st.inTitle());
+    tick(idle);
+    CHECK(!st.inTitle() && st.inMusicRoom() && st.inMenus());
+    const MusicRoom& m = st.musicRoom();
+    CHECK(m.trackCount() == 17 && m.titleHolder(16).visible && m.titleHolder(16).activeSpriteIndex == 0x111);
+    CHECK(!m.piece(0).visible && m.piece(2).visible && m.piece(3).visible && m.piece(4).visible && !m.piece(5).visible);
+    CHECK(m.piece(3).pos.x == 344.0f && m.piece(3).pos.y == 336.0f);
+    tick(down);  // input opens on the 9th pass, is read from the 10th
+    tick(idle, 7);
+    CHECK(!m.inputOpen() && m.cursor() == 0);
+    tick(idle);
+    CHECK(m.inputOpen());
+    tick(down);
+    CHECK(m.cursor() == 1 && m.windowStart() == 0);
+    tick(down);  // held: no repeat
+    tick(idle);
+    press(up);
+    press(up);  // wraps to the last track; the window shows the last ten
+    CHECK(m.cursor() == 16 && m.windowStart() == 7);
+    press(down);
+    CHECK(m.cursor() == 0 && m.windowStart() == 0);
+    for (int i = 0; i < 10; ++i) press(down);
+    CHECK(m.cursor() == 10 && m.windowStart() == 1);
+    for (int i = 0; i < 2; ++i) press(up);
+    CHECK(m.cursor() == 8 && m.windowStart() == 1);
+    tick(shot);  // play it and show its comment
+    CHECK(m.selected() == 8 && m.piece(2).visible && !m.piece(3).visible && !m.piece(4).visible);
+    tick(idle);
+    {
+        RecordingSink sink;
+        st.render(sink, 1.0f, HudInfo{60.0f, 1});
+        int titles = 0, glyphs = 0;
+        for (const auto& it : sink.items) {
+            titles += lib.name(it.texture).starts_with("data/music0");
+            glyphs += lib.name(it.texture).starts_with("data/ascii");
+        }
+        CHECK(titles == 10);  // ten rows of titles
+        CHECK(glyphs == 9 * 2 + 3 + 1);  // " 2." .. " 9." two glyphs each, "10." three, the arrow
+    }
+    tick(esc);  // back at once, on Music Room
+    CHECK(st.inTitle() && !st.inMusicRoom() && t.cursor() == 5);
+
+    // Result: the score viewer.
+    toItem(4);
+    CHECK(t.sub() == Title::Sub::Score);
+    tick(idle, 60);
+    CHECK(!st.inTitle() && st.inResults() && st.inMenus() && st.results().titleMode());
+    const ResultScreen& r = st.results();
+    tick(idle);  // its first pass
+    CHECK(r.state() == ResultScreen::State::MenuIntro && r.menuCursor() == 1);
+    CHECK(r.vm(2).color == 0xff505050u && r.vm(2).posOffset.x == -4.0f && r.vm(1).color == 0xb0000000u && r.vm(1).colorAdd);
+    tick(down);  // the menu opens 20 passes in
+    CHECK(r.menuCursor() == 1);
+    tick(idle, 18);
+    CHECK(r.state() == ResultScreen::State::MenuIntro);
+    tick(idle);
+    CHECK(r.state() == ResultScreen::State::Menu);
+    tick(down);
+    CHECK(r.menuCursor() == 2 && backend.plays.back().voice == 12);
+    tick(idle);
+    tick(shot);  // Hard's tables
+    CHECK(r.state() == ResultScreen::State::ScorePage && r.pageItem() == 2 && r.menuCursor() == 0 && r.shownCharacter() == -1);
+    tick(idle, 19);
+    CHECK(r.shownCharacter() == -1);
+    tick(idle);  // t = 20: the names
+    CHECK(r.shownCharacter() == 0);
+    tick(right);  // ignored before t = 30
+    tick(idle, 9);
+    tick(right);
+    CHECK(r.menuCursor() == 1 && r.shownCharacter() == 0);
+    tick(idle, 20);
+    CHECK(r.shownCharacter() == 1);
+    tick(idle, 10);
+    tick(esc);  // back to the menu on Hard
+    CHECK(r.state() == ResultScreen::State::MenuIntro && r.menuCursor() == 2);
+    tick(idle, 18);
+    CHECK(r.state() == ResultScreen::State::MenuIntro);
+    tick(idle);
+    CHECK(r.state() == ResultScreen::State::Menu);  // 19 passes after the Cancel pass
+    for (int i = 0; i < 3; ++i) press(down);
+    tick(shot);  // spell cards
+    CHECK(r.state() == ResultScreen::State::SpellPage && r.menuCursor() == 0);
+    tick(idle, 30);
+    tick(left);  // the last page
+    CHECK(r.menuCursor() == 6);
+    tick(idle, 21);
+    CHECK(r.shownSpellPage() == 6);
+    {
+        RecordingSink sink;
+        st.render(sink, 1.0f, HudInfo{60.0f, 1});
+        int glyphs = 0, names = 0;
+        for (const auto& it : sink.items) {
+            glyphs += lib.name(it.texture).starts_with("data/ascii");
+            names += lib.name(it.texture).starts_with("data/text");
+        }
+        CHECK(glyphs == 4 * 8 && names == 4);  // No.61-64, "c/a", and the names
+    }
+    tick(idle, 10);
+    tick(esc);
+    CHECK(r.menuCursor() == 5);
+    tick(idle, 19);
+    press(down);
+    tick(shot);  // Exit: the title comes back 60 passes after the menu opened, writing score.dat
+    CHECK(r.state() == ResultScreen::State::Exiting);
+    std::filesystem::remove(scorePath);
+    for (int i = 0; i < 60 && !st.inTitle(); ++i) tick(idle);
+    CHECK(st.inTitle() && !st.inResults() && t.cursor() == 4 && std::filesystem::exists(scorePath));
+    std::filesystem::remove_all(dir);
+}
+
 static void testMischief() {
     // Player level: bombs, lives, invincibility.
     {
@@ -5523,6 +5742,8 @@ int main() {
         {"ending: script, text slots, waits, scroll, fades, staff roll", testEnding},
         {"th06.cfg: format, defaults, rebuild rules", testGameConfig},
         {"title: menus, options, select screens, practice, extra", testTitle},
+        {"music room: musiccmt.txt parsing", testMusicRoomParse},
+        {"title screens: music room, score viewer", testTitleScreens},
     };
     for (const Test& t : tests) {
         const int before = g_failures;

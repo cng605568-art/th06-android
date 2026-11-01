@@ -57,7 +57,7 @@ class App {
     //   --shot S          0 Reimu A, 1 Reimu B, 2 Marisa A, 3 Marisa B (skips the title)
     //   --quick           skip the title with the defaults
     //   --keys T:K,...    press button K (up, down, left, right, shoot, bomb, pause, quit)
-    //                     once game tick T is reached, briefly
+    //                     once game tick T is reached, briefly (keys in tick order)
     // On Android the quick start and these three come from the launcher.
     //   --demo-touch      inject finger events (hold D-pad right + Shoot) through the
     //                     touch overlay -> virtual controller -> game input path
@@ -75,9 +75,10 @@ class App {
     struct DevKey {
         std::uint64_t tick;
         std::string key;
-        int samplesLeft;
     };
-    std::vector<DevKey> devKeys_;
+    std::vector<DevKey> devKeys_;  // in order
+    std::size_t devKeyNext_ = 0;
+    bool devKeyHeld_ = false;
     int startStage_ = 1;
     int startDifficulty_ = 1;
     int shotType_ = 0;
