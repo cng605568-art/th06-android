@@ -39,6 +39,7 @@ class SpriteBatch final : public SpriteSink {
     GLuint vbo_ = 0;
     GLint uTransform_ = -1;
     GLint uTexture_ = -1;
+    GLint uColorAdd_ = -1;
     std::vector<SpriteInstance> pending_;
     GLuint currentTexture_ = 0;
     Blend currentBlend_ = Blend::Alpha;

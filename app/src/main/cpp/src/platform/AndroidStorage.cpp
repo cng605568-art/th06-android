@@ -94,4 +94,22 @@ int openAndroidDataSource(const std::string& uri) {
     return fd;
 }
 
+AndroidGameOptions readAndroidGameOptions() {
+    AndroidGameOptions out;
+    ActivityClass a;
+    const jmethodID mid = a.method("getGameOptions", "()[I");
+    if (!mid) return out;
+    auto array = static_cast<jintArray>(a.env->CallStaticObjectMethod(a.cls, mid));
+    if (a.clearException() || !array) return out;
+    if (a.env->GetArrayLength(array) >= 3) {
+        jint v[3];
+        a.env->GetIntArrayRegion(array, 0, 3, v);
+        out.shotType = v[0];
+        out.difficulty = v[1];
+        out.stage = v[2];
+    }
+    a.env->DeleteLocalRef(array);
+    return out;
+}
+
 }  // namespace th06

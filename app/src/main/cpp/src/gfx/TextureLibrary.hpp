@@ -27,6 +27,9 @@ class TextureLibrary {
 
     // width/height are the dimensions sprite UVs are normalised against. Game art stays
     // pixel-exact (Nearest); generated UI shapes that get scaled use Linear.
+    // Adding a name that is already registered with the same size and filter returns the
+    // existing id (the name must therefore identify the pixels, e.g. path + decode rules),
+    // so reloading a stage does not register its textures again.
     std::uint16_t add(std::string name, int width, int height, Producer producer,
                       TextureFilter filter = TextureFilter::Nearest);
 
