@@ -30,6 +30,22 @@ bool cString(std::span<const std::uint8_t> b, std::uint32_t off, std::string& ou
     return false;
 }
 
+// Scans a script's instructions in order for the first sprite it shows.
+std::int32_t firstSpriteOfScript(std::span<const std::uint8_t> b, std::uint32_t offset) {
+    constexpr std::uint8_t kOpDelete = 0, kOpSetSprite = 1, kOpSetSpriteRandom = 16;
+    std::size_t pos = offset;
+    for (int n = 0; n < 256 && pos >= kHeaderSize && pos + 4 <= b.size(); ++n) {
+        const std::uint8_t op = b[pos + 2];
+        const std::uint8_t argBytes = b[pos + 3];
+        if ((op == kOpSetSprite || op == kOpSetSpriteRandom) && argBytes >= 4 && pos + 8 <= b.size()) {
+            return static_cast<std::int32_t>(u32At(b, pos + 4));
+        }
+        if (op == kOpDelete) break;
+        pos += 4u + argBytes;
+    }
+    return -1;
+}
+
 }  // namespace
 
 std::optional<AnmFile> parseAnm(std::span<const std::uint8_t> b, std::string* error) {
@@ -59,7 +75,8 @@ std::optional<AnmFile> parseAnm(std::span<const std::uint8_t> b, std::string* er
     }
     if (!cString(b, u32At(b, 0x1C), anm.imageName)) return fail("missing texture name");
     if (const std::uint32_t alphaOff = u32At(b, 0x24); alphaOff != 0) {
-        if (!cString(b, alphaOff, anm.alphaName)) return fail("bad alpha texture name");
+        // A bad alpha-mask name only costs the mask, never the whole file.
+        if (!cString(b, alphaOff, anm.alphaName)) anm.alphaName.clear();
     }
 
     anm.sprites.reserve(static_cast<std::size_t>(numSprites));
@@ -83,9 +100,26 @@ std::optional<AnmFile> parseAnm(std::span<const std::uint8_t> b, std::string* er
 
     const std::size_t scriptsAt = kHeaderSize + 4u * numSprites;
     for (std::int32_t i = 0; i < numScripts; ++i) {
-        anm.scriptIds.push_back(u32At(b, scriptsAt + 8u * i));
+        AnmScript script;
+        script.id = u32At(b, scriptsAt + 8u * i);
+        script.firstSprite = firstSpriteOfScript(b, u32At(b, scriptsAt + 8u * i + 4));
+        anm.scripts.push_back(script);
     }
     return anm;
+}
+
+int AnmFile::spriteIndexById(std::int64_t id) const {
+    for (std::size_t i = 0; i < sprites.size(); ++i) {
+        if (sprites[i].id == id) return static_cast<int>(i);
+    }
+    return -1;
+}
+
+std::int32_t AnmFile::scriptFirstSprite(std::uint32_t scriptId) const {
+    for (const AnmScript& s : scripts) {
+        if (s.id == scriptId) return s.firstSprite;
+    }
+    return -1;
 }
 
 }  // namespace th06

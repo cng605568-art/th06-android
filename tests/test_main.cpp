@@ -231,17 +231,26 @@ static Bytes buildDdsArgb(int w, int h, const std::vector<std::array<std::uint8_
     return b;
 }
 
+struct TestScript {
+    std::uint32_t id;
+    std::int32_t sprite;  // -1: the script never sets a sprite
+};
+
+// ANM v0 file: header, sprite offsets, script table, sprites, script bytecode, names.
 static Bytes buildAnm(int texW, int texH, const std::string& image, const std::string& alpha,
-                      std::uint32_t colorKey, const std::vector<AnmSprite>& sprites) {
-    const std::size_t n = sprites.size();
-    const std::size_t spritesAt = 0x40 + 4 * n + 8;  // one script entry
-    const std::size_t namesAt = spritesAt + 20 * n;
+                      std::uint32_t colorKey, const std::vector<AnmSprite>& sprites,
+                      const std::vector<TestScript>& scripts = {{7, 1}}) {
+    const std::size_t n = sprites.size(), m = scripts.size();
+    const std::size_t spritesAt = 0x40 + 4 * n + 8 * m;
+    const std::size_t codeAt = spritesAt + 20 * n;
+    constexpr std::size_t kScriptBytes = 12 + 8 + 4;  // scale(8 args), set sprite, delete
+    const std::size_t namesAt = codeAt + kScriptBytes * m;
     Bytes b(namesAt, 0);
     auto put32 = [&](std::size_t off, std::uint32_t v) {
         for (int i = 0; i < 4; ++i) b[off + i] = static_cast<std::uint8_t>(v >> (8 * i));
     };
     put32(0x00, static_cast<std::uint32_t>(n));
-    put32(0x04, 1);
+    put32(0x04, static_cast<std::uint32_t>(m));
     put32(0x0C, static_cast<std::uint32_t>(texW));
     put32(0x10, static_cast<std::uint32_t>(texH));
     put32(0x14, 1);
@@ -250,13 +259,28 @@ static Bytes buildAnm(int texW, int texH, const std::string& image, const std::s
     if (!alpha.empty()) put32(0x24, static_cast<std::uint32_t>(namesAt + image.size() + 1));
     for (std::size_t i = 0; i < n; ++i) {
         put32(0x40 + 4 * i, static_cast<std::uint32_t>(spritesAt + 20 * i));
-        const std::size_t s = spritesAt + 20 * i;
-        put32(s, sprites[i].id);
+        const std::size_t sp = spritesAt + 20 * i;
+        put32(sp, sprites[i].id);
         float f[4] = {sprites[i].x, sprites[i].y, sprites[i].w, sprites[i].h};
-        std::memcpy(b.data() + s + 4, f, 16);
+        std::memcpy(b.data() + sp + 4, f, 16);
     }
-    put32(0x40 + 4 * n, 7);  // script id
-    put32(0x40 + 4 * n + 4, static_cast<std::uint32_t>(namesAt));
+    for (std::size_t k = 0; k < m; ++k) {
+        const std::size_t table = 0x40 + 4 * n + 8 * k;
+        const std::size_t code = codeAt + kScriptBytes * k;
+        put32(table, scripts[k].id);
+        put32(table + 4, static_cast<std::uint32_t>(code));
+        b[code + 2] = 2;  // scale x, y: an instruction before the sprite is set
+        b[code + 3] = 8;
+        if (scripts[k].sprite >= 0) {
+            b[code + 12 + 2] = 1;  // set sprite
+            b[code + 12 + 3] = 4;
+            put32(code + 16, static_cast<std::uint32_t>(scripts[k].sprite));
+        } else {
+            b[code + 12 + 2] = 6;  // nop
+            b[code + 12 + 3] = 4;
+        }
+        // trailing 4 zero bytes = delete
+    }
     b.insert(b.end(), image.begin(), image.end());
     b.push_back(0);
     if (!alpha.empty()) {
@@ -481,7 +505,9 @@ static void testAnmAndVfs() {
         CHECK(anm->imageName == "data/etama3.png");
         CHECK(anm->alphaName == "data/etama3_a.png");
         CHECK(anm->textureWidth == 64 && anm->sprites[2].h == 48.0f);
-        CHECK(anm->scriptIds.size() == 1 && anm->scriptIds[0] == 7);
+        CHECK(anm->scripts.size() == 1 && anm->scripts[0].id == 7 && anm->scripts[0].firstSprite == 1);
+        CHECK(anm->scriptFirstSprite(7) == 1 && anm->scriptFirstSprite(99) == -1);
+        CHECK(anm->spriteIndexById(2) == 2 && anm->spriteIndexById(50) == -1);
     }
     Bytes broken = anmBytes;
     broken[0] = 0xff;  // absurd sprite count
@@ -522,6 +548,46 @@ static void testAnmAndVfs() {
             CHECK(img->pixel(40, 40)[3] == 0);                                 // padding
         }
     }
+}
+
+static void testGameArtFromArchives() {
+    // Like the real etama3.anm: 16x16 item sprites come before the bullets, so picking
+    // "any 16x16 sprite" would show items. Script 3 (ball bullet) starts at sprite 40.
+    std::vector<AnmSprite> etamaSprites;
+    for (std::uint32_t i = 0; i < 20; ++i) etamaSprites.push_back({i, static_cast<float>(i % 16) * 16, 0, 16, 16});
+    for (std::uint32_t c = 0; c < 16; ++c) etamaSprites.push_back({40 + c, static_cast<float>(c) * 16, 16, 16, 16});
+    const Bytes etama = buildAnm(256, 64, "data/etama3.png", "", 0, etamaSprites,
+                                 {{0, 0}, {1, 4}, {3, 40}, {21, 10}});
+    // Player: idle script 0 points at sprite 6 (32x48); other sprites are other sizes.
+    const std::vector<AnmSprite> playerSprites = {{0, 0, 0, 16, 16}, {6, 32, 0, 32, 48}, {7, 64, 0, 32, 48}};
+    const Bytes player = buildAnm(128, 64, "data/player00.png", "data/player00_a.png", 0, playerSprites,
+                                  {{1, 7}, {0, 6}});
+    std::vector<std::array<std::uint8_t, 4>> px(64 * 64, {255, 255, 255, 255});
+    const Bytes texture = buildDdsArgb(64, 64, px);
+
+    Vfs vfs;
+    CHECK(vfs.mount(open("KOUMAKYO_CM.dat", buildPbg3({{"etama3.anm", etama},
+                                                       {"etama3.dds", texture},
+                                                       {"player00.anm", player},
+                                                       {"player00.dds", texture}}))));
+    TextureLibrary lib;
+    const GameArt art = buildGameArt(&vfs, lib);
+    CHECK(art.bulletsFromGameData && art.bulletsNote.empty());
+    CHECK(art.bullets.size() == 16);
+    if (art.bullets.size() == 16) {
+        CHECK(art.bullets[0].v0 == 16.0f / 64.0f);  // second row = the ball sprites, not items
+        CHECK(art.bullets[15].u0 == 240.0f / 256.0f);
+    }
+    CHECK(art.playerFromGameData && art.playerNote.empty());
+    CHECK(art.player.u0 == 32.0f / 128.0f && art.player.height == 48.0f);  // script 0's sprite, not sprite 7
+
+    // Missing player file: falls back with a readable reason for the HUD.
+    Vfs partial;
+    partial.mount(open("KOUMAKYO_CM.dat", buildPbg3({{"etama3.anm", etama}, {"etama3.dds", texture}})));
+    TextureLibrary lib2;
+    const GameArt fallback = buildGameArt(&partial, lib2);
+    CHECK(fallback.bulletsFromGameData);
+    CHECK(!fallback.playerFromGameData && fallback.playerNote == "PLAYER00.ANM NOT FOUND");
 }
 
 static void testMappedFileAndDirectory() {
@@ -722,6 +788,7 @@ int main() {
         {"PKGL archives (New Classic)", testPkgl},
         {"image decoding (PNG, DDS, BC1, colour key, mask)", testImages},
         {"ANM sprite tables + VFS", testAnmAndVfs},
+        {"sprite choice via ANM scripts (bullets, player)", testGameArtFromArchives},
         {"mmap / fd fallback / directory mounting", testMappedFileAndDirectory},
         {"object pool vs reference model", testObjectPool},
         {"bullet pool saturation and reuse", testBulletCapacity},
