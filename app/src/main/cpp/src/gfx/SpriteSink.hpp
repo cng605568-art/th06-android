@@ -8,7 +8,18 @@ namespace th06 {
 // (SpriteBatch) turns runs of them into instanced draw calls. Keeping this free of GL
 // lets the whole simulation run in host unit tests.
 
-enum class Blend : std::uint8_t { Alpha, Additive };
+// Render state of one sprite, mirroring the original engine's Direct3D 8 states:
+//   framebuffer blend  Alpha    SRCBLEND=SRCALPHA, DESTBLEND=INVSRCALPHA
+//                      Additive SRCBLEND=SRCALPHA, DESTBLEND=ONE
+//   texture stage 0    (default) COLOROP=MODULATE  rgb = tex.rgb * colour.rgb
+//                      *ColorAdd COLOROP=ADD       rgb = tex.rgb + colour.rgb
+//   alpha is always tex.a * colour.a (ALPHAOP=MODULATE).
+enum class Blend : std::uint8_t { Alpha, Additive, AlphaColorAdd, AdditiveColorAdd };
+
+constexpr Blend makeBlend(bool additive, bool colorAdd) {
+    return additive ? (colorAdd ? Blend::AdditiveColorAdd : Blend::Additive)
+                    : (colorAdd ? Blend::AlphaColorAdd : Blend::Alpha);
+}
 
 constexpr std::uint32_t rgba(std::uint8_t r, std::uint8_t g, std::uint8_t b,
                              std::uint8_t a = 255) {

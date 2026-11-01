@@ -3,29 +3,29 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <span>
 #include <string>
 #include <vector>
 
 #include <SDL.h>
 
-#include "game/Sound.hpp"
+#include "audio/SoundPlayer.hpp"
 
 namespace th06 {
 
-// Minimal sound-effect mixer on an SDL audio device (AAudio/OpenSL ES on Android).
-// WAV files from the archives are converted once to the device format at load time;
-// the audio callback only sums int16 samples and never allocates.
-// Each effect has one voice and replaying restarts it, as in the original game, which
-// keeps rapid-fire effects (graze, shots) from stacking into distortion.
-class AudioMixer final : public SoundSink {
+// Sound-effect mixer on an SDL audio device (AAudio/OpenSL ES on Android). WAV files are
+// converted once to the device format at load time; the audio callback only sums int16
+// samples and never allocates. One voice per SoundIdx; replaying a voice restarts it.
+class AudioMixer final : public SampleBackend {
   public:
+    static constexpr int kMaxSamples = 32;
+    static constexpr int kMaxVoices = 32;
+
     ~AudioMixer() override;
 
     bool open(std::string* error);
     void close();
-    bool load(Sfx sfx, std::span<const std::uint8_t> wavBytes, std::string* error);
-    void play(Sfx sfx) override;
+    bool loadSample(int sampleIndex, const std::uint8_t* wav, std::size_t size) override;
+    void playSample(int voice, int sampleIndex, float gain) override;
     void setPaused(bool paused);
     bool isOpen() const { return device_ != 0; }
 
@@ -33,16 +33,17 @@ class AudioMixer final : public SoundSink {
     static void SDLCALL callback(void* userdata, Uint8* stream, int len);
     void mix(std::int16_t* out, std::size_t samples);
 
-    static constexpr std::size_t kCount = static_cast<std::size_t>(Sfx::Count);
     struct Voice {
+        int sample = -1;
         std::size_t position = 0;
+        std::int32_t gainQ15 = 0;  // gain in 1/32768 units
         bool active = false;
     };
 
     SDL_AudioDeviceID device_ = 0;
     SDL_AudioSpec spec_{};
-    std::array<std::vector<std::int16_t>, kCount> sounds_;  // interleaved stereo
-    std::array<Voice, kCount> voices_{};
+    std::array<std::vector<std::int16_t>, kMaxSamples> samples_;  // interleaved stereo
+    std::array<Voice, kMaxVoices> voices_{};
     std::vector<std::int32_t> scratch_;
 };
 

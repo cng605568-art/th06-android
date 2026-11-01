@@ -1,8 +1,13 @@
-// Host tests for the engine core: archive formats, decoders, the object pool and a
-// deterministic headless run of the game simulation. No GPU, no SDL.
+// Host tests for the engine core: archive formats and decoders, the ANM and ECL virtual
+// machines on hand-assembled bytecode, bullets, the sound queue, the fixed-timestep clock
+// and a deterministic headless run of a whole stage built from a synthetic archive.
+// No GPU, no SDL, no game assets.
 #include <unistd.h>
 
 #include <array>
+#include <bit>
+#include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -15,11 +20,17 @@
 
 #include <zstd.h>
 
+#include "audio/SoundPlayer.hpp"
+#include "core/FixedTimestep.hpp"
 #include "core/Math.hpp"
-#include "core/ObjectPool.hpp"
-#include "game/Game.hpp"
-#include "game/GameArt.hpp"
+#include "core/ZunMath.hpp"
+#include "game/BulletManager.hpp"
+#include "game/Ecl.hpp"
+#include "game/EnemyManager.hpp"
+#include "game/Player.hpp"
+#include "game/Stage.hpp"
 #include "gfx/Anm.hpp"
+#include "gfx/AnmManager.hpp"
 #include "gfx/Image.hpp"
 #include "gfx/ProceduralArt.hpp"
 #include "gfx/TextureLibrary.hpp"
@@ -231,17 +242,26 @@ static Bytes buildDdsArgb(int w, int h, const std::vector<std::array<std::uint8_
     return b;
 }
 
+struct TestScript {
+    std::uint32_t id;
+    std::int32_t sprite;  // -1: the script never sets a sprite
+};
+
+// ANM v0 file: header, sprite offsets, script table, sprites, script bytecode, names.
 static Bytes buildAnm(int texW, int texH, const std::string& image, const std::string& alpha,
-                      std::uint32_t colorKey, const std::vector<AnmSprite>& sprites) {
-    const std::size_t n = sprites.size();
-    const std::size_t spritesAt = 0x40 + 4 * n + 8;  // one script entry
-    const std::size_t namesAt = spritesAt + 20 * n;
+                      std::uint32_t colorKey, const std::vector<AnmSprite>& sprites,
+                      const std::vector<TestScript>& scripts = {{7, 1}}) {
+    const std::size_t n = sprites.size(), m = scripts.size();
+    const std::size_t spritesAt = 0x40 + 4 * n + 8 * m;
+    const std::size_t codeAt = spritesAt + 20 * n;
+    constexpr std::size_t kScriptBytes = 12 + 8 + 4;  // scale(8 args), set sprite, delete
+    const std::size_t namesAt = codeAt + kScriptBytes * m;
     Bytes b(namesAt, 0);
     auto put32 = [&](std::size_t off, std::uint32_t v) {
         for (int i = 0; i < 4; ++i) b[off + i] = static_cast<std::uint8_t>(v >> (8 * i));
     };
     put32(0x00, static_cast<std::uint32_t>(n));
-    put32(0x04, 1);
+    put32(0x04, static_cast<std::uint32_t>(m));
     put32(0x0C, static_cast<std::uint32_t>(texW));
     put32(0x10, static_cast<std::uint32_t>(texH));
     put32(0x14, 1);
@@ -250,13 +270,28 @@ static Bytes buildAnm(int texW, int texH, const std::string& image, const std::s
     if (!alpha.empty()) put32(0x24, static_cast<std::uint32_t>(namesAt + image.size() + 1));
     for (std::size_t i = 0; i < n; ++i) {
         put32(0x40 + 4 * i, static_cast<std::uint32_t>(spritesAt + 20 * i));
-        const std::size_t s = spritesAt + 20 * i;
-        put32(s, sprites[i].id);
+        const std::size_t sp = spritesAt + 20 * i;
+        put32(sp, sprites[i].id);
         float f[4] = {sprites[i].x, sprites[i].y, sprites[i].w, sprites[i].h};
-        std::memcpy(b.data() + s + 4, f, 16);
+        std::memcpy(b.data() + sp + 4, f, 16);
     }
-    put32(0x40 + 4 * n, 7);  // script id
-    put32(0x40 + 4 * n + 4, static_cast<std::uint32_t>(namesAt));
+    for (std::size_t k = 0; k < m; ++k) {
+        const std::size_t table = 0x40 + 4 * n + 8 * k;
+        const std::size_t code = codeAt + kScriptBytes * k;
+        put32(table, scripts[k].id);
+        put32(table + 4, static_cast<std::uint32_t>(code));
+        b[code + 2] = 2;  // scale x, y: an instruction before the sprite is set
+        b[code + 3] = 8;
+        if (scripts[k].sprite >= 0) {
+            b[code + 12 + 2] = 1;  // set sprite
+            b[code + 12 + 3] = 4;
+            put32(code + 16, static_cast<std::uint32_t>(scripts[k].sprite));
+        } else {
+            b[code + 12 + 2] = 6;  // nop
+            b[code + 12 + 3] = 4;
+        }
+        // trailing 4 zero bytes = delete
+    }
     b.insert(b.end(), image.begin(), image.end());
     b.push_back(0);
     if (!alpha.empty()) {
@@ -303,6 +338,414 @@ static void dumpIfRequested(const std::string& name, const Bytes& bytes) {
             .write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     }
 }
+
+// ---- engine test data: hand-assembled ANM / ECL bytecode -----------------------------
+
+static std::uint32_t fbits(float f) { return std::bit_cast<std::uint32_t>(f); }
+
+// ANM instruction: {i16 time, u8 opcode, u8 argBytes, u32 args...}.
+class AnmCode {
+  public:
+    std::uint32_t ins(std::int16_t time, std::uint8_t op, std::initializer_list<std::uint32_t> args = {}) {
+        const auto at = static_cast<std::uint32_t>(bytes.size());
+        putLe<std::int16_t>(bytes, time);
+        bytes.push_back(op);
+        bytes.push_back(static_cast<std::uint8_t>(4 * args.size()));
+        for (const std::uint32_t a : args) putLe<std::uint32_t>(bytes, a);
+        return at;
+    }
+    Bytes bytes;
+};
+
+struct AnmScriptBytes {
+    std::uint32_t id;
+    Bytes code;
+};
+
+// ANM v0 file with real bytecode: header, sprite offsets, script table, sprites, code, name.
+static Bytes buildAnmScripts(int texW, int texH, const std::string& image, const std::vector<AnmSprite>& sprites,
+                             const std::vector<AnmScriptBytes>& scripts) {
+    const std::size_t n = sprites.size(), m = scripts.size();
+    const std::size_t spritesAt = 0x40 + 4 * n + 8 * m;
+    Bytes b(spritesAt + 20 * n, 0);
+    auto put32 = [&](std::size_t off, std::uint32_t v) {
+        for (int i = 0; i < 4; ++i) b[off + i] = static_cast<std::uint8_t>(v >> (8 * i));
+    };
+    put32(0x00, static_cast<std::uint32_t>(n));
+    put32(0x04, static_cast<std::uint32_t>(m));
+    put32(0x0C, static_cast<std::uint32_t>(texW));
+    put32(0x10, static_cast<std::uint32_t>(texH));
+    put32(0x14, 1);
+    for (std::size_t i = 0; i < n; ++i) {
+        const std::size_t sp = spritesAt + 20 * i;
+        put32(0x40 + 4 * i, static_cast<std::uint32_t>(sp));
+        put32(sp, sprites[i].id);
+        const float f[4] = {sprites[i].x, sprites[i].y, sprites[i].w, sprites[i].h};
+        std::memcpy(b.data() + sp + 4, f, 16);
+    }
+    for (std::size_t k = 0; k < m; ++k) {
+        const std::size_t table = 0x40 + 4 * n + 8 * k;
+        put32(table, scripts[k].id);
+        put32(table + 4, static_cast<std::uint32_t>(b.size()));
+        b.insert(b.end(), scripts[k].code.begin(), scripts[k].code.end());
+    }
+    put32(0x1C, static_cast<std::uint32_t>(b.size()));
+    b.insert(b.end(), image.begin(), image.end());
+    b.push_back(0);
+    return b;
+}
+
+// ECL variable ids.
+enum : std::int32_t {
+    kI0 = -10001, kI1 = -10002, kI2 = -10003, kI3 = -10004, kF0 = -10005, kF1 = -10006, kF2 = -10007,
+    kEnemyLife = -10024,
+};
+
+// ECL file: header, sub table, timeline 0, subs. Instructions are
+// {i32 time, i16 opcode, i16 size, u8 unknown, u8 difficultyMask, u16 unknown, u32 args...}.
+class EclBuilder {
+  public:
+    void spawn(std::int16_t time, std::int16_t op, std::int16_t sub, float x, float y, std::int16_t life,
+               std::int16_t item, std::int32_t score) {
+        putLe<std::int16_t>(timeline_, time);
+        putLe<std::int16_t>(timeline_, sub);
+        putLe<std::int16_t>(timeline_, op);
+        putLe<std::int16_t>(timeline_, 28);
+        putLe<std::uint32_t>(timeline_, fbits(x));
+        putLe<std::uint32_t>(timeline_, fbits(y));
+        putLe<std::uint32_t>(timeline_, fbits(0.0f));
+        putLe<std::int16_t>(timeline_, life);
+        putLe<std::int16_t>(timeline_, item);
+        putLe<std::int32_t>(timeline_, score);
+    }
+    int sub() {
+        subs_.emplace_back();
+        return static_cast<int>(subs_.size()) - 1;
+    }
+    std::uint32_t here() const { return static_cast<std::uint32_t>(subs_.back().size()); }
+    // Jump offset for the instruction about to be emitted: `target` relative to its start.
+    std::uint32_t to(std::uint32_t target) const { return target - here(); }
+    std::uint32_t ins(std::int32_t time, std::int16_t op, std::initializer_list<std::uint32_t> args = {},
+                      std::uint8_t difficultyMask = 0xff) {
+        Bytes& b = subs_.back();
+        const auto at = static_cast<std::uint32_t>(b.size());
+        putLe<std::int32_t>(b, time);
+        putLe<std::int16_t>(b, op);
+        putLe<std::int16_t>(b, static_cast<std::int16_t>(12 + 4 * args.size()));
+        b.push_back(0);
+        b.push_back(difficultyMask);
+        putLe<std::uint16_t>(b, 0);
+        for (const std::uint32_t a : args) putLe<std::uint32_t>(b, a);
+        return at;
+    }
+    Bytes build() const {
+        Bytes out(16 + 4 * subs_.size(), 0);
+        auto put32 = [&](std::size_t off, std::uint32_t v) {
+            for (int i = 0; i < 4; ++i) out[off + i] = static_cast<std::uint8_t>(v >> (8 * i));
+        };
+        out[0] = static_cast<std::uint8_t>(subs_.size());
+        out[2] = 1;  // mainCount
+        put32(4, static_cast<std::uint32_t>(out.size()));
+        out.insert(out.end(), timeline_.begin(), timeline_.end());
+        putLe<std::int16_t>(out, -1);  // terminator
+        putLe<std::int16_t>(out, 0);
+        putLe<std::int16_t>(out, 0);
+        putLe<std::int16_t>(out, 8);
+        for (std::size_t i = 0; i < subs_.size(); ++i) {
+            put32(16 + 4 * i, static_cast<std::uint32_t>(out.size()));
+            out.insert(out.end(), subs_[i].begin(), subs_[i].end());
+        }
+        return out;
+    }
+
+  private:
+    Bytes timeline_;
+    std::vector<Bytes> subs_;
+};
+
+// EclRawInstrBulletArgs as eight words.
+struct BulletWords {
+    std::uint32_t w[8];
+};
+static BulletWords bulletWords(std::int16_t sprite, std::int16_t color, std::int32_t count1, std::int32_t count2,
+                               float speed1, float speed2, float angle1, float angle2, std::uint32_t flags) {
+    return {{static_cast<std::uint16_t>(sprite) | (static_cast<std::uint32_t>(static_cast<std::uint16_t>(color)) << 16),
+             static_cast<std::uint32_t>(count1), static_cast<std::uint32_t>(count2), fbits(speed1), fbits(speed2),
+             fbits(angle1), fbits(angle2), flags}};
+}
+#define BW(bw) {bw.w[0], bw.w[1], bw.w[2], bw.w[3], bw.w[4], bw.w[5], bw.w[6], bw.w[7]}
+
+// ---- synthetic game data (generated shapes, no game assets) ---------------------------
+
+static void paintDisc(Image& img, int x0, int y0, int size, std::array<std::uint8_t, 3> c) {
+    const float r = size * 0.5f - 0.5f;
+    for (int y = 0; y < size; ++y) {
+        for (int x = 0; x < size; ++x) {
+            const float dx = x - r, dy = y - r;
+            const float d = std::sqrt(dx * dx + dy * dy);
+            if (d > r) continue;
+            std::uint8_t* p = img.pixel(x0 + x, y0 + y);
+            const bool core = d < r * 0.45f;
+            p[0] = core ? 255 : c[0];
+            p[1] = core ? 255 : c[1];
+            p[2] = core ? 255 : c[2];
+            p[3] = 255;
+        }
+    }
+}
+static void paintBox(Image& img, int x0, int y0, int w, int h, std::array<std::uint8_t, 4> c) {
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) std::memcpy(img.pixel(x0 + x, y0 + y), c.data(), 4);
+    }
+}
+static Bytes ddsFromImage(const Image& img) {
+    std::vector<std::array<std::uint8_t, 4>> px;
+    for (int y = 0; y < img.height; ++y) {
+        for (int x = 0; x < img.width; ++x) {
+            const std::uint8_t* p = img.pixel(x, y);
+            px.push_back({p[0], p[1], p[2], p[3]});
+        }
+    }
+    return buildDdsArgb(img.width, img.height, px);
+}
+constexpr std::array<std::array<std::uint8_t, 3>, 8> kTestColors = {{
+    {200, 200, 200}, {230, 40, 60}, {240, 140, 30}, {240, 220, 40}, {60, 200, 80}, {40, 200, 220}, {60, 90, 240}, {170, 60, 230},
+}};
+
+// etama3.anm: 9 bullet types x 8 colours (16x16, ids type*8+colour), then 10 spawn-effect
+// scripts on 80 sprites. Script ids follow the real file (0..8 bullets, 11..20 effects).
+static Bytes syntheticEtama3() {
+    std::vector<AnmSprite> sprites;
+    for (std::uint32_t t = 0; t < 9; ++t) {
+        const float size = t == 0 ? 8.0f : 16.0f;  // pellets are 8x8
+        for (std::uint32_t c = 0; c < 8; ++c) sprites.push_back({t * 8 + c, c * 16.0f, t * 16.0f, size, size});
+    }
+    for (std::uint32_t j = 0; j < 80; ++j) sprites.push_back({72 + j, (j % 8) * 16.0f, ((j / 8) % 9) * 16.0f, 16, 16});
+    std::vector<AnmScriptBytes> scripts;
+    for (std::uint32_t t = 0; t < 9; ++t) {
+        AnmCode c;
+        c.ins(0, anm_op::SetSprite, {t * 8});
+        c.ins(0, anm_op::Static);
+        scripts.push_back({t, c.bytes});
+    }
+    for (std::uint32_t s = 11; s <= 20; ++s) {
+        AnmCode c;
+        c.ins(0, anm_op::SetSprite, {72 + 8 * (s - 11)});
+        c.ins(0, anm_op::BlendAdditive);
+        c.ins(0, anm_op::AlphaInterpLinear, {0, 8});
+        c.ins(8, anm_op::Delete);
+        scripts.push_back({s, c.bytes});
+    }
+    return buildAnmScripts(256, 256, "data/etama3.dds", sprites, scripts);
+}
+static Bytes syntheticEtama3Texture() {
+    Image img(128, 144);
+    for (int t = 0; t < 9; ++t) {
+        for (int c = 0; c < 8; ++c) paintDisc(img, c * 16, t * 16, t == 0 ? 8 : 16, kTestColors[static_cast<std::size_t>(c)]);
+    }
+    return ddsFromImage(img);
+}
+// etama4.anm: bubble bullets (32x32, 8 colours) and two spawn effects.
+static Bytes syntheticEtama4() {
+    std::vector<AnmSprite> sprites;
+    for (std::uint32_t c = 0; c < 8; ++c) sprites.push_back({c, (c % 4) * 32.0f, (c / 4) * 32.0f, 32, 32});
+    std::vector<AnmScriptBytes> scripts;
+    AnmCode bubble;
+    bubble.ins(0, anm_op::SetSprite, {0});
+    bubble.ins(0, anm_op::Static);
+    scripts.push_back({0, bubble.bytes});
+    for (std::uint32_t s = 1; s <= 2; ++s) {
+        AnmCode c;
+        c.ins(0, anm_op::SetSprite, {0});
+        c.ins(6, anm_op::Delete);
+        scripts.push_back({s, c.bytes});
+    }
+    return buildAnmScripts(256, 256, "data/etama4.dds", sprites, scripts);
+}
+static Bytes syntheticEtama4Texture() {
+    Image img(128, 64);
+    for (int c = 0; c < 8; ++c) paintDisc(img, (c % 4) * 32, (c / 4) * 32, 32, kTestColors[static_cast<std::size_t>(c)]);
+    return ddsFromImage(img);
+}
+// player00.anm: idle/moving scripts 0..4, shot 64, shot hit 96.
+static Bytes syntheticPlayer() {
+    const std::vector<AnmSprite> sprites = {{0, 0, 0, 32, 48}, {1, 32, 0, 16, 16}, {2, 48, 0, 16, 16}};
+    std::vector<AnmScriptBytes> scripts;
+    for (std::uint32_t s = 0; s <= 4; ++s) {
+        AnmCode c;
+        c.ins(0, anm_op::SetSprite, {0});
+        c.ins(0, anm_op::Static);
+        scripts.push_back({s, c.bytes});
+    }
+    AnmCode shot;
+    shot.ins(0, anm_op::SetSprite, {1});
+    shot.ins(0, anm_op::Alpha, {0xa0});
+    shot.ins(0, anm_op::Static);
+    scripts.push_back({64, shot.bytes});
+    AnmCode hit;
+    hit.ins(0, anm_op::SetSprite, {2});
+    hit.ins(0, anm_op::BlendAdditive);
+    hit.ins(0, anm_op::ScaleSpeed, {fbits(0.1f), fbits(0.1f)});
+    hit.ins(6, anm_op::Delete);
+    scripts.push_back({96, hit.bytes});
+    return buildAnmScripts(256, 256, "data/player00.dds", sprites, scripts);
+}
+static Bytes syntheticPlayerTexture() {
+    Image img(64, 48);
+    paintBox(img, 6, 4, 20, 40, {250, 240, 245, 255});
+    paintBox(img, 0, 16, 6, 24, {200, 30, 50, 255});
+    paintBox(img, 26, 16, 6, 24, {200, 30, 50, 255});
+    paintBox(img, 14, 20, 4, 4, {200, 30, 50, 255});
+    paintBox(img, 36, 0, 8, 16, {255, 180, 210, 255});
+    paintDisc(img, 48, 0, 16, {255, 160, 200});
+    return ddsFromImage(img);
+}
+// stg1enm.anm (offset 0x100): fairy (2-frame loop, script 0), spinner (script 1).
+static Bytes syntheticEnemy() {
+    const std::vector<AnmSprite> sprites = {{0, 0, 0, 32, 32}, {1, 32, 0, 32, 32}, {2, 64, 0, 64, 64}};
+    std::vector<AnmScriptBytes> scripts;
+    AnmCode fairy;
+    const std::uint32_t top = fairy.ins(0, anm_op::SetSprite, {0});
+    fairy.ins(8, anm_op::SetSprite, {1});
+    fairy.ins(16, anm_op::Jump, {top});
+    scripts.push_back({0, fairy.bytes});
+    AnmCode spinner;
+    spinner.ins(0, anm_op::SetSprite, {2});
+    spinner.ins(0, anm_op::RotationSpeed, {fbits(0.0f), fbits(0.0f), fbits(0.05f)});
+    spinner.ins(1, anm_op::Halt);  // halted VMs keep rotating; a static one would freeze
+    scripts.push_back({1, spinner.bytes});
+    return buildAnmScripts(256, 256, "data/stg1enm.dds", sprites, scripts);
+}
+static Bytes syntheticEnemyTexture() {
+    Image img(128, 64);
+    paintDisc(img, 0, 0, 32, {90, 140, 255});
+    paintDisc(img, 32, 0, 32, {120, 170, 255});
+    for (int y = 0; y < 64; ++y) {
+        for (int x = 0; x < 64; ++x) {
+            if (std::abs(x - 32) + std::abs(y - 32) <= 30) std::memcpy(img.pixel(64 + x, y), "\xf0\x60\xa0\xff", 4);
+        }
+    }
+    return ddsFromImage(img);
+}
+static Bytes syntheticEnemy2() {
+    const std::vector<AnmSprite> sprites = {{64, 0, 0, 16, 16}};
+    AnmCode c;
+    c.ins(0, anm_op::SetSprite, {64});
+    c.ins(0, anm_op::Static);
+    return buildAnmScripts(256, 256, "data/stg1enm2.dds", sprites, {{64, c.bytes}});
+}
+
+// ecldata1.ecl: ten fairies firing aimed fans and rings, then a spinner shooting a
+// rotating 12-way ring and aimed big bullets until it is shot down.
+static Bytes syntheticStageEcl() {
+    EclBuilder e;
+    for (int k = 0; k < 10; ++k) {
+        e.spawn(static_cast<std::int16_t>(20 + 50 * k), k % 2 ? timeline_op::EnemyCreateMirror : timeline_op::EnemyCreate,
+                0, k % 2 ? 288.0f : 96.0f, -8.0f, 40, -1, 300);
+    }
+    e.spawn(600, timeline_op::EnemyCreate, 1, 192.0f, -24.0f, 1500, -1, 10000);
+
+    e.sub();  // 0: fairy
+    e.ins(0, ecl_op::AnmSetMain, {0});
+    e.ins(0, ecl_op::MoveAxisSpeed, {fbits(0.0f), fbits(1.2f), fbits(0.0f)});
+    const BulletWords fan = bulletWords(3, 1, 3, 2, 3.0f, 2.0f, 0.0f, 0.3f, ExSpawnEffectShort);
+    e.ins(40, ecl_op::BulletFanAimed, BW(fan));
+    e.ins(80, ecl_op::MoveAxisSpeed, {fbits(1.5f), fbits(0.6f), fbits(0.0f)});
+    const BulletWords ring = bulletWords(1, 5, 8, 1, 2.0f, 1.0f, 0.0f, 0.0f, 0);
+    e.ins(100, ecl_op::BulletCircle, BW(ring));
+    e.ins(400, ecl_op::EnemyDelete);
+
+    e.sub();  // 1: spinner
+    e.ins(0, ecl_op::AnmSetMain, {1});
+    e.ins(0, ecl_op::MoveAxisSpeed, {fbits(0.0f), fbits(2.0f), fbits(0.0f)});
+    e.ins(40, ecl_op::MoveAxisSpeed, {fbits(0.0f), fbits(0.0f), fbits(0.0f)});
+    const std::uint32_t loop = e.ins(40, ecl_op::SetInt, {static_cast<std::uint32_t>(kI0), 0});
+    const BulletWords spin = bulletWords(0, 3, 12, 1, 1.8f, 1.0f, static_cast<float>(kF0), 0.0f, 0);
+    e.ins(40, ecl_op::BulletCircle, BW(spin));
+    e.ins(40, ecl_op::MathFloatAdd, {static_cast<std::uint32_t>(kF0), fbits(static_cast<float>(kF0)), fbits(0.2f)});
+    const BulletWords big = bulletWords(6, 1, 3, 1, 2.5f, 1.0f, 0.0f, 0.3f, ExSpawnEffect);
+    e.ins(44, ecl_op::BulletFanAimed, BW(big));
+    e.ins(48, ecl_op::Jump, {40, e.to(loop)});
+    return e.build();
+}
+
+static Bytes syntheticStageArchive() {
+    return buildPbg3({{"player00.anm", syntheticPlayer()},
+                      {"player00.dds", syntheticPlayerTexture()},
+                      {"etama3.anm", syntheticEtama3()},
+                      {"etama3.dds", syntheticEtama3Texture()},
+                      {"etama4.anm", syntheticEtama4()},
+                      {"etama4.dds", syntheticEtama4Texture()},
+                      {"stg1enm.anm", syntheticEnemy()},
+                      {"stg1enm.dds", syntheticEnemyTexture()},
+                      {"stg1enm2.anm", syntheticEnemy2()},
+                      {"stg1enm2.dds", syntheticEnemyTexture()},
+                      {"ecldata1.ecl", syntheticStageEcl()}});
+}
+
+// A World with the synthetic bullet/player art loaded straight from bytes.
+struct TestWorld {
+    TextureLibrary lib;
+    ZunRng rng{0};
+    AnmManager anm{lib, rng};
+    std::unique_ptr<BulletManager> bullets = std::make_unique<BulletManager>();
+    std::unique_ptr<EnemyManager> enemies = std::make_unique<EnemyManager>();
+    Player player;
+    GameState state;
+    UnportedFeatures unported;
+    EclFile ecl;
+    World world;
+    bool ok = true;
+
+    TestWorld() {
+        const std::uint16_t tex = lib.add("synthetic", 256, 256, [] { return std::optional<Image>(Image(256, 256)); });
+        std::string err;
+        ok = anm.loadAnmFromBytes(syntheticPlayer(), tex, kAnmFilePlayer, kAnmOffsetPlayer, &err) &&
+             anm.loadAnmFromBytes(syntheticEtama3(), tex, kAnmFileBullet3, kAnmOffsetBullet3, &err) &&
+             anm.loadAnmFromBytes(syntheticEtama4(), tex, kAnmFileBullet4, kAnmOffsetBullet4, &err) &&
+             anm.loadAnmFromBytes(syntheticEnemy(), tex, kAnmFileEnemy, kAnmOffsetEnemy, &err);
+        if (!ok) std::fprintf(stderr, "  TestWorld: %s\n", err.c_str());
+        world.anm = &anm;
+        world.bullets = bullets.get();
+        world.enemies = enemies.get();
+        world.player = &player;
+        world.ecl = &ecl;
+        world.state = &state;
+        world.rng = &rng;
+        world.unported = &unported;
+        state.setDifficulty(Normal);
+        ok = ok && bullets->initializeTemplates(world, &err);
+        player.reset(world);
+    }
+};
+
+namespace {
+struct RecordingSink final : SpriteSink {
+    struct Item {
+        std::uint16_t texture;
+        Blend blend;
+        SpriteInstance s;
+    };
+    std::vector<Item> items;
+    void draw(std::uint16_t texture, Blend blend, const SpriteInstance& s) override { items.push_back({texture, blend, s}); }
+};
+struct RecordingSound final : SoundSink {
+    std::vector<int> played;
+    void playSound(int idx) override { played.push_back(idx); }
+};
+struct RecordingBackend final : SampleBackend {
+    struct Play {
+        int voice, sample;
+        float gain;
+    };
+    std::vector<Play> plays;
+    int loads = 0;
+    bool loadSample(int, const std::uint8_t*, std::size_t) override { return ++loads, true; }
+    void playSample(int voice, int sample, float gain) override { plays.push_back({voice, sample, gain}); }
+};
+}  // namespace
+
+static bool near(float a, float b, float eps = 1e-5f) { return std::fabs(a - b) <= eps; }
 
 // ---- tests ---------------------------------------------------------------------------
 
@@ -481,7 +924,9 @@ static void testAnmAndVfs() {
         CHECK(anm->imageName == "data/etama3.png");
         CHECK(anm->alphaName == "data/etama3_a.png");
         CHECK(anm->textureWidth == 64 && anm->sprites[2].h == 48.0f);
-        CHECK(anm->scriptIds.size() == 1 && anm->scriptIds[0] == 7);
+        CHECK(anm->scripts.size() == 1 && anm->scripts[0].id == 7 && anm->scripts[0].firstSprite == 1);
+        CHECK(anm->scriptFirstSprite(7) == 1 && anm->scriptFirstSprite(99) == -1);
+        CHECK(anm->spriteIndexById(2) == 2 && anm->spriteIndexById(50) == -1);
     }
     Bytes broken = anmBytes;
     broken[0] = 0xff;  // absurd sprite count
@@ -558,156 +1003,504 @@ static void testMappedFileAndDirectory() {
     fs::remove_all(dir);
 }
 
-static void testObjectPool() {
-    struct Obj {
-        int value;
-        int pad[7];
-    };
-    using Pool = ObjectPool<Obj, 1000>;
-    auto pool = std::make_unique<Pool>();
+static void testZunMath() {
+    // Rng::GetRandomU16 of the 2002 executable, from seed 0 (reference values computed
+    // independently from the published algorithm).
+    ZunRng rng(0);
+    CHECK(rng.u16() == 0xC374);
+    CHECK(rng.u16() == 0xBFC7);
+    ZunRng a(0x1234), b(0x1234);
+    const std::uint32_t hi = b.u16(), lo = b.u16();
+    CHECK(a.u32() == ((hi << 16) | lo));  // high half first
+    CHECK(a.generations() == 2);
+    ZunRng c(7);
+    const float f = c.f32InRange(10.0f);
+    CHECK(f >= 0.0f && f <= 10.0f);
 
-    Pool::Handle h1;
-    CHECK(pool->spawnTracked(h1, Obj{1, {}}) != nullptr);
-    CHECK(pool->release(h1));
-    CHECK(!pool->release(h1));  // double release is rejected
-    Pool::Handle h2;
-    pool->spawnTracked(h2, Obj{2, {}});
-    CHECK(h2.slot == h1.slot);  // slot reused...
-    CHECK(pool->get(h1) == nullptr && pool->get(h2) != nullptr);  // ...old handle is stale
-    pool->clear();
-    CHECK(pool->empty() && !pool->alive(h2));
+    CHECK(near(addNormalizeAngle(kZunPi, 0.5f), 0.5f - kZunPi));
+    CHECK(near(addNormalizeAngle(-3.0f * kZunPi, 0.25f), 0.25f - kZunPi, 1e-4f));
+    CHECK(std::isfinite(addNormalizeAngle(1e9f, 0.0f)));  // bounded loop: returns even for absurd input
+    Vec3f v;
+    sincosmul(v, kZunHalfPi, 2.0f);
+    CHECK(near(v.x, 0.0f) && near(v.y, 2.0f));
 
-    for (int i = 0; i < 1000; ++i) CHECK(pool->spawn(Obj{i, {}}) != nullptr);
-    CHECK(pool->full() && pool->spawn(Obj{-1, {}}) == nullptr);
-    pool->clear();
-
-    // Randomised comparison against a std::map model.
-    std::map<int, Pool::Handle> model;
-    Rng rng(12345);
-    int next = 0;
-    bool consistent = true;
-    for (int step = 0; step < 200000; ++step) {
-        const std::uint32_t r = rng.next() % 100;
-        if (r < 55) {
-            Pool::Handle h;
-            if (pool->spawnTracked(h, Obj{next, {}})) {
-                model[next] = h;
-            } else {
-                consistent = consistent && model.size() == Pool::capacity();
-            }
-            ++next;
-        } else if (r < 92) {
-            if (model.empty()) continue;
-            auto it = model.begin();
-            std::advance(it, static_cast<long>(rng.next() % model.size()));
-            const Pool::Handle h = it->second;
-            consistent = consistent && pool->release(h) && !pool->alive(h);
-            model.erase(it);
-        } else {
-            const int k = static_cast<int>(rng.next() % 5);
-            const std::size_t removed = pool->removeIf([k](Obj& o) { return o.value % 5 == k; });
-            std::size_t expected = 0;
-            for (auto it = model.begin(); it != model.end();) {
-                if (it->first % 5 == k) {
-                    it = model.erase(it);
-                    ++expected;
-                } else {
-                    ++it;
-                }
-            }
-            consistent = consistent && removed == expected;
-        }
-        if (step % 997 == 0) {
-            consistent = consistent && pool->size() == model.size();
-            long long poolSum = 0, modelSum = 0;
-            pool->forEach([&](Obj& o) { poolSum += o.value; });
-            for (const auto& [v, h] : model) {
-                modelSum += v;
-                const Obj* o = pool->get(h);
-                consistent = consistent && o && o->value == v;
-            }
-            consistent = consistent && poolSum == modelSum;
-        }
-    }
-    CHECK(consistent);
+    GameState gs;
+    gs.setDifficulty(Easy);
+    CHECK(gs.rank == 16 && gs.minRank == 12 && gs.maxRank == 20);
+    gs.increaseSubrank(1000);
+    CHECK(gs.rank == 20);  // clamped
+    gs.setDifficulty(Normal);
+    CHECK(gs.rankLerpInt(0, 32) == 16 && near(gs.rankLerpFloat(-0.5f, 0.5f), 0.0f));
+    CHECK(colorCombineAlpha(0x00123456u, 0x80ffffffu) == 0x80123456u);
+    CHECK(argbToRgbaBytes(0x80112233u) == 0x80332211u);
 }
 
-namespace {
-struct CountingSound final : SoundSink {
-    int plays = 0;
-    void play(Sfx) override { ++plays; }
-};
-struct CountingSink final : SpriteSink {
-    std::size_t sprites = 0;
-    void draw(std::uint16_t, Blend, const SpriteInstance&) override { ++sprites; }
-};
-}  // namespace
-
-static Game::Stats simulate(int ticks, int* soundPlays, std::size_t* rendered, std::size_t* peakFromOutside) {
+static void testAnmVm() {
     TextureLibrary lib;
-    CountingSound sound;
-    auto game = std::make_unique<Game>(buildGameArt(nullptr, lib), &sound);
-    std::size_t peak = 0;
-    for (int t = 0; t < ticks; ++t) {
-        InputState in;
-        in.shoot = true;
-        in.left = (t / 90) % 2 == 0;
-        in.right = !in.left;
-        in.up = (t / 200) % 3 == 0;
-        in.focus = (t / 300) % 2 == 1;
-        in.bomb = t == 700;
-        game->tick(in);
-        peak = std::max(peak, game->stats().bullets);
-    }
-    CountingSink sink;
-    game->render(sink, HudInfo{60.0f, 3});
-    if (soundPlays) *soundPlays = sound.plays;
-    if (rendered) *rendered = sink.sprites;
-    if (peakFromOutside) *peakFromOutside = peak;
-    return game->stats();
-}
+    ZunRng rng(0);
+    AnmManager anm(lib, rng);
+    const std::uint16_t tex = lib.add("vm-test", 256, 256, [] { return std::optional<Image>(Image(256, 256)); });
+    const std::vector<AnmSprite> sprites = {{0, 0, 0, 16, 16}, {1, 16, 0, 16, 16}, {2, 32, 0, 16, 16}, {3, 48, 0, 32, 16}};
 
-static void testBulletCapacity() {
-    auto bm = std::make_unique<BulletManager>();
-    for (int i = 0; i < 200; ++i) bm->ring({192, 100}, 64, 0.0f, 5.0f, 0);  // 12800 requests
-    CHECK(bm->size() == BulletManager::kCapacity);
-    CHECK(bm->dropped() == 12800 - BulletManager::kCapacity);
-    const auto r = bm->tick({192, 100}, 1.5f, 16.0f, true);  // invulnerable: no hits/grazes
-    CHECK(!r.hit && r.grazes == 0 && bm->size() == BulletManager::kCapacity);
-    for (int t = 0; t < 200; ++t) bm->tick({0, 0}, 1.5f, 16.0f, true);
-    CHECK(bm->size() == 0);  // everything left the field and was culled
-    bm->ring({192, 100}, 10, 0.0f, 1.0f, 0);
-    CHECK(bm->size() == 10);  // pool fully reusable after saturation
-}
+    AnmCode s0;
+    s0.ins(0, anm_op::SetSprite, {1});
+    s0.ins(0, anm_op::Alpha, {0x40});
+    s0.ins(0, anm_op::AlphaInterpLinear, {0xc0, 4});
+    const std::uint32_t loopBack = s0.ins(2, anm_op::SetSprite, {2});
+    s0.ins(3, anm_op::Halt);
+    s0.ins(3, anm_op::InterruptLabel, {7});
+    s0.ins(3, anm_op::SetSprite, {3});
+    s0.ins(6, anm_op::Jump, {loopBack});
+    AnmCode s1;
+    s1.ins(0, anm_op::SetSprite, {0});
+    s1.ins(1, anm_op::Delete);
+    AnmCode s2;  // catch-all interrupt label
+    s2.ins(0, anm_op::SetSprite, {0});
+    s2.ins(0, anm_op::Halt);
+    s2.ins(0, anm_op::InterruptLabel, {static_cast<std::uint32_t>(-1)});
+    s2.ins(0, anm_op::SetSprite, {2});
+    s2.ins(0, anm_op::Static);
 
-static void testGameSimulation() {
     std::string err;
-    CHECK(fontSelfTest(&err));
+    constexpr int kOff = 0x100;
+    CHECK(anm.loadAnmFromBytes(buildAnmScripts(256, 256, "x.dds", sprites, {{0, s0.bytes}, {1, s1.bytes}, {2, s2.bytes}}),
+                               tex, 8, kOff, &err));
+    CHECK(anm.hasScript(kOff) && anm.hasScript(kOff + 2) && !anm.hasScript(kOff + 3));
+    CHECK(anm.sprite(kOff + 3) && anm.sprite(kOff + 3)->widthPx == 32.0f && near(anm.sprite(kOff + 3)->u0, 48.0f / 256));
 
-    TextureLibrary lib;
-    const GameArt art = buildGameArt(nullptr, lib);
-    CHECK(art.bullets.size() == 8 && !art.bulletsFromGameData);
-    for (std::uint16_t id = 0; id < lib.size(); ++id) {
-        auto img = lib.build(id);
-        CHECK(img && img->width == lib.width(id) && img->height == lib.height(id));
+    AnmVm vm;
+    anm.setAndExecuteScript(vm, kOff);  // frame 0 runs inside
+    CHECK(vm.activeSpriteIndex == kOff + 1 && vm.visible);
+    CHECK((vm.color >> 24) == 0x60);  // 0x40 -> 0xc0 over 4 frames, one frame done
+    CHECK(vm.timeInScript == 1);
+    anm.executeScript(vm);  // 1
+    CHECK((vm.color >> 24) == 0x80 && vm.activeSpriteIndex == kOff + 1);
+    anm.executeScript(vm);  // 2: sprite 2
+    CHECK(vm.activeSpriteIndex == kOff + 2 && (vm.color >> 24) == 0xa0);
+    anm.executeScript(vm);  // 3: halt
+    CHECK(vm.stopped && (vm.color >> 24) == 0xc0 && vm.timeInScript == 3);
+    CHECK(anm.executeScript(vm) == 0 && vm.timeInScript == 3 && vm.activeSpriteIndex == kOff + 2);  // still halted
+    vm.pendingInterrupt = 7;
+    anm.executeScript(vm);  // resumes after "label 7" at its time (3)
+    CHECK(vm.activeSpriteIndex == kOff + 3 && vm.pendingInterrupt == 0 && !vm.stopped && vm.timeInScript == 4);
+    anm.executeScript(vm);  // 4
+    anm.executeScript(vm);  // 5
+    CHECK(vm.activeSpriteIndex == kOff + 3);
+    anm.executeScript(vm);  // 6: jump back to the time-2 instruction
+    CHECK(vm.activeSpriteIndex == kOff + 2 && vm.timeInScript == 3);
+    anm.executeScript(vm);
+    CHECK(vm.stopped && vm.timeInScript == 3);  // halted again
+
+    vm.pendingInterrupt = 9;  // no such label, no catch-all: the VM stays put
+    anm.executeScript(vm);
+    CHECK(vm.activeSpriteIndex == kOff + 2 && vm.timeInScript == 3 && vm.pendingInterrupt == 0);
+
+    AnmVm del;
+    anm.setAndExecuteScript(del, kOff + 1);
+    CHECK(del.visible && anm.executeScript(del) == 1 && !del.visible && del.currentInstruction == nullptr);
+    CHECK(anm.executeScript(del) == 1);
+
+    AnmVm any;
+    anm.setAndExecuteScript(any, kOff + 2);
+    any.pendingInterrupt = 5;
+    anm.executeScript(any);
+    CHECK(any.activeSpriteIndex == kOff + 2);  // took the -1 label
+
+    AnmVm missing;
+    anm.setAndExecuteScript(missing, kOff + 50);
+    CHECK(!missing.visible && anm.executeScript(missing) == 1);
+
+    // Drawing (Draw2 / Draw3 / Draw and the D3D blend states).
+    RecordingSink sink;
+    AnmVm d;
+    anm.setAndExecuteScript(d, kOff + 2);  // sprite 0, then halted
+    d.pos = {100.4f, 50.6f, 0.0f};
+    anm.beginFrame();
+    anm.drawWorld(sink, d, kGameRegionX, kGameRegionY);
+    CHECK(sink.items.size() == 1);
+    if (!sink.items.empty()) {
+        const auto& it = sink.items[0];
+        CHECK(it.texture == tex && it.blend == Blend::Alpha);
+        CHECK(it.s.x == 132.0f && it.s.y == 67.0f && it.s.w == 16.0f && it.s.h == 16.0f);  // rint, 256 * 16/256
+        CHECK(it.s.angle == 0.0f && it.s.color == 0xffffffffu);
+    }
+    d.rotation.z = 0.5f;
+    d.additive = true;
+    d.colorAdd = true;
+    d.color = 0x80ff0000u;
+    anm.drawWorld(sink, d, kGameRegionX, kGameRegionY);
+    CHECK(sink.items.size() == 2);
+    if (sink.items.size() == 2) {
+        const auto& it = sink.items[1];
+        CHECK(it.blend == Blend::AdditiveColorAdd && near(it.s.x, 132.4f, 1e-4f) && it.s.angle == -0.5f);
+        CHECK(it.s.color == 0x800000ffu);  // ARGB -> bytes R,G,B,A
+    }
+    d.anchor = AnmAnchor::TopLeft;
+    d.rotation = {};
+    d.scaleX = 2.0f;
+    anm.drawScreen(sink, d);  // DrawNoRotation
+    CHECK(sink.items.size() == 3 && sink.items[2].s.w == 32.0f && sink.items[2].s.x == 116.0f);
+    d.color = 0;
+    anm.drawWorld(sink, d, 0, 0);
+    CHECK(sink.items.size() == 3);  // fully transparent colour is skipped
+
+    // UV cache: texture coordinates refresh only when the sprite changes between draws.
+    AnmVm scrollA, scrollB;
+    anm.setAndExecuteScript(scrollA, kOff + 2);
+    anm.setAndExecuteScript(scrollB, kOff + 2);
+    scrollA.uvScrollX = 0.25f;
+    anm.beginFrame();
+    anm.drawWorld(sink, scrollA, 0, 0);
+    anm.drawWorld(sink, scrollB, 0, 0);
+    CHECK(sink.items.size() == 5 && sink.items[3].s.u0 == 0.25f && sink.items[4].s.u0 == 0.25f);
+
+    // Releasing a slot forgets its sprites and scripts.
+    anm.releaseAnm(8);
+    CHECK(!anm.fileLoaded(8) && !anm.hasScript(kOff) && anm.sprite(kOff) == nullptr);
+}
+
+static void testEclVm() {
+    TestWorld tw;
+    CHECK(tw.ok);
+    if (!tw.ok) return;
+    EclBuilder e;
+    e.spawn(0, timeline_op::EnemyCreate, 0, 192.0f, 100.0f, 50, -1, 1000);
+    e.spawn(1, timeline_op::EnemyCreate, 3, 50.0f, 50.0f, 10, -1, 0);
+    e.spawn(2, timeline_op::EnemyCreateMirror, 1, 200.0f, 100.0f, 10, -1, 0);
+
+    e.sub();  // 0
+    e.ins(0, ecl_op::SetInt, {static_cast<std::uint32_t>(kI0), 3});
+    e.ins(0, ecl_op::SetFloat, {static_cast<std::uint32_t>(kF0), fbits(1.5f)});
+    e.ins(0, ecl_op::SetInt, {static_cast<std::uint32_t>(kI2), 99}, 0x1d);  // all but Normal: skipped
+    e.ins(0, ecl_op::SetInt, {static_cast<std::uint32_t>(kI3), 42}, 0x02);  // Normal only
+    const BulletWords ring = bulletWords(3, 2, 4, 1, static_cast<float>(kF0), 1.0f, 0.0f, 0.0f, 0);
+    const std::uint32_t fire = e.ins(1, ecl_op::BulletCircle, BW(ring));
+    e.ins(3, ecl_op::Loop, {1, e.to(fire), static_cast<std::uint32_t>(kI0)});
+    e.ins(3, ecl_op::Call, {2, 7, fbits(2.5f)});
+    e.ins(3, ecl_op::CmpInt, {static_cast<std::uint32_t>(kI0), 0});
+    const std::uint32_t incAt = e.ins(3, ecl_op::MathInc, {5});
+    e.ins(10, ecl_op::EnemyDelete);
+
+    e.sub();  // 1: moves (and must not fall through into sub 2)
+    e.ins(0, ecl_op::MoveAxisSpeed, {fbits(1.0f), fbits(0.5f), fbits(0.0f)});
+    e.ins(1000, ecl_op::EnemyDelete);
+
+    e.sub();  // 2: called with int0 = 7, float0 = 2.5
+    e.ins(0, ecl_op::MathFloatAdd, {static_cast<std::uint32_t>(kF1), fbits(static_cast<float>(kF0)), fbits(10.0f)});
+    e.ins(0, ecl_op::MovePosition, {fbits(static_cast<float>(kF1)), fbits(200.0f), fbits(0.0f)});
+    e.ins(0, ecl_op::MathIntMul, {static_cast<std::uint32_t>(kI1), static_cast<std::uint32_t>(kI0), 3});
+    e.ins(0, ecl_op::SetInt, {static_cast<std::uint32_t>(kEnemyLife), static_cast<std::uint32_t>(kI1)});
+    e.ins(0, ecl_op::Ret);
+
+    e.sub();  // 3: jumps to itself forever
+    e.ins(0, ecl_op::Jump, {0, 0});
+
+    std::string err;
+    CHECK(tw.ecl.load(e.build(), &err));
+    CHECK(tw.ecl.subCount() == 4);
+    EnemyManager& em = *tw.enemies;
+    em.startStage(tw.world);
+    Enemy& a = em.enemy(0);
+
+    em.update(tw.world);  // frame 0: spawn (runs time 0), then the frame's run (time 1: fire)
+    // Timeline time 0 is a multiple of the subrank interval: rank 16 -> 17 before anything
+    // spawns, so bullet speeds get +17/32 - 0.5 = +0.03125.
+    CHECK(tw.state.rank == 17);
+    const float speed = 1.5f + tw.state.rankLerpFloat(-0.5f, 0.5f);
+    CHECK(speed == 1.53125f);
+    CHECK(em.activeCount() == 1 && a.slotOccupied && a.life == 50 && a.score == 1000);
+    CHECK(a.ctx.int0 == 3 && near(a.ctx.float0, 1.5f) && a.ctx.int2 == 0 && a.ctx.int3 == 42);
+    CHECK(a.ctx.time == 2 && tw.bullets->activeCount() == 4);
+    const float angles[4] = {0.0f, kZunHalfPi, kZunPi, -kZunHalfPi};
+    for (int i = 0; i < 4; ++i) {
+        const Bullet& b = tw.bullets->at(i);
+        CHECK(b.state == Fired && b.speed == speed && near(b.angle, angles[i], 1e-5f));
+        CHECK(near(b.velocity.x, speed * std::cos(angles[i])) && near(b.velocity.y, speed * std::sin(angles[i])));
+        CHECK(b.pos.x == 192.0f && b.pos.y == 100.0f);
     }
 
-    int plays = 0;
-    std::size_t rendered = 0, peak = 0;
-    const Game::Stats s = simulate(4 * 600 + 120, &plays, &rendered, &peak);
-    std::printf("  simulation: %llu ticks, peak %zu bullets, grazes %u, hits %u, bombs %u, %d sounds, %zu sprites drawn\n",
-                static_cast<unsigned long long>(s.ticks), s.peakBullets, s.grazes, s.hits, s.bombs, plays, rendered);
-    CHECK(s.ticks == 4 * 600 + 120);
-    CHECK(s.peakBullets == peak);
-    CHECK(s.peakBullets > 2000);  // density phase actually stresses the pool
-    CHECK(s.dropped == 0);        // ...without ever exceeding it
-    CHECK(s.bombs == 1);
-    CHECK(plays > 0);
-    CHECK(rendered > s.bullets);
+    em.update(tw.world);  // frame 1: the runaway sub is removed by the instruction guard
+    CHECK(em.activeCount() == 1 && !em.timelineFinished());
+    em.update(tw.world);  // frame 2: loop 1 of 2 jumps back, fires again; mirrored enemy spawns
+    CHECK(tw.bullets->activeCount() == 8 && a.ctx.int0 == 2 && em.activeCount() == 2 && em.timelineFinished());
+    Enemy& m = em.enemy(1);
+    CHECK(m.mirrored && m.position.x == 199.0f && m.position.y == 100.5f);  // moved in its first frame
+    em.update(tw.world);  // 3
+    em.update(tw.world);  // 4: last jump
+    CHECK(tw.bullets->activeCount() == 12 && a.ctx.int0 == 1);
+    em.update(tw.world);  // 5
+    em.update(tw.world);  // 6: loop ends, call, return, compare, self-modifying increment
+    CHECK(tw.bullets->activeCount() == 12 && a.ctx.int0 == 0 && a.stackDepth == 0);
+    CHECK(near(a.position.x, 12.5f) && a.position.y == 200.0f);  // float0 + 10 via a float var ref
+    CHECK(a.life == 21);                                         // int0 * 3 written to ENEMY_LIFE
+    CHECK(a.ctx.compareRegister == 0 && a.ctx.time == 4);
+    CHECK(tw.ecl.argAt<std::int32_t>(tw.ecl.subOffset(0) + incAt, 0) == 6);  // the script edited itself
+    CHECK(m.position.x == 195.0f && m.position.y == 102.5f);
+    for (int f = 7; f <= 12; ++f) em.update(tw.world);
+    CHECK(a.slotOccupied);
+    em.update(tw.world);  // 13: time 10, delete
+    CHECK(!a.slotOccupied && em.activeCount() == 1);
+    CHECK(em.instructionsExecuted() > 30);
 
-    const Game::Stats again = simulate(4 * 600 + 120, nullptr, nullptr, nullptr);
-    CHECK(again.bullets == s.bullets && again.grazes == s.grazes && again.hits == s.hits &&
-          again.peakBullets == s.peakBullets);  // deterministic
+    // Files that would make the VM read out of bounds are rejected up front.
+    Bytes bad = e.build();
+    bad[16] = 0xff;  // sub 0 offset far past the end
+    bad[17] = 0xff;
+    EclFile f;
+    CHECK(!f.load(bad, &err));
+    Bytes unterminated(40, 0);
+    unterminated[0] = 1;   // one sub, at 20
+    unterminated[4] = 20;  // timeline at 20: a record with time 5 and size 0
+    unterminated[16] = 20;
+    unterminated[20] = 5;
+    CHECK(!f.load(unterminated, &err));
+}
+
+static void testBullets() {
+    TestWorld tw;
+    CHECK(tw.ok);
+    if (!tw.ok) return;
+    BulletManager& bm = *tw.bullets;
+    // Player spawns at (192, 384): straight below a shooter at (192, 100).
+    CHECK(tw.player.positionCenter.x == 192.0f && tw.player.positionCenter.y == 384.0f);
+    EnemyShooter s;
+    s.sprite = 3;
+    s.color = 1;
+    s.position = {192.0f, 100.0f, 0.0f};
+    s.aimMode = FanAimed;
+    s.count1 = 3;
+    s.count2 = 2;
+    s.speed1 = 3.0f;
+    s.speed2 = 2.0f;
+    s.angle1 = 0.0f;
+    s.angle2 = 0.2f;
+    bm.spawnBulletPattern(tw.world, s);
+    CHECK(bm.activeCount() == 6);
+    const float fan[3] = {kZunHalfPi, kZunHalfPi - 0.2f, kZunHalfPi + 0.2f};
+    for (int i = 0; i < 6; ++i) {
+        const Bullet& b = bm.at(i);
+        CHECK(near(b.angle, fan[i % 3], 1e-5f) && near(b.speed, i < 3 ? 3.0f : 2.5f));
+        CHECK(b.sprites.spriteBullet.activeSpriteIndex == kAnmOffsetBullet3 + 3 * 8 + 1);  // type 3, colour 1
+        CHECK(b.sprites.grazeSize.x == 6.0f);
+    }
+    s.count1 = 2;
+    s.count2 = 1;
+    bm.spawnBulletPattern(tw.world, s);
+    CHECK(near(bm.at(6).angle, kZunHalfPi + 0.1f) && near(bm.at(7).angle, kZunHalfPi - 0.1f));
+
+    // Movement + interpolation state.
+    const Vec3f before = bm.at(0).pos;
+    bm.update(tw.world);
+    CHECK(bm.at(0).prevPos.y == before.y && near(bm.at(0).pos.y, before.y + 3.0f, 1e-4f));
+
+    // removeAllBullets(false): each bullet plays its cancel (donut) animation, then frees
+    // its slot; the synthetic donut scripts end at script time 8.
+    bm.removeAllBullets(false);
+    CHECK(bm.activeCount() == 8 && bm.at(0).state == Despawning);
+    for (int f = 0; f < 8; ++f) bm.update(tw.world);
+    CHECK(bm.activeCount() == 0);
+    // Spawn effects delay firing until their ANM script ends (here at script time 8).
+
+    s.aimMode = Circle;
+    s.count1 = 1;
+    s.count2 = 1;
+    s.flags = ExSpawnEffectShort;
+    bm.spawnBulletPattern(tw.world, s);
+    int firstFired = -1;
+    for (int f = 0; f < 20 && firstFired < 0; ++f) {
+        bm.update(tw.world);
+        for (int i = 0; i < BulletManager::kMaxBullets; ++i) {
+            if (bm.at(i).state == Fired) firstFired = f;
+        }
+    }
+    CHECK(firstFired == 7);  // the template VM already ran its first frame, as in the original
+    bm.removeAllBullets(true);
+
+    // The original's fixed 640 slots: a 700-way ring fills them and stops.
+    s.flags = 0;
+    s.count1 = 700;
+    bm.spawnBulletPattern(tw.world, s);
+    CHECK(bm.activeCount() == BulletManager::kMaxBullets && bm.spawnFailures() == 1 && bm.peakCount() >= 6);
+    bm.removeAllBullets(true);
+    CHECK(bm.activeCount() == 0);
+
+    // Off-screen bullets are culled.
+    s.count1 = 1;
+    s.speed1 = s.speed2 = 8.0f;
+    s.aimMode = Fan;
+    s.angle1 = -kZunHalfPi;  // up
+    s.angle2 = 0.0f;
+    bm.spawnBulletPattern(tw.world, s);
+    for (int f = 0; f < 120; ++f) bm.update(tw.world);
+    CHECK(bm.activeCount() == 0);
+}
+
+static void testSoundQueue() {
+    RecordingBackend backend;
+    SoundPlayer sp(&backend);
+    sp.playSound(5);
+    sp.playSound(5);  // same SoundIdx twice in a frame: once
+    sp.playSound(2);
+    sp.playSound(7);
+    sp.playSound(9);  // queue of 3 is full: dropped
+    sp.playSound(99);
+    sp.flush();
+    CHECK(backend.plays.size() == 3);
+    if (backend.plays.size() == 3) {
+        CHECK(backend.plays[0].voice == 5 && backend.plays[0].sample == 3);
+        CHECK(backend.plays[1].voice == 2 && backend.plays[1].sample == 1);
+        CHECK(backend.plays[2].voice == 7 && backend.plays[2].sample == 5);
+        CHECK(near(backend.plays[0].gain, std::pow(10.0f, -500.0f / 2000.0f)));
+    }
+    sp.flush();
+    CHECK(backend.plays.size() == 3);  // the queue was emptied
+    CHECK(std::string(SoundPlayer::sampleFile(0)) == "plst00.wav" && SoundPlayer::sampleForSound(28) == 22);
+}
+
+static void testFixedTimestep() {
+    using FT = FixedTimestep;
+    const FT::Fine tick = FT::Tick(1);
+    CHECK(tick.count() == 50'000'000);  // 1/60 s in 1/3e9 s units: exact
+
+    // 60 Hz with vsync jitter: exactly one tick per frame, no interpolation.
+    FT c60;
+    c60.setDisplay(60, true);
+    int ticks = 0;
+    bool oneEach = true, alphaOne = true;
+    const std::chrono::microseconds jitter[4] = {std::chrono::microseconds(300), std::chrono::microseconds(-300),
+                                                 std::chrono::microseconds(450), std::chrono::microseconds(-120)};
+    for (int f = 0; f < 600; ++f) {
+        const int n = c60.advanceBy(tick + FT::Fine(jitter[f % 4]));
+        oneEach = oneEach && n == 1;
+        alphaOne = alphaOne && c60.alpha() == 1.0f;
+        ticks += n;
+    }
+    CHECK(ticks == 600 && oneEach && alphaOne);
+
+    // 120 Hz: a tick every second frame, rendered at alpha 0.5 then 1.
+    FT c120;
+    c120.setDisplay(120, true);
+    bool pattern = true;
+    ticks = 0;
+    for (int f = 0; f < 240; ++f) {
+        const int n = c120.advanceBy(FT::Fine(25'000'000));
+        ticks += n;
+        pattern = pattern && n == (f % 2 == 0 ? 1 : 0) && c120.alpha() == (f % 2 == 0 ? 0.5f : 1.0f);
+    }
+    CHECK(ticks == 120 && pattern);
+
+    // 90 Hz and 144 Hz: frame boundaries from real (rounded) timestamps.
+    for (const int hz : {90, 144}) {
+        FT c;
+        c.setDisplay(hz, true);
+        ticks = 0;
+        bool alphaOk = true;
+        std::int64_t prev = 0;
+        const int frames = hz * 10;
+        for (int f = 1; f <= frames; ++f) {
+            const std::int64_t now = static_cast<std::int64_t>(std::llround(f * 3e9 / hz));
+            ticks += c.advanceBy(FT::Fine(now - prev));
+            prev = now;
+            alphaOk = alphaOk && c.alpha() > 0.0f && c.alpha() <= 1.0f;
+        }
+        CHECK(ticks == 600 && alphaOk);  // 10 s of display time = 600 ticks, whatever the rate
+    }
+
+    // No vsync, 100 Hz loop: still 60 ticks per second, no drift.
+    FT noVsync;
+    noVsync.setDisplay(60, false);
+    ticks = 0;
+    for (int f = 0; f < 1000; ++f) ticks += noVsync.advanceBy(std::chrono::milliseconds(10));
+    CHECK(ticks == 600);
+    CHECK(noVsync.untilNextTick() >= FT::Fine::zero());
+
+    // A long stall runs at most 4 ticks (the game slows down instead of spiralling).
+    CHECK(noVsync.advanceBy(std::chrono::seconds(1)) == FT::kMaxTicksPerFrame && noVsync.alpha() == 1.0f);
+}
+
+static void testStageFromArchive() {
+    const Bytes archive = syntheticStageArchive();
+    dumpIfRequested("SYNTH_ST.DAT", archive);
+
+    auto run = [&](int ticks, RecordingSink* sink, std::string* error) {
+        struct Result {
+            bool ready;
+            std::uint32_t score, grazes, deaths;
+            int peakBullets;
+            std::uint64_t instructions;
+            std::size_t draws;
+            int stage;
+            std::size_t unported;
+            std::size_t bulletDraws, enemyDraws, playerDraws;
+        } r{};
+        Vfs vfs;
+        vfs.mount(open("SYNTH_ST.DAT", archive));
+        TextureLibrary lib;
+        const UiArt ui = registerUiArt(lib);
+        RecordingBackend backend;
+        SoundPlayer sound(&backend);
+        Stage stage(lib, ui, &vfs, &sound);
+        r.ready = stage.load(1, Normal);
+        if (!r.ready) {
+            if (error) *error = stage.error();
+            return r;
+        }
+        for (int t = 0; t < ticks; ++t) {
+            InputState in;
+            in.shoot = true;
+            const int phase = (t / 60) % 4;  // sweep the player across the field
+            in.left = phase == 1;
+            in.right = phase == 3;
+            stage.tick(in);
+            if (sink && t % 120 == 119) stage.render(*sink, 0.5f, HudInfo{60.0f, 3});
+        }
+        r.score = stage.state().score;
+        r.grazes = stage.state().grazes;
+        r.deaths = stage.state().deaths;
+        r.peakBullets = stage.bullets().peakCount();
+        r.instructions = stage.enemies().instructionsExecuted();
+        r.draws = sink ? sink->items.size() : 0;
+        if (sink) {
+            for (const auto& it : sink->items) {
+                const std::string& n = lib.name(it.texture);
+                r.bulletDraws += n.starts_with("data/etama");
+                r.enemyDraws += n.starts_with("data/stg1enm");
+                r.playerDraws += n.starts_with("data/player00");
+            }
+        }
+        r.stage = stage.stageNumber();
+        r.unported = stage.unported().counts().size();
+        for (const auto& [name, n] : stage.unported().counts()) {
+            if (name != "items" && name != "particle effects") std::fprintf(stderr, "  unexpected unported: %s\n", name.c_str());
+        }
+        return r;
+    };
+
+    std::string err;
+    RecordingSink sink;
+    const auto a = run(1500, &sink, &err);
+    CHECK(a.ready);
+    if (!a.ready) {
+        std::fprintf(stderr, "  stage: %s\n", err.c_str());
+        return;
+    }
+    CHECK(a.instructions > 300);
+    CHECK(a.peakBullets > 20);
+    CHECK(a.score > 0);  // shot enemies (damage score and kills)
+    CHECK(a.bulletDraws > 20 && a.enemyDraws > 0 && a.playerDraws > 0);
+    CHECK(a.unported <= 2);
+    const auto b = run(1500, nullptr, nullptr);
+    CHECK(a.score == b.score && a.grazes == b.grazes && a.deaths == b.deaths && a.peakBullets == b.peakBullets &&
+          a.instructions == b.instructions);  // deterministic
+
+    // Without the 2002 archives the stage refuses to start and says why.
+    Vfs empty;
+    TextureLibrary lib;
+    Stage none(lib, registerUiArt(lib), &empty, nullptr);
+    CHECK(!none.load(1, Normal) && !none.error().empty());
+    RecordingSink msg;
+    none.render(msg, 1.0f, HudInfo{});
+    CHECK(msg.items.size() > 10);
 }
 
 int main() {
@@ -723,9 +1516,13 @@ int main() {
         {"image decoding (PNG, DDS, BC1, colour key, mask)", testImages},
         {"ANM sprite tables + VFS", testAnmAndVfs},
         {"mmap / fd fallback / directory mounting", testMappedFileAndDirectory},
-        {"object pool vs reference model", testObjectPool},
-        {"bullet pool saturation and reuse", testBulletCapacity},
-        {"headless game simulation", testGameSimulation},
+        {"ZUN RNG, angles, rank", testZunMath},
+        {"ANM VM: bytecode, interrupts, drawing", testAnmVm},
+        {"ECL VM: timeline, subs, vars, calls, masks", testEclVm},
+        {"bullets: aim modes, spawn effects, 640 slots", testBullets},
+        {"sound queue (PlaySoundByIdx / PlaySounds)", testSoundQueue},
+        {"fixed 60 Hz timestep at 60/90/120/144 Hz", testFixedTimestep},
+        {"whole stage from a synthetic PBG3 archive", testStageFromArchive},
     };
     for (const Test& t : tests) {
         const int before = g_failures;
