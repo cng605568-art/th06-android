@@ -4,12 +4,14 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
 
 #include "io/Archive.hpp"
+#include "io/MappedFile.hpp"
 
 namespace th06 {
 
@@ -37,12 +39,20 @@ class Vfs {
 
     static std::string normalize(std::string_view path);
 
+    // The player's game executable(s), kept as files of their own (not archive members): the
+    // engine reads a few data tables from the 1.02h executable. Candidates are Windows
+    // programs of plausible size; which one is the game is decided by its checksum.
+    void addExecutable(std::string name, std::unique_ptr<MappedFile> file);
+    std::vector<std::span<const std::uint8_t>> executables() const;
+    static bool looksLikeGameExecutable(std::span<const std::uint8_t> bytes);
+
   private:
     struct Ref {
         const Archive* archive;
         std::size_t index;
     };
     std::vector<std::unique_ptr<Archive>> archives_;
+    std::vector<std::pair<std::string, std::unique_ptr<MappedFile>>> executables_;
     std::unordered_map<std::string, Ref> index_;
 };
 

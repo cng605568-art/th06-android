@@ -90,6 +90,13 @@ public class GameActivity extends SDLActivity {
         return out;
     }
 
+    /** Launcher choices: {shot type 0..3, difficulty 0..3, stage 1..7 (7 = Extra)}. */
+    public static int[] getGameOptions() {
+        Context ctx = SDL.getContext();
+        if (ctx == null) return new int[] {0, 1, 1};
+        return new int[] {GameOptions.shotType(ctx), GameOptions.difficulty(ctx), GameOptions.stage(ctx)};
+    }
+
     /** Opens one selected archive read-only; ownership of the fd passes to native code. */
     public static int openDataSource(String uri) {
         Context ctx = SDL.getContext();
