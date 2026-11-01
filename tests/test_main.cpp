@@ -1320,12 +1320,45 @@ static void testEclVm() {
     bad[17] = 0xff;
     EclFile f;
     CHECK(!f.load(bad, &err));
-    Bytes unterminated(40, 0);
-    unterminated[0] = 1;   // one sub, at 20
-    unterminated[4] = 20;  // timeline at 20: a record with time 5 and size 0
-    unterminated[16] = 20;
-    unterminated[20] = 5;
-    CHECK(!f.load(unterminated, &err));
+    // The game's own files put the timeline last and end it with only the 4-byte start of a
+    // record (time -1): only `time` is ever read there.
+    {
+        Bytes real;
+        auto put16 = [&](std::int16_t v) { putLe<std::int16_t>(real, v); };
+        auto put32 = [&](std::uint32_t v) { putLe<std::uint32_t>(real, v); };
+        put16(1);   // subCount
+        put16(1);   // mainCount
+        put32(20 + 16);  // timeline after the sub
+        put32(0);
+        put32(0);
+        put32(20);  // sub 0
+        // sub 0: one 12-byte instruction (delete at time 100) + 4 padding
+        putLe<std::int32_t>(real, 100);
+        put16(ecl_op::EnemyDelete);
+        put16(12);
+        put32(0x0000ff00u);
+        put32(0);
+        // timeline: one spawn at frame 3, then the short terminator ending the file
+        put16(3);
+        put16(0);
+        put16(timeline_op::EnemyCreate);
+        put16(28);
+        for (int i = 0; i < 5; ++i) put32(0);
+        put16(-1);
+        put16(0);
+        EclFile g;
+        CHECK(g.load(real, &err) && g.timelineRecords() == 1 && g.timelineEnd() == real.size() - 4);
+        TimelineInstr t;
+        TimelineInstrArgs args;
+        CHECK(g.timelineAt(g.timelineEnd(), t, args) && t.time == -1 && t.size == 0);
+    }
+    // A damaged chain (record of size 0) is cut off there instead of rejecting the file.
+    Bytes damaged(40, 0);
+    damaged[0] = 1;   // one sub, at 20
+    damaged[4] = 20;  // timeline at 20: a record with time 5 and size 0
+    damaged[16] = 20;
+    damaged[20] = 5;
+    CHECK(f.load(damaged, &err) && f.timelineRecords() == 0 && f.timelineEnd() == 20);
 }
 
 static void testBullets() {

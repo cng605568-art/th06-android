@@ -148,6 +148,9 @@ class EclFile {
     // Offset of a sub's first instruction, or 0 if the id is invalid.
     std::uint32_t subOffset(int subId) const;
     std::uint32_t timelineOffset() const { return timelineOffset_; }
+    // Where the usable timeline ends (its terminator, or where a damaged chain stops).
+    std::uint32_t timelineEnd() const { return timelineEnd_; }
+    int timelineRecords() const { return timelineRecords_; }
 
     // Bounds-checked reads; return false when the record would run past the file.
     bool instrAt(std::uint32_t offset, EclRawInstr& out) const;
@@ -173,6 +176,8 @@ class EclFile {
     std::vector<std::uint8_t> bytes_;
     std::vector<std::uint32_t> subOffsets_;
     std::uint32_t timelineOffset_ = 0;
+    std::uint32_t timelineEnd_ = 0;
+    int timelineRecords_ = 0;
 };
 
 }  // namespace th06

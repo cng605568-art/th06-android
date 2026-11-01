@@ -1071,7 +1071,7 @@ void EnemyManager::runTimeline(World& world) {
 
     TimelineInstr t;
     TimelineInstrArgs args;
-    while (ecl.timelineAt(timelineInstr_, t, args) && t.time >= 0) {
+    while (timelineInstr_ < ecl.timelineEnd() && ecl.timelineAt(timelineInstr_, t, args) && t.time >= 0) {
         if (timelineTime_ == t.time) {
             Vec3f pos{std::bit_cast<float>(args.uintVar1), std::bit_cast<float>(args.uintVar2),
                       std::bit_cast<float>(args.uintVar3)};
@@ -1143,7 +1143,7 @@ void EnemyManager::runTimeline(World& world) {
         }
         timelineInstr_ += static_cast<std::uint32_t>(t.size);
     }
-    if (ecl.timelineAt(timelineInstr_, t, args) && t.time < 0) timelineFinished_ = true;
+    if (timelineInstr_ >= ecl.timelineEnd()) timelineFinished_ = true;
 }
 
 void EnemyManager::update(World& world) {

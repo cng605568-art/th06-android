@@ -75,7 +75,10 @@ bool Stage::load(int stageNumber, int difficulty) {
         error_ = std::string(kEclFiles[s]) + " NOT FOUND";
         return false;
     }
-    if (!need(ecl_.load(std::move(*eclBytes), &err), "ECL")) return false;
+    if (!ecl_.load(std::move(*eclBytes), &err)) {
+        error_ = std::string(kEclFiles[s]) + " - " + err;
+        return false;
+    }
     world_.ecl = &ecl_;
 
     state_.setDifficulty(difficulty);
