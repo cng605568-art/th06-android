@@ -71,6 +71,11 @@ extract() {
 
 fetch "$SDL2_URL" "$DL/SDL2-${SDL2_VERSION}.tar.gz" "$SDL2_SHA256"
 extract "$DL/SDL2-${SDL2_VERSION}.tar.gz" "$TP/SDL2" "$SDL2_SHA256"
+# SDL's sample Android project ships its own Gradle wrapper. This project never runs it
+# (CI uses a pinned Gradle), and CI's wrapper-validation check rejects unknown wrapper
+# jars anywhere in the checkout, so remove them on every run.
+rm -rf "$TP/SDL2/android-project/gradle" "$TP/SDL2/android-project/gradlew" "$TP/SDL2/android-project/gradlew.bat"
+find "$TP" -name 'gradle-wrapper.jar' -delete
 
 fetch "$ZSTD_URL" "$DL/zstd-${ZSTD_VERSION}.tar.gz" "$ZSTD_SHA256"
 extract "$DL/zstd-${ZSTD_VERSION}.tar.gz" "$TP/zstd" "$ZSTD_SHA256"
