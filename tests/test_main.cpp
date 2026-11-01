@@ -410,7 +410,7 @@ static Bytes buildAnmScripts(int texW, int texH, const std::string& image, const
 // ECL variable ids.
 enum : std::int32_t {
     kI0 = -10001, kI1 = -10002, kI2 = -10003, kI3 = -10004, kF0 = -10005, kF1 = -10006, kF2 = -10007,
-    kEnemyLife = -10024,
+    kF3 = -10008, kIC1 = -10010, kEnemyLife = -10024, kPlayerShot = -10025,
 };
 
 // ECL file: header, sub table, timeline 0, subs. Instructions are
@@ -736,8 +736,16 @@ static Bytes syntheticPlayerTexture() {
 }
 // stg1enm.anm (offset 0x100): fairy (2-frame loop, script 0), spinner (script 1).
 static Bytes syntheticEnemy() {
-    const std::vector<AnmSprite> sprites = {{0, 0, 0, 32, 32}, {1, 32, 0, 32, 32}, {2, 64, 0, 64, 64}};
+    const std::vector<AnmSprite> sprites = {{0, 0, 0, 32, 32}, {1, 32, 0, 32, 32}, {2, 64, 0, 64, 64}, {3, 0, 32, 32, 32}};
     std::vector<AnmScriptBytes> scripts;
+    // Stage 6 boss scripts the bat transformation starts: 160 back to normal, 161 the left
+    // pose, 165 the bat form.
+    for (const auto& [id, sprite] : {std::pair<std::uint32_t, std::uint32_t>{160, 2}, {161, 1}, {165, 3}}) {
+        AnmCode c;
+        c.ins(0, anm_op::SetSprite, {sprite});
+        c.ins(0, anm_op::Static);
+        scripts.push_back({id, c.bytes});
+    }
     AnmCode fairy;
     const std::uint32_t top = fairy.ins(0, anm_op::SetSprite, {0});
     fairy.ins(8, anm_op::SetSprite, {1});
@@ -3431,6 +3439,16 @@ static void testStageBackground() {
         bg.draw(tw.world, sink, SpriteRegion{}, 1.0f, false);
         CHECK(!sink.quads.empty());
     }
+    // Time stop: script, camera and the spell fade hold; the spell background turns dark red.
+    {
+        tw.state.timeStop = 1;
+        const std::int32_t time = bg.scriptTime();
+        const float z = bg.cameraPosition().z;
+        for (int f = 0; f < 5; ++f) bg.update(tw.world);
+        CHECK(bg.scriptTime() == time && bg.cameraPosition().z == z && bg.spellCounter() == 0);
+        CHECK(bg.spellColor() == 0x60803030u);
+        tw.state.timeStop = 0;
+    }
     for (int f = 0; f < 61; ++f) bg.update(tw.world);
     CHECK(bg.spell() == StageBackground::Spell::FullyOn && bg.spellCounter() == 61);
     {
@@ -3557,6 +3575,446 @@ static void testMusic() {
     std::filesystem::remove_all(dir, ec);
 }
 
+// ---- ECL ex-instructions -------------------------------------------------------------
+
+static std::uint32_t vid(std::int32_t v) { return static_cast<std::uint32_t>(v); }
+static float wrapAngle(float a) { return addNormalizeAngle(a, 0.0f); }
+static bool nearAngle(float a, float b, float eps = 1e-4f) { return std::fabs(wrapAngle(a - b)) <= eps; }
+
+// One bullet of `type` (3 ball and 0 pellet are small in the synthetic files, 9 bubble is
+// large) at (x, y), fired straight away.
+static void exBullet(TestWorld& tw, std::int16_t type, float x, float y, float speed, std::int16_t color = 0) {
+    EnemyShooter s;
+    s.sprite = type;
+    s.color = color;
+    s.position = {x, y, 0.0f};
+    s.aimMode = Fan;
+    s.count1 = s.count2 = 1;
+    s.speed1 = s.speed2 = speed;
+    tw.bullets->spawnBulletPattern(tw.world, s);
+}
+
+static void testExTimeStop() {
+    TestWorld tw;
+    CHECK(tw.ok);
+    if (!tw.ok) return;
+    tw.state.shotType = 2;  // Marisa A
+    EclBuilder e;
+    e.spawn(0, timeline_op::EnemyCreate, 0, 192.0f, 100.0f, 500, -1, 0);
+    e.sub();
+    e.ins(0, ecl_op::ExInsCall, {3});                         // Patchouli's spells
+    e.ins(0, ecl_op::SetInt, {vid(kI0), vid(kPlayerShot)});   // the shot-type variable
+    e.ins(0, ecl_op::ExInsCall, {4, 1});                      // time stops
+    e.ins(2, ecl_op::ExInsCall, {4, 2});                      // large bullets turn green
+    e.ins(4, ecl_op::ExInsCall, {4, 0});                      // time resumes
+    e.ins(1000, ecl_op::EnemyDelete);
+    std::string err;
+    CHECK(tw.ecl.load(e.build(), &err));
+    EnemyManager& em = *tw.enemies;
+    BulletManager& bm = *tw.bullets;
+    em.startStage(tw.world);
+
+    // Slot 0 small, 1 a bubble already green, 2 a despawning bubble, then 100 bubbles: 90
+    // far from the player at (192, 384), 10 within 128 px of her.
+    exBullet(tw, 3, 300.0f, 60.0f, 1.0f);
+    exBullet(tw, 9, 60.0f, 60.0f, 1.0f, 5);
+    exBullet(tw, 9, 60.0f, 90.0f, 1.0f);
+    bm.at(2).state = Despawning;
+    for (int i = 0; i < 90; ++i) exBullet(tw, 9, 20.0f + static_cast<float>(i % 10) * 36.0f, 40.0f + static_cast<float>(i / 10) * 20.0f, 1.0f + static_cast<float>(i % 3));
+    for (int i = 0; i < 10; ++i) exBullet(tw, 9, 150.0f + static_cast<float>(i) * 10.0f, 330.0f, 1.5f);
+    CHECK(bm.activeCount() == 103);
+
+    em.update(tw.world);  // spawn: time 0 (and time 1)
+    Enemy& boss = em.enemy(0);
+    CHECK(boss.ctx.int1 == 1 && boss.ctx.int2 == 0 && boss.ctx.int3 == 0);  // ex 3 then ex 4's I2 reset
+    CHECK(boss.ctx.int0 == 2);
+    CHECK(tw.state.timeStop == 1 && tw.effects->activeCount() == 1);  // the white flash
+    CHECK(boss.phaseTimer == 0);
+
+    // Frozen passes: bullets, the player and the screen shake hold still.
+    const Vec3f held = bm.at(5).pos;
+    bm.update(tw.world);
+    CHECK(bm.at(5).pos.x == held.x && bm.at(5).pos.y == held.y && bm.at(5).prevPos.y == held.y);
+    InputState right;
+    right.right = true;
+    const Vec3f playerAt = tw.player.positionCenter;
+    tw.player.update(tw.world, right);
+    CHECK(tw.player.positionCenter.x == playerAt.x && tw.player.prevPosition.x == playerAt.x);
+    {
+        ScreenShake shake;
+        shake.add(10, 8.0f, 0.0f);
+        const std::uint32_t gens = tw.rng.generations();
+        for (int f = 0; f < 3; ++f) shake.update(tw.world);
+        CHECK(tw.rng.generations() == gens && shake.activeCount() == 1 && tw.state.playfieldX == kGameRegionX);
+        const std::int8_t stopped = tw.state.timeStop;
+        tw.state.timeStop = 0;
+        for (int f = 0; f < 9; ++f) shake.update(tw.world);
+        CHECK(shake.activeCount() == 1 && tw.rng.generations() == gens + 9 * 4);  // resumed with all 10 frames left
+        shake.update(tw.world);
+        CHECK(shake.activeCount() == 0);
+        tw.state.timeStop = stopped;
+        tw.state.resetPlayfield();
+    }
+
+    // Mode 2: up to 14 (Normal) large, not-yet-green, live bullets pass a 1-in-4 draw each.
+    ZunRng sim = tw.rng;
+    struct Pick {
+        int slot;
+        float angle;
+    };
+    std::vector<Pick> picks;
+    for (int i = 3; i < 103 && picks.size() < 14; ++i) {
+        if (sim.u16() % 4 != 0) continue;
+        const Bullet& b = bm.at(i);
+        const float dx = b.pos.x - 192.0f, dy = b.pos.y - 384.0f;
+        const float a = std::sqrt(dx * dx + dy * dy) > 128.0f ? sim.f32InRange(kZunPi * 3.0f / 4.0f) + kZunPi / 4.0f
+                                                              : std::atan2(dy, dx) + kZunHalfPi + sim.f32InRange(kZunTwoPi);
+        picks.push_back({i, a});
+    }
+    CHECK(picks.size() == 14);
+    std::vector<Vec3f> velocities(103);
+    for (int i = 0; i < 103; ++i) velocities[static_cast<std::size_t>(i)] = bm.at(i).velocity;
+    em.update(tw.world);  // time 2
+    CHECK(tw.rng.currentSeed() == sim.currentSeed() && tw.rng.generations() == sim.generations());
+    CHECK(boss.phaseTimer == 0 && boss.ctx.time == 3);  // spell timers stand still
+    int green = 0;
+    for (int i = 3; i < 103; ++i) green += bm.at(i).color == 5;
+    CHECK(green == 14);
+    for (const Pick& p : picks) {
+        const Bullet& b = bm.at(p.slot);
+        CHECK(b.color == 5 && b.sprites.spriteBullet.activeSpriteIndex == b.sprites.spriteBullet.baseSpriteIndex + 5);
+        CHECK(b.angle == p.angle);
+        CHECK(near(b.velocity.x, std::cos(p.angle) * b.speed) && near(b.velocity.y, std::sin(p.angle) * b.speed));
+    }
+    CHECK(bm.at(0).color == 0 && bm.at(2).color == 0);
+    CHECK(bm.at(picks[0].slot).pos.x == bm.at(picks[0].slot).prevPos.x);  // still frozen
+
+    em.update(tw.world);  // time 3
+    em.update(tw.world);  // time 4: time resumes
+    CHECK(tw.state.timeStop == 0 && boss.phaseTimer == 1 && tw.effects->activeCount() == 2);
+    const Bullet& moved = bm.at(picks[0].slot);
+    const Vec3f before = moved.pos;
+    bm.update(tw.world);
+    CHECK(near(moved.pos.x, before.x + moved.velocity.x, 1e-4f) && near(moved.pos.y, before.y + moved.velocity.y, 1e-4f));
+    tw.player.update(tw.world, right);
+    CHECK(tw.player.positionCenter.x > playerAt.x);
+
+    // Hard and up: 52 picks, and far bullets scatter over the whole circle.
+    TestWorld hard;
+    hard.state.setDifficulty(Hard);
+    EclBuilder h;
+    h.spawn(0, timeline_op::EnemyCreate, 0, 192.0f, 100.0f, 500, -1, 0);
+    h.sub();
+    h.ins(0, ecl_op::ExInsCall, {4, 7});
+    h.ins(1000, ecl_op::EnemyDelete);
+    CHECK(hard.ecl.load(h.build(), &err));
+    hard.enemies->startStage(hard.world);
+    for (int i = 0; i < 300; ++i) exBullet(hard, 9, 20.0f + static_cast<float>(i % 20) * 18.0f, 30.0f + static_cast<float>(i / 20) * 10.0f, 1.0f);
+    sim = hard.rng;
+    int hardPicks = 0;
+    for (int i = 0; i < 300 && hardPicks < 52; ++i) {
+        if (sim.u16() % 4 != 0) continue;
+        const float a = sim.f32InRange(kZunTwoPi);
+        CHECK(hard.bullets->at(i).color == 0);
+        ++hardPicks;
+        (void)a;
+    }
+    hard.enemies->update(hard.world);  // the spawn step only (time 1 has nothing)
+    int hardGreen = 0;
+    for (int i = 0; i < 300; ++i) hardGreen += hard.bullets->at(i).color == 5;
+    CHECK(hardPicks == 52 && hardGreen == 52 && hard.rng.generations() == sim.generations());
+    CHECK(hard.state.timeStop == 0);  // mode >= 2 never touches the flag
+}
+
+static void testExPatterns() {
+    std::string err;
+    // Ex 2: a pentagram of radius 50 traced over 12 steps (fires on steps 0 and 6).
+    {
+        TestWorld tw;
+        RecordingSound sound;
+        tw.world.sound = &sound;
+        EclBuilder e;
+        e.spawn(0, timeline_op::EnemyCreate, 0, 192.0f, 100.0f, 500, -1, 0);
+        e.sub();
+        e.ins(0, ecl_op::ShootDisable);
+        const BulletWords one = bulletWords(3, 2, 1, 1, 2.0f, 1.0f, 0.0f, 0.0f, 0);
+        e.ins(0, ecl_op::BulletFan, BW(one));
+        e.ins(0, ecl_op::SetInt, {vid(kI3), 12});
+        e.ins(0, ecl_op::SetFloat, {vid(kF3), fbits(50.0f)});
+        e.ins(0, ecl_op::ExInsRepeat, {2});
+        e.ins(1000, ecl_op::EnemyDelete);
+        CHECK(tw.ecl.load(e.build(), &err));
+        tw.enemies->startStage(tw.world);
+        ZunRng sim = tw.rng;
+        tw.enemies->update(tw.world);  // steps 0 and 1
+        Enemy& en = tw.enemies->enemy(0);
+        const float s1 = en.bulletProps.speed1, s2 = en.bulletProps.speed2;
+        CHECK(s2 > 0.9f && en.ctx.int2 == 2 && tw.bullets->activeCount() == 5);
+        std::array<float, 6> a{};
+        const float a0 = sim.f32InRange(kZunTwoPi) - kZunPi;
+        a[0] = wrapAngle(a0 + kZunPi * 4.0f / 5.0f);
+        for (int j = 1; j < 6; ++j) a[static_cast<std::size_t>(j)] = wrapAngle(a[static_cast<std::size_t>(j - 1)] + kZunPi * 4.0f / 5.0f);
+        for (int i = 0; i < 5; ++i) {
+            const Bullet& b = tw.bullets->at(i);
+            const float ai = a[static_cast<std::size_t>(i)];
+            CHECK(near(b.pos.x, 192.0f + std::cos(ai) * 50.0f, 1e-3f) && near(b.pos.y, 100.0f + std::sin(ai) * 50.0f, 1e-3f));
+            CHECK(nearAngle(b.angle, static_cast<float>(2 - i) * kZunPi / 12.0f));
+            CHECK(b.speed == sim.f32InRange(s2) + s1);
+        }
+        CHECK(tw.rng.generations() == sim.generations());
+        CHECK(std::count(sound.played.begin(), sound.played.end(), 22) == 1);
+        CHECK(en.bulletProps.speed1 == s1);  // restored after each record
+        for (int f = 2; f <= 12; ++f) tw.enemies->update(tw.world);
+        CHECK(en.ctx.int2 == 12 && en.ctx.funcSet == -1 && tw.bullets->activeCount() == 10);
+        CHECK(std::count(sound.played.begin(), sound.played.end(), 22) == 2);
+        // Step 6: the centre has moved 5% of the way to the player, points 1/5 along their edges.
+        const Vec3f c{192.0f, 100.0f + 284.0f * 0.05f, 0.0f};
+        for (int i = 0; i < 5; ++i) {
+            const float ai = a[static_cast<std::size_t>(i)], an = a[static_cast<std::size_t>(i + 1)];
+            const float x = c.x + std::cos(ai) * 50.0f + (std::cos(an) - std::cos(ai)) * 50.0f * 0.2f;
+            const float y = c.y + std::sin(ai) * 50.0f + (std::sin(an) - std::sin(ai)) * 50.0f * 0.2f;
+            const Bullet& b = tw.bullets->at(5 + i);
+            CHECK(near(b.pos.x, x, 1e-3f) && near(b.pos.y, y, 1e-3f));
+            CHECK(nearAngle(b.angle, static_cast<float>(2 - i) * kZunPi / 6.0f));
+        }
+    }
+    // Ex 5: dagger arcs, one volley every 9 steps.
+    for (const int difficulty : {Normal, Hard}) {
+        TestWorld tw;
+        RecordingSound sound;
+        tw.world.sound = &sound;
+        tw.state.setDifficulty(difficulty);
+        EclBuilder e;
+        e.spawn(0, timeline_op::EnemyCreate, 0, 192.0f, 100.0f, 500, -1, 0);
+        e.sub();
+        e.ins(0, ecl_op::ExInsRepeat, {5});
+        e.ins(1000, ecl_op::EnemyDelete);
+        CHECK(tw.ecl.load(e.build(), &err));
+        tw.enemies->startStage(tw.world);
+        const std::uint32_t gens = tw.rng.generations();
+        tw.enemies->update(tw.world);  // steps 0 and 1
+        const int perOrigin = difficulty == Hard ? 3 : 1;
+        CHECK(tw.bullets->activeCount() == 9 * perOrigin && tw.rng.generations() == gens);
+        const Vec3f pc = tw.player.positionCenter;
+        const Vec3f d = pc - Vec3f{192.0f, 100.0f, 0.0f};
+        const Vec3f u = d / d.length();
+        const float radius = 256.0f * std::sqrt(u.x * u.x + u.y * u.y);
+        for (int volley = 0; volley < 2; ++volley) {
+            const float s = 0.5f - static_cast<float>(volley) * 0.5f / 9.0f;
+            const float reach = volley == 1 ? -256.0f : 256.0f;
+            const Vec3f anchor = Vec3f{192.0f, 100.0f, 0.0f} + d * s + u * reach;
+            const float away = std::atan2(-u.y * reach, -u.x * reach);
+            for (int i = 0; i < 9; ++i) {
+                const Bullet& b = tw.bullets->at((volley * 9 + i) * perOrigin);
+                const float dir = away - kZunPi / 4.0f + static_cast<float>(i + 1) * kZunPi / 18.0f;
+                CHECK(near(b.pos.x, anchor.x + std::cos(dir) * radius, 2e-3f) && near(b.pos.y, anchor.y + std::sin(dir) * radius, 2e-3f));
+                CHECK(b.color == 3 && b.speed == 2.0f && b.state == Fired);
+                CHECK(b.sprites.spriteBullet.activeSpriteIndex == kAnmOffsetBullet3 + 16 + 8 * 8 + 3);
+                const float aim = std::atan2(pc.y - b.pos.y, pc.x - b.pos.x);
+                const float offset = volley == 1 && difficulty != Hard ? -kZunPi / 4.0f + static_cast<float>(i) * kZunPi / 18.0f : 0.0f;
+                CHECK(nearAngle(b.angle, aim + offset, 1e-3f));
+            }
+            if (volley == 0) {
+                for (int f = 2; f <= 8; ++f) tw.enemies->update(tw.world);
+                CHECK(tw.bullets->activeCount() == 9 * perOrigin);
+                tw.enemies->update(tw.world);  // step 9
+                CHECK(tw.bullets->activeCount() == 18 * perOrigin);
+            }
+        }
+        CHECK(std::count(sound.played.begin(), sound.played.end(), 7) == 2);
+    }
+    // Ex 13: four copies of the record around the playfield centre, every 6th call.
+    {
+        TestWorld tw;
+        EclBuilder e;
+        e.spawn(0, timeline_op::EnemyCreate, 0, 192.0f, 100.0f, 500, -1, 0);
+        e.sub();
+        e.ins(0, ecl_op::ShootDisable);
+        const BulletWords one = bulletWords(3, 2, 1, 1, 1.0f, 1.0f, 0.0f, 0.0f, 0);
+        e.ins(0, ecl_op::BulletFan, BW(one));
+        e.ins(0, ecl_op::SetFloat, {vid(kF1), fbits(0.1f)});
+        e.ins(0, ecl_op::SetFloat, {vid(kF2), fbits(0.5f)});
+        e.ins(0, ecl_op::SetFloat, {vid(kF3), fbits(100.0f)});
+        e.ins(0, ecl_op::ExInsCall, {13, 4});
+        e.ins(1, ecl_op::ExInsCall, {13, 4});
+        e.ins(1000, ecl_op::EnemyDelete);
+        CHECK(tw.ecl.load(e.build(), &err));
+        tw.enemies->startStage(tw.world);
+        tw.enemies->update(tw.world);
+        Enemy& en = tw.enemies->enemy(0);
+        CHECK(tw.bullets->activeCount() == 4 && en.ctx.int3 == 2);
+        CHECK(en.bulletProps.position.x == 192.0f && en.bulletProps.position.y == 100.0f && en.bulletProps.angle1 == 0.0f);
+        for (int j = 0; j < 4; ++j) {
+            const Bullet& b = tw.bullets->at(j);
+            const float t = 0.5f + static_cast<float>(j) * kZunHalfPi;
+            CHECK(near(b.pos.x, 192.0f + std::cos(t) * 100.0f, 1e-3f) && near(b.pos.y, 224.0f + std::sin(t) * 100.0f, 1e-3f));
+            CHECK(nearAngle(b.angle, t + 0.1f));
+        }
+    }
+    // Ex 16: Flandre's parameters from her life (and two minutes of phase time).
+    {
+        TestWorld tw;
+        EclBuilder e;
+        e.spawn(0, timeline_op::EnemyCreate, 0, 192.0f, 100.0f, 3000, -1, 0);
+        e.sub();
+        e.ins(0, ecl_op::ExInsCall, {16, 0});
+        e.ins(1, ecl_op::ExInsCall, {16, 1});
+        e.ins(2, ecl_op::ExInsCall, {16, 0});
+        e.ins(1000, ecl_op::EnemyDelete);
+        CHECK(tw.ecl.load(e.build(), &err));
+        tw.enemies->startStage(tw.world);
+        ZunRng sim = tw.rng;
+        Enemy& en = tw.enemies->enemy(0);
+        tw.enemies->update(tw.world);  // times 0 and 1
+        CHECK(en.ctx.counter1 == 160);
+        const float f2 = sim.f32InRange(240.0f) + 72.0f;
+        const float f3 = sim.f32InRange(96.0f) + 48.0f;
+        CHECK(en.ctx.float2 == f2 && en.ctx.float3 == f3 && f2 >= 72.0f && f2 <= 312.0f && f3 >= 48.0f && f3 <= 144.0f);
+        CHECK(tw.rng.generations() == sim.generations());
+        en.phaseTimer = 7200;
+        tw.enemies->update(tw.world);  // time 2: counts as no life left
+        CHECK(en.ctx.float3 == 2.0f && en.ctx.counter1 == 40);
+        // The same at full life on mode 0.
+        TestWorld full;
+        EclBuilder g;
+        g.spawn(0, timeline_op::EnemyCreate, 0, 192.0f, 100.0f, 3000, -1, 0);
+        g.sub();
+        g.ins(0, ecl_op::ExInsCall, {16, 0});
+        g.ins(1000, ecl_op::EnemyDelete);
+        CHECK(full.ecl.load(g.build(), &err));
+        full.enemies->startStage(full.world);
+        full.enemies->update(full.world);
+        CHECK(full.enemies->enemy(0).ctx.float3 == 1.5f && full.enemies->enemy(0).ctx.counter1 == 160);
+    }
+}
+
+static void testExBulletScans() {
+    std::string err;
+    // Ex 8 seeds a resting dark red ball on each large bullet; ex 9 and ex 11 then set
+    // resting small bullets moving.
+    {
+        TestWorld tw;
+        EclBuilder e;
+        e.spawn(0, timeline_op::EnemyCreate, 0, 192.0f, 100.0f, 500, -1, 0);
+        e.sub();
+        e.ins(0, ecl_op::ExInsCall, {8});
+        e.ins(2, ecl_op::ExInsCall, {9});
+        e.ins(4, ecl_op::ExInsCall, {11});
+        e.ins(1000, ecl_op::EnemyDelete);
+        CHECK(tw.ecl.load(e.build(), &err));
+        BulletManager& bm = *tw.bullets;
+        tw.enemies->startStage(tw.world);
+        exBullet(tw, 9, 100.0f, 100.0f, 1.0f);  // 0
+        exBullet(tw, 3, 300.0f, 100.0f, 1.0f);  // 1: small but moving
+        exBullet(tw, 9, 100.0f, 200.0f, 1.0f);  // 2
+        exBullet(tw, 9, 50.0f, 50.0f, 1.0f);    // 3: despawning
+        bm.at(3).state = Despawning;
+        ZunRng sim = tw.rng;
+        tw.enemies->update(tw.world);
+        Enemy& en = tw.enemies->enemy(0);
+        CHECK(en.ctx.int3 == 2 && bm.activeCount() == 6);
+        const float angles[2] = {sim.f32InRange(kZunTwoPi) - kZunPi, sim.f32InRange(kZunTwoPi) - kZunPi};
+        CHECK(tw.rng.generations() == sim.generations());
+        const float ballY[2] = {100.0f, 200.0f};
+        for (int k = 0; k < 2; ++k) {
+            const Bullet& b = bm.at(4 + k);
+            CHECK(b.pos.x == 100.0f && b.pos.y == ballY[k] && b.color == 1 && b.speed == 0.0f);
+            CHECK(b.state == SpawningSlow && b.velocity.x == 0.0f && b.velocity.y == 0.0f);
+            CHECK(nearAngle(b.angle, angles[k], 1e-6f));
+            CHECK(b.sprites.spriteBullet.activeSpriteIndex == kAnmOffsetBullet3 + 16 + 3 * 8 + 1);
+        }
+        sim = tw.rng;
+        tw.enemies->update(tw.world);  // time 2: ex 9
+        const float r = sim.f32InRange(kZunTwoPi) - kZunPi;
+        CHECK(tw.rng.generations() == sim.generations() && tw.effects->activeCount() == 1);
+        for (int k = 0; k < 2; ++k) {
+            const Bullet& b = bm.at(4 + k);
+            const float dx = 192.0f - 100.0f, dy = 100.0f - ballY[k];
+            const float a = std::sqrt(dx * dx + dy * dy) * kZunPi / 256.0f + r;
+            CHECK(b.color == 2 && b.speed == 0.01f && (b.exFlags & ExAcceleration) && b.exDuration == 120 && b.timer == 0);
+            CHECK(near(b.ex4Acceleration.x, std::cos(a) * 0.01f, 1e-7f) && near(b.ex4Acceleration.y, std::sin(a) * 0.01f, 1e-7f));
+            CHECK(b.velocity.x == 0.0f && nearAngle(b.angle, angles[k], 1e-6f));
+        }
+        CHECK(bm.at(1).color == 0 && bm.at(1).exFlags == 0 && bm.at(0).color == 0);
+        tw.enemies->update(tw.world);  // time 3
+        exBullet(tw, 0, 250.0f, 250.0f, 0.0f);  // a resting pellet
+        const Vec3f accel = bm.at(4).ex4Acceleration;
+        sim = tw.rng;
+        tw.enemies->update(tw.world);  // time 4: ex 11
+        sim.f32InRange(kZunTwoPi);
+        const float a = sim.f32InRange(kZunTwoPi) - kZunPi;
+        CHECK(tw.rng.generations() == sim.generations());
+        const Bullet& pellet = bm.at(6);
+        CHECK(pellet.color == 2 && pellet.speed == 0.01f && pellet.exDuration == 120);
+        CHECK(near(pellet.ex4Acceleration.x, std::cos(a) * 0.01f, 1e-7f) && near(pellet.ex4Acceleration.y, std::sin(a) * 0.01f, 1e-7f));
+        CHECK(bm.at(4).ex4Acceleration.x == accel.x);  // already moving: left alone
+    }
+    // Ex 15: large bullets fling resting small bullets within 64 px outwards.
+    {
+        TestWorld tw;
+        EclBuilder e;
+        e.spawn(0, timeline_op::EnemyCreate, 0, 192.0f, 100.0f, 500, -1, 0);
+        e.sub();
+        e.ins(0, ecl_op::ExInsRepeat, {15});
+        e.ins(1000, ecl_op::EnemyDelete);
+        CHECK(tw.ecl.load(e.build(), &err));
+        BulletManager& bm = *tw.bullets;
+        tw.enemies->startStage(tw.world);
+        exBullet(tw, 9, 100.0f, 300.0f, 1.0f);  // 0: large
+        exBullet(tw, 0, 120.0f, 300.0f, 0.0f);  // 1: 20 px from it
+        exBullet(tw, 0, 100.0f, 380.0f, 0.0f);  // 2: 80 px away
+        exBullet(tw, 9, 300.0f, 300.0f, 1.0f);  // 3: large
+        exBullet(tw, 0, 300.0f, 340.0f, 0.0f);  // 4: 40 px from it
+        exBullet(tw, 0, 110.0f, 300.0f, 1.0f);  // 5: close but moving
+        tw.enemies->update(tw.world);  // two calls; the second finds nothing left to fling
+        Enemy& en = tw.enemies->enemy(0);
+        CHECK(en.ctx.int3 == 2);
+        auto expected = [](float ox, float oy, float x, float y) {
+            const float alpha = std::atan2(oy - 100.0f, ox - 192.0f);
+            const float beta = std::atan2(y - 100.0f, x - 192.0f);
+            return (beta - alpha) * 2.2f + alpha;
+        };
+        const float a1 = expected(100.0f, 300.0f, 120.0f, 300.0f), a4 = expected(300.0f, 300.0f, 300.0f, 340.0f);
+        for (const auto& [slot, angle] : {std::pair<int, float>{1, a1}, {4, a4}}) {
+            const Bullet& b = bm.at(slot);
+            CHECK(b.angle == angle && b.speed == 0.01f && b.color == 1 && (b.exFlags & ExAcceleration) && b.exDuration == 120);
+            CHECK(near(b.ex4Acceleration.x, std::cos(angle) * 0.01f, 1e-7f) && near(b.ex4Acceleration.y, std::sin(angle) * 0.01f, 1e-7f));
+            CHECK(b.sprites.spriteBullet.activeSpriteIndex == b.sprites.spriteBullet.baseSpriteIndex + 1);
+        }
+        CHECK(bm.at(2).speed == 0.0f && bm.at(2).color == 0 && bm.at(5).exFlags == 0);
+    }
+    // Ex 10: bat form while the player bombs; back 60 calls after the bomb ends.
+    {
+        TestWorld tw;
+        EclBuilder e;
+        e.spawn(0, timeline_op::EnemyCreate, 0, 192.0f, 100.0f, 500, -1, 0);
+        e.sub();
+        e.ins(0, ecl_op::AnmSetMain, {0});
+        e.ins(0, ecl_op::AnmSetPoses, {0, 1u | (1u << 16), 1});  // default 0, left 1, right 1
+        e.ins(0, ecl_op::ExInsRepeat, {10});
+        e.ins(1000, ecl_op::EnemyDelete);
+        CHECK(tw.ecl.load(e.build(), &err));
+        tw.enemies->startStage(tw.world);
+        tw.enemies->update(tw.world);
+        Enemy& en = tw.enemies->enemy(0);
+        CHECK(en.interactable && en.anmPoseLeft == 1 && en.batRestoreTimer == 0);
+        tw.state.bombActive = true;
+        tw.enemies->update(tw.world);
+        CHECK(!en.interactable && en.anmPoseLeft == -1 && en.batRestoreTimer == 60);
+        CHECK(en.primaryVm.activeSpriteIndex == kAnmOffsetEnemy + 3);  // script 165: the bats
+        tw.enemies->update(tw.world);
+        CHECK(en.batRestoreTimer == 60);  // held while the bomb runs
+        tw.state.bombActive = false;
+        for (int f = 0; f < 59; ++f) tw.enemies->update(tw.world);
+        CHECK(!en.interactable && en.batRestoreTimer == 1);
+        tw.enemies->update(tw.world);
+        CHECK(en.interactable && en.anmPoseLeft == 161 && en.batRestoreTimer == 0);
+        CHECK(en.primaryVm.activeSpriteIndex == kAnmOffsetEnemy + 2);  // script 160
+        tw.enemies->update(tw.world);
+        CHECK(en.interactable && en.primaryVm.activeSpriteIndex == kAnmOffsetEnemy + 2);
+    }
+}
+
 int main() {
     struct Test {
         const char* name;
@@ -3595,6 +4053,9 @@ int main() {
         {"spell card capture bonus", testSpellcardBonus},
         {"dialogue: lines, waits, results tally, stage end", testDialogue},
         {"stage background: STD script, camera, fog, culling, spell fade", testStageBackground},
+        {"ex-instructions: time stop and its freezes, green redirect", testExTimeStop},
+        {"ex-instructions: pentagram, dagger arcs, rings, Flandre", testExPatterns},
+        {"ex-instructions: bullet scans, bat transformation", testExBulletScans},
     };
     for (const Test& t : tests) {
         const int before = g_failures;

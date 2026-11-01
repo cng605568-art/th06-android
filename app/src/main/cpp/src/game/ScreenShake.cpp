@@ -8,6 +8,10 @@ void ScreenShake::add(int length, float from, float to) { jobs_.push_back({lengt
 
 void ScreenShake::update(World& world) {
     GameState& gs = *world.state;
+    if (gs.timeStop != 0) {  // held: the playfield sits still, the shake resumes afterwards
+        gs.resetPlayfield();
+        return;
+    }
     for (std::size_t i = 0; i < jobs_.size();) {
         Job& j = jobs_[i];
         if (++j.timer >= j.length) {

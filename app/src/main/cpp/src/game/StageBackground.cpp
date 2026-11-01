@@ -240,6 +240,12 @@ void StageBackground::update(World& world) {
     cameraAim_ = aim_;
     buildCamera(camera3D_, cameraAim_);
     prevCamera_ = camera_;
+    // Time stop: everything holds, and the spell background is tinted dark red (the engine
+    // never undoes the tint; the next spell card's script start does).
+    if (gs.timeStop != 0) {
+        spellVm_.color = 0x60803030u;
+        return;
+    }
 
     // Script: at most one camera key per frame.
     auto vec = [](const Record& r) { return Vec3f{std::bit_cast<float>(r.a[0]), std::bit_cast<float>(r.a[1]), std::bit_cast<float>(r.a[2])}; };

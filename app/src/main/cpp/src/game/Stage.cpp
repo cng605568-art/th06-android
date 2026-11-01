@@ -124,6 +124,7 @@ bool Stage::load(int stageNumber, int difficulty) {
     shake_.clear(world_);
     state_.grazes = 0;
     state_.stagePointItems = 0;
+    state_.timeStop = 0;
     player_->reset(world_);
     // The game's own GUI (side panel, boss HUD, names, popups); loaded with the first stage
     // of a run and again when the character changes.
@@ -161,8 +162,10 @@ void Stage::tick(const InputState& in) {
     enemies_->update(world_);
     effects_.update(world_);
     bullets_->update(world_);
-    gui_.update(world_, in);
-    player_->bomb().updateGui();
+    if (state_.timeStop == 0) {  // the GUI freezes during a time stop (score popups do not)
+        gui_.update(world_, in);
+        player_->bomb().updateGui();
+    }
     shake_.update(world_);
     if (sound_) sound_->flush();
 

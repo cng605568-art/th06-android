@@ -45,6 +45,8 @@ class Bomb {
     void clearBoxes();
     void start(World& world, Player& player);
     void step(World& world, Player& player);
+    // A frozen frame (time stop): nothing moves; the boxes stay as the last step left them.
+    void holdFrame() { partPrevPos_ = partPos_; }
 
     // Bomb sprites and the darkening overlay (player layer, before the player sprite).
     void draw(World& world, SpriteSink& sink, const SpriteRegion& white, float alpha, const Vec3f& playerPos);

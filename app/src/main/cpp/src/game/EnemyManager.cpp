@@ -166,7 +166,7 @@ void* EnemyManager::varCell(World& world, Enemy& e, std::int32_t id, VarType* ty
             return ret(&scratchPlayerDistance_, VarType::ReadOnly);
         case VarEnemyLife: return ret(&e.life, VarType::Int);
         case VarPlayerShot:
-            scratchShot_ = 0;  // Reimu A (the only shot type ported)
+            scratchShot_ = world.state->shotType;  // character * 2 + shot
             return ret(&scratchShot_, VarType::Int);
         default: return ret(literal, VarType::Undefined);
     }
@@ -381,25 +381,306 @@ void EnemyManager::runExInstruction(World& world, Enemy& e, int index, std::uint
             batWingTrail(world, e);
             break;
         case 10:  // stage 6: the trail, then the bat transformation
-            if (e.life > 0) {
-                batWingTrail(world, e);
-                world.unported->hit("ECL ex-instruction 10 (bat transformation)");
-            }
+            batTransformation(world, e);
             break;
-        default: {
-            static const char* kNames[] = {
-                "", "", "ECL ex-instruction 2 (star pattern)", "ECL ex-instruction 3 (Patchouli shot vars)",
-                "ECL ex-instruction 4 (stage 5/6)", "ECL ex-instruction 5 (stage 5)", "ECL ex-instruction 6 (bat wings)",
-                "ECL ex-instruction 7 (stage 6 lasers)", "ECL ex-instruction 8 (stage 6)", "ECL ex-instruction 9 (stage 6)",
-                "ECL ex-instruction 10 (bat transformation)", "ECL ex-instruction 11 (stage 6)",
-                "ECL ex-instruction 12 (stage 4)", "ECL ex-instruction 13 (extra)", "ECL ex-instruction 14 (extra)",
-                "ECL ex-instruction 15 (extra)", "ECL ex-instruction 16 (Flandre)"};
-            world.unported->hit(index >= 2 && index <= 16 && index != 6 && index != 7 && index != 10 && index != 12 &&
-                                        index != 14
-                                    ? kNames[index]
-                                    : "ECL ex-instruction (unknown index)");
+        case 2:  // a pentagram traced by bullets, its centre drifting towards the player
+            exPentagram(world, e);
+            break;
+        case 3: {  // stage 4: Patchouli's three spells, from the player's shot type
+            static constexpr std::int32_t kSpells[4][3] = {{0, 3, 1}, {2, 3, 4}, {1, 4, 0}, {4, 2, 3}};
+            const auto& row = kSpells[world.state->shotType & 3];
+            e.ctx.int1 = row[0];
+            e.ctx.int2 = row[1];
+            e.ctx.int3 = row[2];
             break;
         }
+        case 4:  // stages 5 and 6: time stop on (1) / off (0), or redirect large bullets (>= 2)
+            exTimeStop(world, e, at ? world.ecl->argAt<std::int32_t>(at, 4) : 0);
+            break;
+        case 5:  // stage 5: arcs of nine dagger volleys
+            exDaggerArcs(world, e);
+            break;
+        case 8: {  // stage 6: a dark red ball on every large bullet
+            std::int32_t count = 0;
+            EnemyShooter r = localRecord();
+            for (int i = 0; i < BulletManager::kMaxBullets; ++i) {
+                const Bullet& b = world.bullets->at(i);
+                if (!liveBullet(b) || bulletSize(world, b) != BulletSize::Large) continue;
+                r.position = b.pos;
+                r.sprite = 3;  // ball
+                r.color = 1;
+                r.angle1 = world.rng->f32InRange(kZunTwoPi) - kZunPi;
+                r.speed1 = 0.0f;
+                r.count1 = r.count2 = 1;
+                r.flags = ExSpawnEffectLong;
+                r.aimMode = Fan;
+                world.bullets->spawnBulletPattern(world, r);
+                ++count;  // counted even when the pool was full
+            }
+            e.ctx.int3 = count;
+            break;
+        }
+        case 9: {  // stage 6: resting small bullets accelerate outwards, curling with distance
+            const float r = world.rng->f32InRange(kZunTwoPi) - kZunPi;
+            spawnEffect(world, EffectFlash, e.position, 1);
+            for (int i = 0; i < BulletManager::kMaxBullets; ++i) {
+                Bullet& b = world.bullets->at(i);
+                if (!liveBullet(b) || bulletSize(world, b) != BulletSize::Small || b.speed != 0.0f) continue;
+                recolor(world, b, 2);
+                b.speed = 0.01f;  // marks it, so later calls leave it alone
+                const float dx = e.position.x - b.pos.x, dy = e.position.y - b.pos.y;
+                const float q = dx * dx + dy * dy;
+                const float d = q > 0.1f ? std::sqrt(q) : 0.0f;
+                armAcceleration(b, d * kZunPi / 256.0f + r, 120);
+            }
+            break;
+        }
+        case 11: {  // stage 6: resting small bullets accelerate in random directions
+            world.rng->f32InRange(kZunTwoPi);  // drawn and unused, as in the original
+            spawnEffect(world, EffectFlash, e.position, 1);
+            for (int i = 0; i < BulletManager::kMaxBullets; ++i) {
+                Bullet& b = world.bullets->at(i);
+                if (!liveBullet(b) || bulletSize(world, b) != BulletSize::Small || b.speed != 0.0f) continue;
+                recolor(world, b, 2);
+                b.speed = 0.01f;
+                armAcceleration(b, world.rng->f32InRange(kZunTwoPi) - kZunPi, 120);
+            }
+            break;
+        }
+        case 13: {  // extra: N copies of the pattern on a circle around the playfield centre
+            const std::int32_t n = at ? world.ecl->argAt<std::int32_t>(at, 4) : 0;
+            EnemyShooter t = e.bulletProps;
+            float a = e.ctx.float2;
+            if (e.ctx.int3 % 6 == 0) {
+                for (std::int32_t i = 0; i < n; ++i) {
+                    t.position.x = std::cos(a) * e.ctx.float3 + kGameRegionWidth / 2.0f;
+                    t.position.y = std::sin(a) * e.ctx.float3 + kGameRegionHeight / 2.0f;
+                    t.angle1 = a + e.ctx.float1;
+                    world.bullets->spawnBulletPattern(world, t);
+                    a += kZunTwoPi / static_cast<float>(n);  // not wrapped
+                }
+            }
+            e.ctx.int3++;
+            break;
+        }
+        case 15: {  // extra: large bullets fling nearby resting bullets outwards, then ex 10
+            std::int32_t count = 0;
+            for (int i = 0; i < BulletManager::kMaxBullets; ++i) {
+                const Bullet& outer = world.bullets->at(i);
+                if (!liveBullet(outer) || bulletSize(world, outer) != BulletSize::Large) continue;
+                ++count;
+                const float alpha = std::atan2(outer.pos.y - e.position.y, outer.pos.x - e.position.x);
+                for (int j = 0; j < BulletManager::kMaxBullets; ++j) {
+                    Bullet& b = world.bullets->at(j);
+                    if (!liveBullet(b) || bulletSize(world, b) != BulletSize::Small || b.speed != 0.0f) continue;
+                    const float dx = b.pos.x - outer.pos.x, dy = b.pos.y - outer.pos.y;
+                    if (!(std::sqrt(dx * dx + dy * dy) < 64.0f)) continue;
+                    b.exFlags |= ExAcceleration;
+                    b.speed = 0.01f;
+                    b.timer = 0;
+                    b.exDuration = 120;
+                    const float beta = std::atan2(b.pos.y - e.position.y, b.pos.x - e.position.x);
+                    b.angle = (beta - alpha) * 2.2f + alpha;  // not wrapped
+                    sincosmul(b.ex4Acceleration, b.angle, 0.01f);
+                    recolor(world, b, b.color + 1);
+                }
+            }
+            batTransformation(world, e);
+            e.ctx.int3 = count;
+            break;
+        }
+        case 16: {  // extra: Flandre's last attack, tuned by her remaining life
+            const std::int32_t mode = at ? world.ecl->argAt<std::int32_t>(at, 4) : 0;
+            const std::int32_t life = e.phaseTimer >= 7200 ? 0 : e.life;
+            const float l = static_cast<float>(life);
+            if (mode == 0) {
+                e.ctx.float3 = 2.0f - (l * 1.0f) / 6000.0f;
+                e.ctx.counter1 = static_cast<std::int32_t>(static_cast<std::uint32_t>(life) * 240u) / 6000 + 40;
+            } else {
+                const float w = 320.0f - (l * 160.0f) / 6000.0f;
+                e.ctx.float2 = world.rng->f32InRange(w) + (192.0f - w / 2.0f);
+                const float w2 = 128.0f - (l * 64.0f) / 6000.0f;
+                e.ctx.float3 = world.rng->f32InRange(w2) + (96.0f - w2 / 2.0f);
+            }
+            break;
+        }
+        default:
+            // The original reads past its 17-entry table here (a crash); ignore it instead.
+            world.unported->hit("ECL ex-instruction (unknown index)");
+            break;
+    }
+}
+
+// ---- ex-instruction helpers -------------------------------------------------------------
+
+bool EnemyManager::liveBullet(const Bullet& b) { return b.state != Inactive && b.state != Despawning; }
+
+// Large = sprite at least 30 px tall (fireballs, big balls, daggers, bubbles), read from the
+// bullet's current sprite like the original.
+EnemyManager::BulletSize EnemyManager::bulletSize(World& world, const Bullet& b) {
+    const AnmLoadedSprite* s = world.anm->sprite(b.sprites.spriteBullet);
+    if (!s) return BulletSize::None;
+    return s->heightPx >= 30.0f ? BulletSize::Large : BulletSize::Small;
+}
+
+void EnemyManager::recolor(World& world, Bullet& b, int color) {
+    b.color = static_cast<std::int16_t>(color);
+    world.anm->setActiveSprite(b.sprites.spriteBullet, b.sprites.spriteBullet.baseSpriteIndex + b.color);
+}
+
+// 0.01 px/frame^2 along `angle` for `duration` fired frames, from the bullet's next fired
+// frame (its timer restarts; a bullet still spawning restarts it again when it comes out).
+void EnemyManager::armAcceleration(Bullet& b, float angle, std::int32_t duration) {
+    b.exFlags |= ExAcceleration;
+    b.timer = 0;
+    b.exDuration = duration;
+    sincosmul(b.ex4Acceleration, angle, 0.01f);
+}
+
+// A temporary bullet record of the original: every field zero, then filled in.
+EnemyShooter EnemyManager::localRecord() {
+    EnemyShooter r;
+    r.sfx = 0;
+    return r;
+}
+
+void EnemyManager::exPentagram(World& world, Enemy& e) {
+    const std::int32_t k = e.ctx.int2, steps = e.ctx.int3;
+    if (k >= steps) {
+        e.ctx.funcSet = -1;
+        return;
+    }
+    auto wrap = [](float a) { return addNormalizeAngle(a, 0.0f); };
+    if (k == 0) {
+        starEnemy_ = e.position;
+        starPlayer_ = world.player->positionCenter;
+        starAngles_[0] = world.rng->f32InRange(kZunTwoPi) - kZunPi;
+        starAngles_[1] = wrap(starAngles_[0] + kZunPi * 4.0f / 5.0f);
+    }
+    if (k % 30 == 0) {
+        starAngles_[0] = starAngles_[1];
+        for (int j = 1; j < 6; ++j) starAngles_[static_cast<std::size_t>(j)] = wrap(starAngles_[static_cast<std::size_t>(j - 1)] + kZunPi * 4.0f / 5.0f);
+    }
+    if (k % 6 == 0) {
+        EnemyShooter& r = e.bulletProps;
+        const float p = static_cast<float>(k) / static_cast<float>(steps);
+        Vec3f centre = (starPlayer_ - starEnemy_) * (0.1f * p) + starEnemy_;
+        centre.z = 0.0f;
+        const float q = p + 0.5f;
+        r.angle1 = kZunPi / 3.0f * q;
+        const float radius = e.ctx.float3;
+        for (int i = 0; i < 5; ++i) {
+            const float u = static_cast<float>(k % 30) / 30.0f;
+            const float a0 = starAngles_[static_cast<std::size_t>(i)], a1 = starAngles_[static_cast<std::size_t>(i + 1)];
+            const Vec3f v0{std::cos(a0) * radius, std::sin(a0) * radius, 0.0f};
+            const Vec3f v1{std::cos(a1) * radius, std::sin(a1) * radius, 0.0f};
+            Vec3f v = (v1 - v0) * u + v0;
+            v.z = 0.0f;
+            r.position = centre + v;
+            const float speed = r.speed1;
+            r.speed1 = world.rng->f32InRange(r.speed2) + r.speed1;
+            world.bullets->spawnBulletPattern(world, r);
+            r.speed1 = speed;
+            r.angle1 -= kZunPi / 6.0f * q;
+        }
+        world.playSound(22);
+    }
+    e.ctx.int2 = k + 1;
+}
+
+void EnemyManager::exTimeStop(World& world, Enemy& e, std::int32_t mode) {
+    GameState& gs = *world.state;
+    if (mode < 2) {
+        spawnEffect(world, EffectFlash, e.position, 1);
+        gs.timeStop = static_cast<std::int8_t>(static_cast<std::uint8_t>(mode & 0xff));
+        e.ctx.int2 = 0;
+        return;
+    }
+    // Up to 14 (Easy/Normal) or 52 (Hard and up) large bullets turn green and get a new
+    // heading: scattered when far from the player, swirling around her when close.
+    const bool hard = gs.difficulty >= Hard;
+    int left = hard ? 52 : 14;
+    const Vec3f& pc = world.player->positionCenter;
+    for (int i = 0; i < BulletManager::kMaxBullets && left > 0; ++i) {
+        Bullet& b = world.bullets->at(i);
+        if (!liveBullet(b) || bulletSize(world, b) != BulletSize::Large || b.color == 5) continue;
+        if (world.rng->u16() % 4 != 0) continue;
+        recolor(world, b, 5);
+        const float dx = b.pos.x - pc.x, dy = b.pos.y - pc.y;
+        if (std::sqrt(dx * dx + dy * dy) > 128.0f) {
+            b.angle = hard ? world.rng->f32InRange(kZunTwoPi) : world.rng->f32InRange(kZunPi * 3.0f / 4.0f) + kZunPi / 4.0f;
+        } else {
+            const float toBullet = dx == 0.0f && dy == 0.0f ? kZunHalfPi : std::atan2(dy, dx);
+            b.angle = toBullet + kZunHalfPi + world.rng->f32InRange(kZunTwoPi);  // not wrapped
+        }
+        sincosmul(b.velocity, b.angle, b.speed);
+        --left;
+    }
+    e.ctx.int2 = 0;
+}
+
+void EnemyManager::exDaggerArcs(World& world, Enemy& e) {
+    const std::int32_t k = e.ctx.int2;
+    if (k % 9 == 0) {
+        const bool easy = world.state->difficulty < Hard;
+        const std::int32_t n = k / 9;
+        const bool odd = n % 2 != 0;
+        EnemyShooter r = localRecord();
+        r.sprite = 8;  // dagger
+        r.aimMode = FanAimed;
+        r.count1 = easy ? 1 : 3;
+        r.count2 = 1;
+        r.angle2 = kZunPi / 6.0f;
+        r.flags = 0;
+        r.color = 3;
+        r.speed1 = 2.0f;
+        const float s = 0.5f - static_cast<float>(n) * 0.5f / 9.0f;
+        const Vec3f d = world.player->positionCenter - e.position;
+        const float len = d.length();
+        const Vec3f u = len != 0.0f ? d / len : Vec3f{};
+        const float reach = odd ? -256.0f : 256.0f;
+        const Vec3f anchor = d * s + u * reach;
+        Vec3f w = (u * reach) * -1.0f;
+        // R(t): (x, y) -> (x cos t + y sin t, -x sin t + y cos t); turns by -t.
+        auto rotate = [](Vec3f v, float c, float sn) {
+            return Vec3f{v.x * c + v.y * sn, -v.x * sn + v.y * c, v.z};
+        };
+        w = rotate(w, std::cos(kZunPi / 4.0f), std::sin(kZunPi / 4.0f));
+        const float stepC = std::cos(-kZunPi / 18.0f), stepS = std::sin(-kZunPi / 18.0f);
+        r.angle1 = 0.0f;
+        float beta = -kZunPi / 4.0f;
+        for (int i = 0; i < 9; ++i) {
+            w = rotate(w, stepC, stepS);
+            r.position = w + e.position + anchor;
+            r.speed1 = 2.0f;
+            if (odd && easy) r.angle1 = beta;
+            r.color = 3;
+            world.bullets->spawnBulletPattern(world, r);
+            beta += kZunPi / 18.0f;
+        }
+        world.playSound(7);
+    }
+    e.ctx.int2 = k + 1;
+}
+
+// Stage 6 boss: while the player bombs she turns into bats (no damage, no contact) and comes
+// back 60 calls after the bomb ends.
+void EnemyManager::batTransformation(World& world, Enemy& e) {
+    if (e.life <= 0) return;
+    batWingTrail(world, e);
+    if (world.state->bombActive) {
+        if (e.anmPoseLeft >= 0) {
+            world.anm->setAndExecuteScript(e.primaryVm, kAnmOffsetEnemy + 165);
+            e.anmPoseLeft = -1;
+        }
+        e.interactable = false;
+        e.batRestoreTimer = 60;
+    } else if (e.batRestoreTimer > 0 && --e.batRestoreTimer == 0) {
+        if (e.anmPoseLeft < 0) {
+            world.anm->setAndExecuteScript(e.primaryVm, kAnmOffsetEnemy + 160);
+            e.anmPoseLeft = 161;
+        }
+        e.interactable = true;
     }
 }
 
@@ -1387,7 +1668,7 @@ void EnemyManager::update(World& world) {
             }
         }
         driveEffects(world, e);
-        e.phaseTimer++;
+        if (gs.timeStop == 0) e.phaseTimer++;  // spell timers pause during a time stop
     }
     timelineTime_++;
 }

@@ -88,6 +88,8 @@ struct Enemy {
     float batAngle = 0.0f;
     std::int32_t batTimer = 0;
     bool batTimerTicked = false;
+    // Bat transformation (ex-instruction 10): calls left until she turns back after a bomb.
+    std::int32_t batRestoreTimer = 0;
     std::int8_t itemDrop = 0;
     std::uint8_t bossId = 0;
     std::uint8_t hitFlashTimer = 0;  // unk_e41
@@ -192,6 +194,19 @@ class EnemyManager {
     void moveTime(World& world, Enemy& e, std::uint32_t at);
     void runExInstruction(World& world, Enemy& e, int index, std::uint32_t at);
 
+    // Stage-specific ex-instructions and the bullet scans they share. Scans walk the 640
+    // slots in order and skip bullets that are not live (inactive or despawning).
+    enum class BulletSize { None, Small, Large };
+    static bool liveBullet(const Bullet& b);
+    static BulletSize bulletSize(World& world, const Bullet& b);
+    static void recolor(World& world, Bullet& b, int color);
+    static void armAcceleration(Bullet& b, float angle, std::int32_t duration);
+    static EnemyShooter localRecord();
+    void exPentagram(World& world, Enemy& e);
+    void exTimeStop(World& world, Enemy& e, std::int32_t mode);
+    void exDaggerArcs(World& world, Enemy& e);
+    void batTransformation(World& world, Enemy& e);
+
     std::unique_ptr<std::array<Enemy, kMaxEnemies>> enemies_;
     Enemy template_;
     std::array<Enemy*, 4> bosses_{};
@@ -206,6 +221,10 @@ class EnemyManager {
     // Scratch cells for computed read-only variables (the original's function statics).
     float scratchPlayerAngle_ = 0, scratchPlayerDistance_ = 0;
     std::int32_t scratchShot_ = 0, scratchDifficulty_ = 0, scratchRank_ = 0;
+    // Ex-instruction 2's star: one copy for every enemy, never reset (not even between
+    // stages), like the original's globals.
+    std::array<float, 6> starAngles_{};
+    Vec3f starEnemy_, starPlayer_;
 };
 
 }  // namespace th06

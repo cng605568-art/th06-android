@@ -60,6 +60,7 @@ class ItemManager {
     // Returns false (and draws no random numbers) when all 512 slots are taken.
     bool spawn(World& world, const Vec3f& pos, int type, ItemState state);
     void update(World& world);  // runs at the start of the bullet manager's update
+    void holdFrame();           // a frozen frame (time stop): nothing moves
     void magnetAll();           // every item, of any state, homes in (bombs)
     void draw(World& world, SpriteSink& sink, float alpha);
 

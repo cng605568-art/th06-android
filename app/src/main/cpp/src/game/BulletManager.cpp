@@ -229,6 +229,17 @@ out:
 }
 
 void BulletManager::update(World& world) {
+    // Time stop: items, bullets and lasers all hold where they are (nothing grazes, hits,
+    // animates or leaves the screen). Bullets fired meanwhile wait in their spawn state.
+    if (world.state->timeStop != 0) {
+        if (world.items) world.items->holdFrame();
+        for (Bullet& b : *bullets_) b.prevPos = b.pos;
+        for (Laser& l : lasers_) {
+            l.prevStartOffset = l.startOffset;
+            l.prevEndOffset = l.endOffset;
+        }
+        return;
+    }
     if (world.items) world.items->update(world);
     int count = 0;
     for (Bullet& b : *bullets_) {

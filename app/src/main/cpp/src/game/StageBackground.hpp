@@ -86,6 +86,7 @@ class StageBackground {
     std::int32_t scriptTime() const { return scriptTime_; }
     Spell spell() const { return spell_; }
     std::int32_t spellCounter() const { return spellCounter_; }
+    std::uint32_t spellColor() const { return spellVm_.color; }
     const std::vector<Object>& objects() const { return objects_; }
     const std::vector<Instance>& instances() const { return instances_; }
     // Projects an STD-space point with the background camera: screen x, y and eye depth.

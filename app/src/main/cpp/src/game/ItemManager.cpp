@@ -103,6 +103,10 @@ int ItemManager::activeCount() const {
     return n;
 }
 
+void ItemManager::holdFrame() {
+    for (Item& it : *items_) it.prevPos = it.pos;
+}
+
 void ItemManager::update(World& world) {
     GameState& gs = *world.state;
     const Player& player = *world.player;

@@ -136,6 +136,12 @@ void Player::update(World& world, const InputState& in) {
     prevPosition = positionCenter;
     for (Bullet& b : bullets_) b.prevPosition = b.position;
     GameState& gs = *world.state;
+    // Time stop freezes the whole player: no input, shots, bomb progress, death sequence or
+    // invulnerability countdown. The bomb's damage regions stay live (they are not cleared).
+    if (gs.timeStop != 0) {
+        bomb_.holdFrame();
+        return;
+    }
 
     // Bomb: run it, or start one on a fresh press (also inside the deathbomb window).
     bomb_.clearBoxes();

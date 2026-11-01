@@ -77,6 +77,10 @@ struct GameState {
     std::int32_t bossLifeCount = 0;
     std::int32_t bossSeconds = 0;
     bool bombActive = false;  // a player bomb is running (see game/Bomb)
+    // Sakuya's time stop (ECL ex-instruction 4), non-zero = stopped. The player, bullet,
+    // item, laser, GUI, background and screen-shake passes freeze; enemies (except their
+    // phase timers) and effects keep running. Only a stage start clears it.
+    std::int8_t timeStop = 0;
     std::uint32_t bombsUsed = 0;
     std::uint32_t deaths = 0;
 
