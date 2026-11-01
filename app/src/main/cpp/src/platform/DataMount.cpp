@@ -27,6 +27,10 @@ std::unique_ptr<Vfs> mountGameData(int argc, char** argv) {
         }
         std::string err;
         auto file = MappedFile::adoptFd(fd, &err);
+        if (src.format == "EXE") {
+            if (file && Vfs::looksLikeGameExecutable(file->bytes())) vfs->addExecutable(src.name, std::move(file));
+            continue;
+        }
         auto archive = file ? openArchive(src.name, std::move(file), &err) : nullptr;
         if (!archive) {
             log::warn("Skipping {}: {}", src.name, err);

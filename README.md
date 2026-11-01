@@ -20,20 +20,20 @@ Built entirely by GitHub Actions: no Android Studio, no local SDK.
 | Lasers | 64 laser slots, warning line → active → shrinking phases, the original's hitbox quirks (half-width deadly core, speck-sized hitbox while warning/shrinking), graze every 12 frames, all laser ECL opcodes incl. stale-reference behaviour, the laser ex-instructions of stages 4, 6 and Extra |
 | Items | 512-slot item pool, rise/gravity physics, homing at full power above the collection line, pickup rules for all 7 item types, point-item value by height and difficulty, full-power chain scoring, random drop table, `DROP_ITEMS`, death scatter, bullets/lasers turning into star items |
 | Resources | Power (0–128), bombs, lives, graze, rolling score counter, score extends (10M/20M/40M/60M), stage-clear bonus, death drops and life loss |
-| Player | Movement speeds and clamping, 1.25 px hitbox, graze box, `player00.anm` scripts, death/respawn invulnerability, the Reimu A level-1 shot |
+| Player | Movement and clamping, 1.25 px hitbox, graze box, `player00/01.anm` scripts, death/respawn invulnerability, option orbs that slide in when focusing (with the original's mid-transition reversal) |
+| Shots | All four shot types (Reimu A/B, Marisa A/B) at all nine power tiers: 80-slot pool, the 30-frame fire cycle (a tap fires a whole cycle), homing amulets, accelerating missiles with blast radius and decaying damage, Marisa B's beams hanging from the orbs with their period timers, one-hit normal shots with hit animations, the 70-per-frame enemy damage cap. The shot tables are read at runtime from **your** `東方紅魔郷.exe` (version 1.02h, recognised by SHA-256); without it a basic forward shot is used. |
 | Sound | SoundIdx → wav + DirectSound volume table, 3-entry per-frame queue with de-duplication, played once per frame |
 | Main loop | `std::chrono` fixed timestep of exactly 1/60 s (rational arithmetic, no drift), rendering once per display refresh with positions interpolated to the present instant (60/90/120/144 Hz), vsync-jitter snapping, max 4 ticks per frame |
 | Controls | Touch D-pad + Shot/Bomb/Focus/Pause registered as an **SDL virtual game controller**; physical gamepads and keyboards use the same path |
 
 **Not ported yet** (shown live under *NOT PORTED YET* in the HUD whenever the game data uses
-them): stronger shots as power rises (power is counted but the shot stays at level 1),
-other shot types, bombs, particle effects, score popups and banners, dialogue (MSG) — the
+them): bombs, particle effects, score popups and banners, dialogue (MSG) — the
 stage currently ends when its timeline has run out instead of after the boss dialogue —
 stage backgrounds (STD), spellcard name/bonus display, boss HUD, the remaining ECL
 ex-instructions (2–6, 8–11, 13, 15, 16), the continue screen, background music, menus.
 
 Accuracy notes: game logic runs in the original order on the original data, but float math
-is not bit-identical to the x87 code of 2002, and features that are not ported (items,
+is not bit-identical to the x87 code of 2002, and features that are not ported (bombs,
 particles) would have consumed random numbers, so long runs drift from real replays.
 
 ## Set up the build (once)
@@ -78,7 +78,9 @@ refuse to run unsigned.
      The Steam bundle includes this version alongside New Classic.
    * New Classic (Steam): the `data` folder with `th06CM.dat`, `th06ST.dat` …
 2. Open **TH06 Port → Choose game folder** and pick that folder. Files are read in place.
-3. **Play.** Stage 1 starts on Normal. Without the 2002 archives the screen says what is missing.
+   Keep `東方紅魔郷.exe` (1.02h) in the folder: the shot types are read from it.
+3. Pick shot type, difficulty and starting stage, then **Play**. Without the 2002 archives
+   the screen says what is missing.
 
 Controls: D-pad left, **SHOT / BOMB / FOCUS** right, **II** pauses. Back pauses; Back again
 quits. A Bluetooth/USB gamepad works too (the touch overlay hides itself until you touch the
@@ -103,9 +105,10 @@ app/src/main/cpp/
   src/game/BulletManager      640-slot bullet manager and the 64 lasers
   src/game/ItemManager        512-slot items, pickups, drops
   src/game/Resources          graze, rolling score, extends, stage-clear bonus
-  src/game/Player             player movement, hitbox, shot
+  src/game/Player             player movement, hitbox, orbs, shots
+  src/game/ShotData           reads the shot tables from your 東方紅魔郷.exe (PE32, SHA-256 checked)
   src/game/Stage              loads a stage from the archives, runs one tick, draws
-  src/core/ZunMath, FixedTimestep   ZUN's RNG and angle helpers; the 60 Hz clock
+  src/core/ZunMath, FixedTimestep, Sha256   ZUN's RNG and angle helpers; the 60 Hz clock; SHA-256
   src/input/                  VirtualController (touch → SDL virtual pad), InputMapper
   src/audio/                  SoundPlayer (SoundIdx table, frame queue), AudioMixer (SDL audio)
   src/engine/App              window, GL context, dual loop, lifecycle

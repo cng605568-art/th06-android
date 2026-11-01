@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <format>
+#include <span>
 
 #include "audio/SoundPlayer.hpp"
 #include "core/Log.hpp"
@@ -61,7 +62,23 @@ bool Stage::load(int stageNumber, int difficulty) {
         if (!ok) error_ = std::string(what) + ": " + err;
         return ok;
     };
-    if (!anm_.fileLoaded(kAnmFilePlayer) && !need(anm_.loadAnm(*vfs_, kAnmFilePlayer, "data/player00.anm", kAnmOffsetPlayer, &err), "PLAYER00.ANM")) return false;
+    const int character = state_.shotType / 2;
+    if (loadedCharacter_ != character || !anm_.fileLoaded(kAnmFilePlayer)) {
+        const char* playerAnm = character == 0 ? "data/player00.anm" : "data/player01.anm";
+        if (!need(anm_.loadAnm(*vfs_, kAnmFilePlayer, playerAnm, kAnmOffsetPlayer, &err), character == 0 ? "PLAYER00.ANM" : "PLAYER01.ANM")) {
+            return false;
+        }
+        loadedCharacter_ = character;
+    }
+    if (!shotsSearched_) {
+        shotsSearched_ = true;
+        std::string why = "no game program found in the folder";
+        for (std::span<const std::uint8_t> exe : vfs_->executables()) {
+            if (loadShotData(exe, shots_, &why)) break;
+        }
+        if (!shots_.loaded) log::warn("Shot tables unavailable ({}); using a basic shot", why);
+    }
+    world_.shots = shots_.loaded ? &shots_ : nullptr;
     if (!anm_.fileLoaded(kAnmFileBullet3) && !need(anm_.loadAnm(*vfs_, kAnmFileBullet3, "data/etama3.anm", kAnmOffsetBullet3, &err), "ETAMA3.ANM")) return false;
     if (!anm_.fileLoaded(kAnmFileBullet4) && !need(anm_.loadAnm(*vfs_, kAnmFileBullet4, "data/etama4.anm", kAnmOffsetBullet4, &err), "ETAMA4.ANM")) return false;
     // The previous stage's enemy art (and every enemy using it) goes away first.
@@ -89,6 +106,7 @@ bool Stage::load(int stageNumber, int difficulty) {
     state_.grazes = 0;
     state_.stagePointItems = 0;
     player_->reset(world_);
+    if (!shots_.loaded) unported_.hit("shot types (needs 東方紅魔郷.exe 1.02h in the game folder)");
     enemies_->startStage(world_);
     clearTimer_ = 0;
     ready_ = true;
@@ -125,8 +143,9 @@ void Stage::render(SpriteSink& s, float alpha, const HudInfo& hud) {
     anm_.beginFrame();
     s.fillRect(ui_.white, kGameRegionX, kGameRegionY, kGameRegionWidth, kGameRegionHeight, rgba(8, 6, 20));
     if (ready_) {
+        player_->drawLow(world_, s, alpha);
         enemies_->draw(world_, s, alpha);
-        player_->draw(world_, s, alpha);
+        player_->drawHits(world_, s, alpha);
         bullets_->draw(world_, s, alpha);
     }
     // Frame (also clips sprites that overhang the playfield).

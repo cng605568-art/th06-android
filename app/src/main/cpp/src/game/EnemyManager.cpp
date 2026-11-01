@@ -1196,6 +1196,7 @@ void EnemyManager::update(World& world) {
             bool hitByBomb = false;
             if (e.interactable) {
                 int damage = world.player->calcDamageToEnemy(world, e.position, e.hitboxDimensions, &hitByBomb);
+                world.player->considerHomingTarget(e.position);
                 if (damage >= 70) damage = 70;
                 gs.score = static_cast<std::uint32_t>((damage / 5) * 10) + gs.score;
                 if (spellcard_.isActive) {

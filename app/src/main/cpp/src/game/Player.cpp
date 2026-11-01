@@ -10,43 +10,105 @@
 namespace th06 {
 namespace {
 
-// player00.anm script ids (+0x400), from the decompilation's AnmIdx.hpp.
+// player00.anm / player01.anm script roles (+0x400).
 constexpr int kScriptIdle = kAnmOffsetPlayer + 0;
 constexpr int kScriptMovingLeft = kAnmOffsetPlayer + 1;
 constexpr int kScriptStoppingLeft = kAnmOffsetPlayer + 2;
 constexpr int kScriptMovingRight = kAnmOffsetPlayer + 3;
 constexpr int kScriptStoppingRight = kAnmOffsetPlayer + 4;
-constexpr int kScriptPlayerBullet = kAnmOffsetPlayer + 64;
-constexpr int kScriptBulletHitOffset = 32;
-
-// Reimu A (g_CharData): orthogonal 4.0 / focused 2.0 px per frame; diagonals / sqrt(2).
-constexpr float kSpeed = 4.0f;
-constexpr float kSpeedFocus = 2.0f;
-
-// Reimu A shot, power rank 1 (g_CharacterPowerBulletDataReimuARank1).
-constexpr int kShotWait = 5;
-constexpr float kShotSize = 12.0f;
-constexpr float kShotVelocity = 12.0f;
-constexpr std::uint16_t kShotDamage = 48;
+constexpr int kScriptMainShot = kAnmOffsetPlayer + 64;
+constexpr int kScriptOrbLeft = kAnmOffsetPlayer + 128;
+constexpr int kScriptOrbRight = kAnmOffsetPlayer + 129;
+constexpr int kScriptHitOffset = 32;
 
 constexpr float kMoveLeft = 8.0f, kMoveTop = 16.0f;
 constexpr float kMoveWidth = kGameRegionWidth - 16.0f, kMoveHeight = kGameRegionHeight - 32.0f;
 constexpr int kSoundShoot = 0, kSoundPichun = 4;
+constexpr int kOrbPowerMin = 8;
+constexpr int kOrbTransition = 8;
+constexpr float kOrbX = 24.0f, kOrbFocusX = 8.0f, kOrbFocusY = -32.0f;
+constexpr int kHomingSteerFrames = 40;
+constexpr float kHomingMaxSpeed = 10.0f;
+constexpr float kMissileLift = 0.3f;
+constexpr int kDamageCap = 70;
+
+// Without the game executable: one straight shot every 5 frames.
+const ShotType& basicShotType(int shotType) {
+    static const auto make = [](float speed, float focus) {
+        ShotType t;
+        t.speed = speed;
+        t.speedFocus = focus;
+        ShotEntry e;
+        e.width = e.height = 12.0f;
+        e.angle = -kZunHalfPi;
+        e.speed = 12.0f;
+        e.damage = 48;
+        e.every = 5;
+        e.script = kScriptMainShot;
+        e.sound = true;
+        const std::int32_t thresholds[9] = {8, 16, 32, 48, 64, 80, 96, 127, 999};
+        for (int i = 0; i < 9; ++i) {
+            t.tiers[static_cast<std::size_t>(i)].threshold = thresholds[i];
+            t.tiers[static_cast<std::size_t>(i)].entries = {e};
+        }
+        return t;
+    };
+    static const ShotType reimu = make(4.0f, 2.0f), marisa = make(5.0f, 2.5f);
+    return shotType >= 2 ? marisa : reimu;
+}
 
 bool overlap(const Vec3f& aTL, const Vec3f& aBR, const Vec3f& bTL, const Vec3f& bBR) {
     return !(aTL.x > bBR.x || aBR.x < bTL.x || aTL.y > bBR.y || aBR.y < bTL.y);
 }
 
+float length2d(const Vec3f& v) { return std::sqrt(v.x * v.x + v.y * v.y); }
+
+// Missiles grow their hitbox on first contact (by the script they were fired with).
+float missileBlastSize(int localScript) {
+    switch (localScript) {
+        case 65: return 32.0f;
+        case 66: return 42.0f;
+        default: return 48.0f;
+    }
+}
+
 }  // namespace
+
+const ShotType& Player::shotType(const World& world) const {
+    const int type = world.state->shotType;
+    if (world.shots && world.shots->loaded) return world.shots->types[static_cast<std::size_t>(type & 3)];
+    return basicShotType(type);
+}
+
+int Player::shotTier(const World& world) const {
+    const ShotType& t = shotType(world);
+    int tier = 0;
+    while (tier < 8 && world.state->power >= t.tiers[static_cast<std::size_t>(tier)].threshold) ++tier;
+    return tier;
+}
+
+const ShotTier& Player::tierFor(const World& world) const {
+    return shotType(world).tiers[static_cast<std::size_t>(shotTier(world))];
+}
 
 void Player::reset(World& world) {
     positionCenter = {kGameRegionWidth / 2.0f, kGameRegionHeight - 64.0f, 0.49f};
     prevPosition = positionCenter;
     state = Spawning;
-    invulnerabilityTimer_ = 120;
+    invulnerabilityTimer_ = 0;
     previousSpeedX_ = 0.0f;
     bullets_ = {};
-    if (world.anm->hasScript(kScriptIdle)) world.anm->setAndExecuteScript(sprite_, kScriptIdle);
+    fireTimer_ = -1;
+    laserTimers_ = {};
+    orbState_ = OrbState::Hidden;
+    orbCounter_ = 0;
+    orbPositions_ = {positionCenter, positionCenter};
+    homingTarget_ = {-999.0f, -999.0f, 0.0f};
+    bulletGrace_ = 0;
+    deathbombWindow_ = 0;
+    world.anm->setAndExecuteScript(sprite_, kScriptIdle);
+    world.anm->setAndExecuteScript(orbVms_[0], kScriptOrbLeft);
+    world.anm->setAndExecuteScript(orbVms_[1], kScriptOrbRight);
     hitboxTopLeft = positionCenter - hitboxSize;
     hitboxBottomRight = positionCenter + hitboxSize;
 }
@@ -58,89 +120,252 @@ float Player::angleToPlayer(const Vec3f& pos) const {
     return std::atan2(relY, relX);
 }
 
+int Player::activeBulletCount() const {
+    int n = 0;
+    for (const Bullet& b : bullets_) n += b.state != ShotState::Inactive;
+    return n;
+}
+
 void Player::update(World& world, const InputState& in) {
     prevPosition = positionCenter;
     for (Bullet& b : bullets_) b.prevPosition = b.position;
+    if (in.bomb) world.unported->hit("bombs");
 
+    // Death, respawn and invulnerability.
     if (state == Dead) {
         if (deathbombWindow_ > 0 && --deathbombWindow_ == 0) dropItemsOnDeath(world);
         if (--deathTimer_ <= 0) respawn(world);
-    } else {
-        if (bulletGrace_ > 0) {
-            --bulletGrace_;
-            world.bullets->removeAllBullets(world, false);
-        }
-        focused = in.focus;
-        const int dx = static_cast<int>(in.right) - static_cast<int>(in.left);
-        const int dy = static_cast<int>(in.down) - static_cast<int>(in.up);
-        const float ortho = focused ? kSpeedFocus : kSpeed;
-        const float diag = ortho / std::sqrt(2.0f);
-        float speedX = 0.0f, speedY = 0.0f;
-        if (dx != 0 && dy != 0) {
-            speedX = static_cast<float>(dx) * diag;
-            speedY = static_cast<float>(dy) * diag;
-        } else {
-            speedX = static_cast<float>(dx) * ortho;
-            speedY = static_cast<float>(dy) * ortho;
-        }
-
-        if (speedX < 0.0f && previousSpeedX_ >= 0.0f) world.anm->setAndExecuteScript(sprite_, kScriptMovingLeft);
-        else if (speedX == 0.0f && previousSpeedX_ < 0.0f) world.anm->setAndExecuteScript(sprite_, kScriptStoppingLeft);
-        if (speedX > 0.0f && previousSpeedX_ <= 0.0f) world.anm->setAndExecuteScript(sprite_, kScriptMovingRight);
-        else if (speedX == 0.0f && previousSpeedX_ > 0.0f) world.anm->setAndExecuteScript(sprite_, kScriptStoppingRight);
-        previousSpeedX_ = speedX;
-
-        positionCenter.x += speedX;
-        positionCenter.y += speedY;
-        if (positionCenter.x < kMoveLeft) positionCenter.x = kMoveLeft;
-        else if (positionCenter.x > kMoveLeft + kMoveWidth) positionCenter.x = kMoveLeft + kMoveWidth;
-        if (positionCenter.y < kMoveTop) positionCenter.y = kMoveTop;
-        else if (positionCenter.y > kMoveTop + kMoveHeight) positionCenter.y = kMoveTop + kMoveHeight;
-
-        if (state == Spawning || state == Invulnerable) {
-            if (--invulnerabilityTimer_ <= 0) state = Alive;
-        }
-
-        if (in.shoot) {
-            if (shotTimer_ % kShotWait == 0) {
-                for (Bullet& b : bullets_) {
-                    if (b.state != Bullet::Inactive) continue;
-                    b = Bullet{};
-                    b.state = Bullet::Fired;
-                    b.position = positionCenter;
-                    b.prevPosition = b.position;
-                    sincosmul(b.velocity, -kZunHalfPi, kShotVelocity);
-                    b.size = {kShotSize, kShotSize, 0.0f};
-                    b.damage = kShotDamage;
-                    if (world.anm->hasScript(kScriptPlayerBullet)) world.anm->setAndExecuteScript(b.sprite, kScriptPlayerBullet);
-                    world.playSound(kSoundShoot);
-                    break;
-                }
-            }
-            ++shotTimer_;
-        } else {
-            shotTimer_ = 0;
-        }
     }
-    if (in.bomb) world.unported->hit("bombs");
+    if (state == Spawning) {
+        state = Invulnerable;
+        invulnerabilityTimer_ = 240;
+    } else if (state == Invulnerable) {
+        if (--invulnerabilityTimer_ <= 0) state = Alive;
+    }
+    if (bulletGrace_ > 0 && state != Dead) {
+        --bulletGrace_;
+        world.bullets->removeAllBullets(world, false);
+    }
+
+    if (state == Alive || state == Invulnerable) {
+        move(world, in);
+        if (in.shoot && fireTimer_ < 0) fireTimer_ = 0;
+    }
+    world.anm->executeScript(sprite_);
+    updateShots(world);
+    if (orbState_ != OrbState::Hidden) {
+        world.anm->executeScript(orbVms_[0]);
+        world.anm->executeScript(orbVms_[1]);
+    }
+    homingTarget_ = {-999.0f, -999.0f, 0.0f};
+
+    if (fireTimer_ >= 0) {
+        spawnShots(world, fireTimer_);
+        ++fireTimer_;
+        if (fireTimer_ >= kFireCycle || state == Dead || state == Spawning) fireTimer_ = -1;
+    }
+}
+
+void Player::move(World& world, const InputState& in) {
+    focused = in.focus;
+    const int dx = in.right ? 1 : in.left ? -1 : 0;
+    const int dy = in.up ? -1 : in.down ? 1 : 0;
+    const ShotType& type = shotType(world);
+    const float ortho = focused ? type.speedFocus : type.speed;
+    const float diag = ortho / std::sqrt(2.0f);
+    float speedX, speedY;
+    if (dx != 0 && dy != 0) {
+        speedX = static_cast<float>(dx) * diag;
+        speedY = static_cast<float>(dy) * diag;
+    } else {
+        speedX = static_cast<float>(dx) * ortho;
+        speedY = static_cast<float>(dy) * ortho;
+    }
+
+    if (speedX < 0.0f && previousSpeedX_ >= 0.0f) world.anm->setAndExecuteScript(sprite_, kScriptMovingLeft);
+    else if (speedX == 0.0f && previousSpeedX_ < 0.0f) world.anm->setAndExecuteScript(sprite_, kScriptStoppingLeft);
+    if (speedX > 0.0f && previousSpeedX_ <= 0.0f) world.anm->setAndExecuteScript(sprite_, kScriptMovingRight);
+    else if (speedX == 0.0f && previousSpeedX_ > 0.0f) world.anm->setAndExecuteScript(sprite_, kScriptStoppingRight);
+    previousSpeedX_ = speedX;
+
+    positionCenter.x += speedX;
+    positionCenter.y += speedY;
+    positionCenter.x = std::clamp(positionCenter.x, kMoveLeft, kMoveLeft + kMoveWidth);
+    positionCenter.y = std::clamp(positionCenter.y, kMoveTop, kMoveTop + kMoveHeight);
     hitboxTopLeft = positionCenter - hitboxSize;
     hitboxBottomRight = positionCenter + hitboxSize;
 
+    if (world.state->power < kOrbPowerMin) orbState_ = OrbState::Hidden;
+    else if (orbState_ == OrbState::Hidden) orbState_ = OrbState::Unfocused;
+    updateOrbs();
+}
+
+void Player::updateOrbs() {
+    float x = 0.0f, y = 0.0f;
+    // Each state either settles or hands over to the opposite transition within the frame.
+    for (int guard = 0; guard < 4; ++guard) {
+        bool again = false;
+        switch (orbState_) {
+            case OrbState::Hidden:
+                orbCounter_ = 0;
+                x = y = 0.0f;
+                break;
+            case OrbState::Unfocused:
+                x = kOrbX;
+                y = 0.0f;
+                orbCounter_ = 0;
+                if (focused) {
+                    orbState_ = OrbState::Focusing;
+                    again = true;
+                }
+                break;
+            case OrbState::Focused:
+                x = kOrbFocusX;
+                y = kOrbFocusY;
+                orbCounter_ = 0;
+                if (!focused) {
+                    orbState_ = OrbState::Unfocusing;
+                    again = true;
+                }
+                break;
+            case OrbState::Focusing: {
+                ++orbCounter_;
+                const float s = static_cast<float>(orbCounter_) / kOrbTransition;
+                x = kOrbX - (kOrbX - kOrbFocusX) * s * s;
+                y = kOrbFocusY * s;
+                if (orbCounter_ >= kOrbTransition) orbState_ = OrbState::Focused;
+                if (!focused) {
+                    orbState_ = OrbState::Unfocusing;
+                    orbCounter_ = kOrbTransition - orbCounter_;
+                    again = true;
+                }
+                break;
+            }
+            case OrbState::Unfocusing: {
+                ++orbCounter_;
+                const float u = static_cast<float>(orbCounter_) / kOrbTransition;
+                x = kOrbFocusX + (kOrbX - kOrbFocusX) * u * u;
+                y = kOrbFocusY - kOrbFocusY * u;
+                if (orbCounter_ >= kOrbTransition) orbState_ = OrbState::Unfocused;
+                if (focused) {
+                    orbState_ = OrbState::Focusing;
+                    orbCounter_ = kOrbTransition - orbCounter_;
+                    again = true;
+                }
+                break;
+            }
+        }
+        if (!again) break;
+    }
+    orbPositions_[0] = {positionCenter.x - x, positionCenter.y + y, positionCenter.z};
+    orbPositions_[1] = {positionCenter.x + x, positionCenter.y + y, positionCenter.z};
+}
+
+void Player::updateShots(World& world) {
+    for (int& t : laserTimers_) {
+        if (t != 0) --t;
+    }
     for (Bullet& b : bullets_) {
-        if (b.state == Bullet::Fired) {
-            b.position += b.velocity;
+        if (b.state == ShotState::Inactive) continue;
+        switch (b.kind) {
+            case ShotHoming:
+                if (b.state != ShotState::Fired) break;
+                if (homingTarget_.x > -100.0f && b.lifetime < kHomingSteerFrames) {
+                    Vec3f d = homingTarget_ - b.position;
+                    d.z = 0.0f;
+                    float l = length2d(d) / (b.speed / 4.0f);
+                    if (l < 1.0f) l = 1.0f;
+                    Vec3f v = b.velocity + d / l;
+                    v.z = 0.0f;
+                    const float len = length2d(v);
+                    float speed = std::min(len, kHomingMaxSpeed);
+                    if (speed < 1.0f) speed = 1.0f;
+                    if (len > 0.0f) b.velocity = v * (speed / len);
+                    b.speed = speed;
+                } else if (b.speed < kHomingMaxSpeed) {
+                    const float len = length2d(b.velocity);
+                    b.speed += 1.0f / 3.0f;
+                    if (len > 0.0f) b.velocity = b.velocity * (b.speed / len);
+                }
+                break;
+            case ShotMissile:
+                if (b.state == ShotState::Fired) b.velocity.y -= kMissileLift;
+                break;
+            case ShotLaser: {
+                const int timer = laserTimers_[static_cast<std::size_t>(b.laserTimer & 1)];
+                if (timer == 70 || timer == 1) b.sprite.pendingInterrupt = 1;
+                const Vec3f& o = orbPositions_[static_cast<std::size_t>(b.orb & 1)];
+                b.position.x = o.x + b.offsetX;
+                b.position.y = o.y / 2.0f;
+                b.sprite.scaleY = o.y / 14.0f;
+                b.size.y = o.y;
+                break;
+            }
+            default:
+                break;
+        }
+        b.position += b.velocity;
+        if (b.kind != ShotLaser) {
             const AnmLoadedSprite* s = world.anm->sprite(b.sprite);
             const float w = s ? s->widthPx : b.size.x, h = s ? s->heightPx : b.size.y;
-            if (!world.state->isInBounds(b.position.x, b.position.y, w, h)) {
-                b.state = Bullet::Inactive;
+            if (b.position.x + w / 2.0f < 0.0f || b.position.x - w / 2.0f > kGameRegionWidth ||
+                b.position.y + h / 2.0f < 0.0f || b.position.y - h / 2.0f > kGameRegionHeight) {
+                b.state = ShotState::Inactive;
                 continue;
             }
-            world.anm->executeScript(b.sprite);
-        } else if (b.state == Bullet::Hit) {
-            if (world.anm->executeScript(b.sprite) != 0) b.state = Bullet::Inactive;
+        }
+        if (world.anm->executeScript(b.sprite) != 0) {
+            b.state = ShotState::Inactive;
+            continue;
+        }
+        ++b.lifetime;
+    }
+}
+
+void Player::fire(World& world, Bullet& b, const ShotEntry& e) {
+    b = Bullet{};
+    world.anm->setAndExecuteScript(b.sprite, e.script);
+    const Vec3f origin = e.origin == ShotFromPlayer ? positionCenter : orbPositions_[e.origin == ShotFromLeftOrb ? 0 : 1];
+    b.position = {origin.x + e.offsetX, origin.y + e.offsetY, 0.495f};
+    b.prevPosition = b.position;
+    b.size = {e.width, e.height, 0.0f};
+    b.angle = e.angle;
+    b.speed = e.speed;
+    b.velocity = {std::cos(e.angle) * e.speed, std::sin(e.angle) * e.speed, 0.0f};
+    b.lifetime = 0;
+    b.kind = e.kind;
+    b.damage = e.damage;
+    b.script = e.script;
+    if (e.kind == ShotLaser) {
+        b.laserTimer = static_cast<std::int8_t>(e.phase & 1);
+        b.orb = static_cast<std::int8_t>(e.origin == ShotFromRightOrb ? 1 : 0);
+        b.offsetX = e.offsetX;
+        laserTimers_[static_cast<std::size_t>(e.phase & 1)] = e.every;
+    }
+    if (e.sound) world.playSound(kSoundShoot);
+    b.state = ShotState::Fired;
+}
+
+void Player::spawnShots(World& world, int t) {
+    if (world.state->bombActive && world.state->shotType == 3) return;  // Marisa B cannot shoot while bombing
+    const std::vector<ShotEntry>& entries = tierFor(world).entries;
+    std::size_t e = 0;
+    int slot = 0;
+    while (e < entries.size()) {
+        while (slot < kMaxBullets && bullets_[static_cast<std::size_t>(slot)].state != ShotState::Inactive) ++slot;
+        if (slot >= kMaxBullets) return;  // pool exhausted: the remaining entries wait
+        // Try entries against this free slot until one fires.
+        for (; e < entries.size(); ++e) {
+            const ShotEntry& entry = entries[e];
+            bool fires;
+            if (entry.kind == ShotLaser) fires = laserTimers_[static_cast<std::size_t>(entry.phase & 1)] == 0;
+            else fires = t % entry.every == entry.phase;
+            if (!fires) continue;
+            fire(world, bullets_[static_cast<std::size_t>(slot)], entry);
+            ++e;
+            break;
         }
     }
-    world.anm->executeScript(sprite_);
 }
 
 int Player::checkGraze(World& world, const Vec3f& center, const Vec3f& size) {
@@ -165,6 +390,7 @@ void Player::die(World& world) {
     state = Dead;
     deathTimer_ = 30;
     deathbombWindow_ = 6;
+    laserTimers_ = {2, 2};  // ends both lasers
     ++world.state->deaths;
     world.unported->hit("particle effects");
     world.playSound(kSoundPichun);
@@ -201,8 +427,9 @@ void Player::respawn(World& world) {
     gs.bombs = gs.startingBombs;
     positionCenter = {kGameRegionWidth / 2.0f, kGameRegionHeight - 64.0f, 0.49f};
     prevPosition = positionCenter;
+    hitboxTopLeft = positionCenter - hitboxSize;
+    hitboxBottomRight = positionCenter + hitboxSize;
     state = Spawning;
-    invulnerabilityTimer_ = 240;
     bulletGrace_ = 90;
 }
 
@@ -227,39 +454,86 @@ void Player::checkLaser(World& world, const Vec3f& center, const Vec3f& size, co
 }
 
 int Player::calcDamageToEnemy(World& world, const Vec3f& enemyPos, const Vec3f& enemySize, bool* hitByBomb) {
-    const Vec3f etl{enemyPos.x - enemySize.x / 2.0f, enemyPos.y - enemySize.y / 2.0f, 0};
-    const Vec3f ebr{enemySize.x / 2.0f + enemyPos.x, enemySize.y / 2.0f + enemyPos.y, 0};
     if (hitByBomb) *hitByBomb = false;
+    const Vec3f etl{enemyPos.x - enemySize.x / 2.0f, enemyPos.y - enemySize.y / 2.0f, 0};
+    const Vec3f ebr{enemyPos.x + enemySize.x / 2.0f, enemyPos.y + enemySize.y / 2.0f, 0};
+    const bool bombing = world.state->bombActive;
     int damage = 0;
     for (Bullet& b : bullets_) {
-        if (b.state != Bullet::Fired) continue;
+        if (b.state == ShotState::Inactive) continue;
+        if (b.state == ShotState::Collided && b.kind != ShotMissile) continue;
         const Vec3f btl{b.position.x - b.size.x / 2.0f, b.position.y - b.size.y / 2.0f, 0};
-        const Vec3f bbr{b.size.x / 2.0f + b.position.x, b.size.y / 2.0f + b.position.y, 0};
-        if (btl.y > ebr.y || btl.x > ebr.x || bbr.y < etl.y || bbr.x < etl.x) continue;
-        damage += b.damage;
-        b.state = Bullet::Hit;
-        if (world.anm->hasScript(b.sprite.anmFileIndex + kScriptBulletHitOffset)) {
-            world.anm->setAndExecuteScript(b.sprite, b.sprite.anmFileIndex + kScriptBulletHitOffset);
-        } else {
-            b.state = Bullet::Inactive;
+        const Vec3f bbr{b.position.x + b.size.x / 2.0f, b.position.y + b.size.y / 2.0f, 0};
+        if (!overlap(btl, bbr, etl, ebr)) continue;
+        damage += bombing ? std::max(b.damage / 3, 1) : b.damage;
+        if (b.kind == ShotMissile) {
+            b.damage = static_cast<std::uint16_t>(std::max(b.damage / 4, 1));
+            if (b.sprite.anmFileIndex == b.script) {
+                const float blast = missileBlastSize(b.script - kAnmOffsetPlayer);
+                b.size = {blast, blast, 0.0f};
+            }
+            if (b.lifetime % 6 == 0) world.unported->hit("particle effects");
+        }
+        if (b.kind != ShotLaser) {
+            if (b.state == ShotState::Fired) {
+                world.anm->setAndExecuteScript(b.sprite, b.script + kScriptHitOffset);
+                world.unported->hit("particle effects");
+                b.position.z = 0.1f;
+            }
+            b.state = ShotState::Collided;
+            b.velocity = b.velocity / 8.0f;
+        } else if (++laserParticleCounter_ % 8 == 0) {
+            world.unported->hit("particle effects");
         }
     }
+    (void)kDamageCap;  // the per-enemy cap is applied by the enemy manager
     return damage;
 }
 
-void Player::draw(World& world, SpriteSink& sink, float alpha) {
-    for (Bullet& b : bullets_) {
-        if (b.state == Bullet::Inactive) continue;
+void Player::considerHomingTarget(const Vec3f& enemyPos) {
+    if (homingTarget_.y < enemyPos.y) homingTarget_ = enemyPos;
+}
+
+void Player::drawLow(World& world, SpriteSink& sink, float alpha) {
+    auto drawShot = [&](Bullet& b) {
         const Vec3f p = lerp(b.prevPosition, b.position, alpha);
-        b.sprite.pos = {p.x, p.y, 0.495f};
+        b.sprite.pos = {p.x, p.y, b.position.z};
+        if (b.sprite.autoRotate != 0) {
+            float a = b.angle + kZunPi;
+            while (a > kZunPi) a -= kZunTwoPi;
+            while (a <= -kZunPi) a += kZunTwoPi;
+            b.sprite.rotation.z = kZunHalfPi - a;
+        }
         world.anm->drawWorld(sink, b.sprite, kGameRegionX, kGameRegionY);
+    };
+    for (Bullet& b : bullets_) {
+        if (b.state == ShotState::Fired) drawShot(b);
     }
     if (state == Dead) return;
-    // Invulnerable: blink every 4 frames.
-    if ((state == Spawning || state == Invulnerable) && ((invulnerabilityTimer_ / 4) & 1)) return;
+    const bool blink = state == Invulnerable && ((invulnerabilityTimer_ / 4) & 1);
     const Vec3f p = lerp(prevPosition, positionCenter, alpha);
-    sprite_.pos = {kGameRegionX + p.x, kGameRegionY + p.y, 0.49f};
-    world.anm->drawScreen(sink, sprite_);
+    if (!blink) {
+        sprite_.pos = {kGameRegionX + p.x, kGameRegionY + p.y, 0.49f};
+        world.anm->drawScreen(sink, sprite_);
+    }
+    if (orbState_ != OrbState::Hidden && (state == Alive || state == Invulnerable)) {
+        const Vec3f shift = p - positionCenter;  // orbs follow the interpolated body
+        for (int i = 0; i < 2; ++i) {
+            AnmVm& vm = orbVms_[static_cast<std::size_t>(i)];
+            const Vec3f& o = orbPositions_[static_cast<std::size_t>(i)];
+            vm.pos = {o.x + shift.x, o.y + shift.y, 0.491f};
+            world.anm->drawWorld(sink, vm, kGameRegionX, kGameRegionY);
+        }
+    }
+}
+
+void Player::drawHits(World& world, SpriteSink& sink, float alpha) {
+    for (Bullet& b : bullets_) {
+        if (b.state != ShotState::Collided) continue;
+        const Vec3f p = lerp(b.prevPosition, b.position, alpha);
+        b.sprite.pos = {p.x, p.y, 0.4f};
+        world.anm->drawWorld(sink, b.sprite, kGameRegionX, kGameRegionY);
+    }
 }
 
 }  // namespace th06

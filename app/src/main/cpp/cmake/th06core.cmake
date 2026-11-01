@@ -27,6 +27,7 @@ set_target_properties(th06_zstd PROPERTIES POSITION_INDEPENDENT_CODE ON C_STANDA
 
 add_library(th06_core STATIC
   ${TH06_SRC}/core/Log.cpp
+  ${TH06_SRC}/core/Sha256.cpp
   ${TH06_SRC}/io/Archive.cpp
   ${TH06_SRC}/io/Lzss.cpp
   ${TH06_SRC}/io/MappedFile.cpp
@@ -44,6 +45,7 @@ add_library(th06_core STATIC
   ${TH06_SRC}/game/EnemyManager.cpp
   ${TH06_SRC}/game/ItemManager.cpp
   ${TH06_SRC}/game/Resources.cpp
+  ${TH06_SRC}/game/ShotData.cpp
   ${TH06_SRC}/game/Player.cpp
   ${TH06_SRC}/game/Stage.cpp
   ${TH06_SRC}/third_party_impl.cpp)

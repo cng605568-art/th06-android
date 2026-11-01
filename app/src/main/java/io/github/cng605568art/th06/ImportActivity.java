@@ -178,11 +178,12 @@ public class ImportActivity extends Activity {
             playButton.setText("Play (no game data selected)");
         } else {
             boolean classic = false;
-            sb.append(String.format(Locale.ROOT, "%d archive(s) in use:%n", entries.size()));
+            sb.append(String.format(Locale.ROOT, "%d file(s) in use:%n", entries.size()));
             for (DataSources.Entry e : entries) {
                 boolean isClassic = DataSources.FORMAT_PBG3.equals(e.format);
                 classic |= isClassic;
-                String kind = isClassic ? "Classic" : "New Classic";
+                String kind = isClassic ? "Classic"
+                        : DataSources.FORMAT_EXE.equals(e.format) ? "Program" : "New Classic";
                 sb.append(String.format(Locale.ROOT, "  %-18s %-11s %6.1f MB%n",
                         e.name, kind, e.size / 1048576.0));
             }

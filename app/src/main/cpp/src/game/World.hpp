@@ -18,6 +18,7 @@ class EnemyManager;
 class EclFile;
 class ItemManager;
 class Player;
+struct ShotData;
 
 // Playfield of the original: 384x448 at screen (32, 16) inside 640x480.
 inline constexpr float kGameRegionX = 32.0f;
@@ -138,6 +139,7 @@ struct World {
     BulletManager* bullets = nullptr;
     EnemyManager* enemies = nullptr;
     ItemManager* items = nullptr;
+    const ShotData* shots = nullptr;  // from the player's game executable; null = basic shot
     Player* player = nullptr;
     EclFile* ecl = nullptr;  // mutable: the original lets scripts write into their own arguments
     GameState* state = nullptr;

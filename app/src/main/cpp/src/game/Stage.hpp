@@ -17,6 +17,7 @@
 #include "game/ItemManager.hpp"
 #include "game/Input.hpp"
 #include "game/Player.hpp"
+#include "game/ShotData.hpp"
 #include "game/World.hpp"
 #include "gfx/AnmManager.hpp"
 #include "gfx/ProceduralArt.hpp"
@@ -76,6 +77,9 @@ class Stage {
     std::unique_ptr<ItemManager> items_;
     std::unique_ptr<Player> player_;
     EclFile ecl_;
+    ShotData shots_;
+    bool shotsSearched_ = false;
+    int loadedCharacter_ = -1;
     World world_;
     bool ready_ = false;
     bool paused_ = false;

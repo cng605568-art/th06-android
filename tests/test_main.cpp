@@ -24,6 +24,7 @@
 #include "audio/SoundPlayer.hpp"
 #include "core/FixedTimestep.hpp"
 #include "core/Math.hpp"
+#include "core/Sha256.hpp"
 #include "core/ZunMath.hpp"
 #include "game/BulletManager.hpp"
 #include "game/Ecl.hpp"
@@ -31,6 +32,7 @@
 #include "game/ItemManager.hpp"
 #include "game/Player.hpp"
 #include "game/Resources.hpp"
+#include "game/ShotData.hpp"
 #include "game/Stage.hpp"
 #include "gfx/Anm.hpp"
 #include "gfx/AnmManager.hpp"
@@ -631,7 +633,7 @@ static Bytes syntheticEtama4Texture() {
     for (int c = 0; c < 8; ++c) paintDisc(img, (c % 4) * 32, (c / 4) * 32, 32, kTestColors[static_cast<std::size_t>(c)]);
     return ddsFromImage(img);
 }
-// player00.anm: idle/moving scripts 0..4, shot 64, shot hit 96.
+// player00.anm: idle/moving scripts 0..4, shots 64..71, hits 96..100, orbs 128/129.
 static Bytes syntheticPlayer() {
     const std::vector<AnmSprite> sprites = {{0, 0, 0, 32, 48}, {1, 32, 0, 16, 16}, {2, 48, 0, 16, 16}};
     std::vector<AnmScriptBytes> scripts;
@@ -644,14 +646,37 @@ static Bytes syntheticPlayer() {
     AnmCode shot;
     shot.ins(0, anm_op::SetSprite, {1});
     shot.ins(0, anm_op::Alpha, {0xa0});
-    shot.ins(0, anm_op::Static);
+    shot.ins(1, anm_op::Halt);  // a finished (static) script would retire the shot
     scripts.push_back({64, shot.bytes});
-    AnmCode hit;
-    hit.ins(0, anm_op::SetSprite, {2});
-    hit.ins(0, anm_op::BlendAdditive);
-    hit.ins(0, anm_op::ScaleSpeed, {fbits(0.1f), fbits(0.1f)});
-    hit.ins(6, anm_op::Delete);
-    scripts.push_back({96, hit.bytes});
+    for (std::uint32_t k = 65; k <= 68; ++k) {  // amulets / needles / missiles
+        AnmCode c;
+        c.ins(0, anm_op::SetSprite, {1});
+        c.ins(1, anm_op::Halt);
+        scripts.push_back({k, c.bytes});
+    }
+    for (std::uint32_t k = 69; k <= 71; ++k) {  // lasers: shown until interrupt 1, then gone
+        AnmCode c;
+        c.ins(0, anm_op::SetSprite, {1});
+        c.ins(0, anm_op::Halt);
+        c.ins(0, anm_op::InterruptLabel, {1});
+        c.ins(0, anm_op::Delete);
+        scripts.push_back({k, c.bytes});
+    }
+    for (std::uint32_t k = 96; k <= 100; ++k) {  // hit / explosion animations
+        AnmCode hit;
+        hit.ins(0, anm_op::SetSprite, {2});
+        hit.ins(0, anm_op::BlendAdditive);
+        hit.ins(0, anm_op::ScaleSpeed, {fbits(0.1f), fbits(0.1f)});
+        hit.ins(6, anm_op::Delete);
+        scripts.push_back({k, hit.bytes});
+    }
+    for (std::uint32_t k = 128; k <= 129; ++k) {  // option orbs
+        AnmCode c;
+        c.ins(0, anm_op::SetSprite, {2});
+        c.ins(0, anm_op::RotationSpeed, {fbits(0.0f), fbits(0.0f), fbits(0.1f)});
+        c.ins(1, anm_op::Halt);
+        scripts.push_back({k, c.bytes});
+    }
     return buildAnmScripts(256, 256, "data/player00.dds", sprites, scripts);
 }
 static Bytes syntheticPlayerTexture() {
@@ -2018,7 +2043,8 @@ static void testStageFromArchive() {
         r.unported = stage.unported().counts().size();
         r.itemsCollected = stage.items().collectedTotal();
         for (const auto& [name, n] : stage.unported().counts()) {
-            if (name != "particle effects" && name != "score popups and banners" && name != "game over / continue screen") {
+            if (name != "particle effects" && name != "score popups and banners" && name != "game over / continue screen" &&
+                !name.starts_with("shot types")) {
                 std::fprintf(stderr, "  unexpected unported: %s\n", name.c_str());
             }
         }
@@ -2037,7 +2063,7 @@ static void testStageFromArchive() {
     CHECK(a.peakBullets > 20);
     CHECK(a.score > 0);  // shot enemies (damage score and kills)
     CHECK(a.bulletDraws > 20 && a.enemyDraws > 0 && a.playerDraws > 0);
-    CHECK(a.unported <= 3);
+    CHECK(a.unported <= 4);
     CHECK(a.maxLasers >= 1 && a.itemsCollected > 0);
     const auto b = run(1500, nullptr, nullptr);
     CHECK(a.score == b.score && a.itemsCollected == b.itemsCollected && a.grazes == b.grazes && a.deaths == b.deaths && a.peakBullets == b.peakBullets &&
@@ -2051,6 +2077,342 @@ static void testStageFromArchive() {
     RecordingSink msg;
     none.render(msg, 1.0f, HudInfo{});
     CHECK(msg.items.size() > 10);
+}
+
+static void testSha256() {
+    auto hex = [](std::string_view s) {
+        return sha256Hex(std::span<const std::uint8_t>(reinterpret_cast<const std::uint8_t*>(s.data()), s.size()));
+    };
+    CHECK(hex("") == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    CHECK(hex("abc") == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    CHECK(hex("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq") ==
+          "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1");
+}
+
+// A tiny PE32 image with shot tables at the 1.02h addresses, filled with invented test
+// values (not the game's). Every tier of type t fires the same two entries.
+static Bytes syntheticShotExe(std::uint8_t badKind = 0) {
+    constexpr std::uint32_t kBase = 0x400000, kSectionVa = 0x76000, kRaw = 0x400, kRawSize = 0x3000;
+    Bytes b(kRaw + kRawSize, 0);
+    auto put16 = [&](std::size_t at, std::uint16_t v) { std::memcpy(b.data() + at, &v, 2); };
+    auto put32 = [&](std::size_t at, std::uint32_t v) { std::memcpy(b.data() + at, &v, 4); };
+    auto putf = [&](std::size_t at, float v) { std::memcpy(b.data() + at, &v, 4); };
+    b[0] = 'M';
+    b[1] = 'Z';
+    put32(0x3c, 0x80);
+    std::memcpy(b.data() + 0x80, "PE\0\0", 4);
+    put16(0x84, 0x14c);
+    put16(0x86, 1);      // one section
+    put16(0x94, 0xe0);   // optional header size
+    put16(0x98, 0x10b);  // PE32
+    put32(0x98 + 28, kBase);
+    const std::size_t sec = 0x98 + 0xe0;
+    put32(sec + 8, kRawSize);
+    put32(sec + 12, kSectionVa);
+    put32(sec + 16, kRawSize);
+    put32(sec + 20, kRaw);
+    auto off = [&](std::uint32_t va) { return static_cast<std::size_t>(va - kBase - kSectionVa + kRaw); };
+    for (int t = 0; t < 4; ++t) {
+        const std::size_t ch = off(exe102h::kCharacterData + t * 0x18);
+        putf(ch, 3.0f + t);
+        putf(ch + 4, 1.5f + t);
+        const std::uint32_t bullets = 0x478600 + static_cast<std::uint32_t>(t) * 0x100;
+        for (int tier = 0; tier < 9; ++tier) {
+            const std::size_t pd = off(exe102h::kPowerData[t] + tier * 0x0c);
+            put32(pd, 2);
+            put32(pd + 4, static_cast<std::uint32_t>(10 * (tier + 1)));
+            put32(pd + 8, bullets);
+        }
+        for (int i = 0; i < 2; ++i) {
+            const std::size_t e = off(bullets + static_cast<std::uint32_t>(i) * 0x24);
+            put16(e, static_cast<std::uint16_t>(i == 0 ? 4 : 30));  // every
+            put16(e + 2, 0);                                        // phase
+            putf(e + 4, i == 0 ? 0.0f : -6.0f);                     // offset
+            putf(e + 8, 2.0f);
+            putf(e + 12, 10.0f);                                    // hitbox
+            putf(e + 16, 14.0f);
+            putf(e + 20, -1.5f);                                    // angle (radians)
+            putf(e + 24, 9.0f);                                     // speed
+            put16(e + 28, static_cast<std::uint16_t>(20 + i));      // damage
+            b[e + 30] = static_cast<std::uint8_t>(i);               // origin: player, left orb
+            b[e + 31] = i == 1 && badKind ? badKind : static_cast<std::uint8_t>(i);  // kind: normal, homing
+            put16(e + 32, static_cast<std::uint16_t>(0x400 + 64 + i));
+            put16(e + 34, static_cast<std::uint16_t>(i == 0 ? 0 : 0xffff));  // sound / none
+        }
+    }
+    return b;
+}
+
+static void testShotDataReader() {
+    const Bytes exe = syntheticShotExe();
+    ShotData d;
+    std::string err;
+    CHECK(!loadShotData(exe, d, &err) && err.find("1.02h") != std::string::npos);  // not the real program
+    CHECK(loadShotData(exe, d, &err, false) && d.loaded);
+    if (d.loaded) {
+        CHECK(d.types[2].speed == 5.0f && d.types[2].speedFocus == 3.5f);
+        const ShotTier& tier = d.types[1].tiers[3];
+        CHECK(tier.threshold == 40 && tier.entries.size() == 2);
+        const ShotEntry& a = tier.entries[0];
+        const ShotEntry& h = tier.entries[1];
+        CHECK(a.kind == ShotNormal && a.origin == ShotFromPlayer && a.every == 4 && a.sound && a.damage == 20);
+        CHECK(h.kind == ShotHoming && h.origin == ShotFromLeftOrb && h.offsetX == -6.0f && h.height == 14.0f &&
+              h.angle == -1.5f && h.speed == 9.0f && h.script == 0x400 + 65 && !h.sound);
+    }
+    ShotData bad;
+    CHECK(!loadShotData(syntheticShotExe(9), bad, &err, false) && !bad.loaded);
+    Bytes cut = exe;
+    cut.resize(0x500);
+    CHECK(!loadShotData(cut, bad, &err, false));
+    CHECK(!Vfs::looksLikeGameExecutable(exe));  // too small to be the game: the scan skips it
+}
+
+// Shot data made up for these tests: tier 1 a forward shot every 5 frames plus an entry
+// that never fires; tier 2 adds a homing amulet from the left orb; Marisa A missiles and
+// Marisa B lasers on their own tiers.
+static ShotData testShotData() {
+    ShotData d;
+    d.loaded = true;
+    for (int t = 0; t < 4; ++t) {
+        ShotType& st = d.types[static_cast<std::size_t>(t)];
+        st.speed = t < 2 ? 4.0f : 5.0f;
+        st.speedFocus = st.speed / 2.0f;
+        const std::int32_t thresholds[9] = {8, 16, 32, 48, 64, 80, 96, 127, 999};
+        ShotEntry main;
+        main.width = main.height = 12.0f;
+        main.angle = -kZunHalfPi;
+        main.speed = 12.0f;
+        main.damage = 48;
+        main.every = 5;
+        main.script = 0x400 + 64;
+        main.sound = true;
+        ShotEntry never = main;
+        never.every = 15;
+        never.phase = 20;
+        for (int i = 0; i < 9; ++i) {
+            ShotTier& tier = st.tiers[static_cast<std::size_t>(i)];
+            tier.threshold = thresholds[i];
+            tier.entries = {main, never};
+        }
+        ShotEntry special;
+        special.origin = ShotFromLeftOrb;
+        special.width = special.height = 12.0f;
+        special.angle = -2.0f;
+        special.speed = 10.0f;
+        special.damage = 14;
+        special.every = 30;
+        special.script = 0x400 + 65;
+        if (t == 2) {  // missile, straight up from the player
+            special.kind = ShotMissile;
+            special.origin = ShotFromPlayer;
+            special.angle = -kZunHalfPi;
+            special.speed = 3.0f;
+            special.damage = 64;
+            special.script = 0x400 + 66;
+        } else if (t == 3) {  // laser from the left orb, period 100, timer 0
+            special.kind = ShotLaser;
+            special.angle = -kZunHalfPi;
+            special.speed = 3.0f;
+            special.width = 10.0f;
+            special.height = 480.0f;
+            special.damage = 3;
+            special.every = 100;
+            special.script = 0x400 + 69;
+        } else {
+            special.kind = ShotHoming;
+        }
+        st.tiers[1].entries.push_back(special);
+    }
+    return d;
+}
+
+static void testPlayerShots() {
+    TestWorld tw;
+    CHECK(tw.ok);
+    if (!tw.ok) return;
+    RecordingSound sound;
+    tw.world.sound = &sound;
+    ShotData data = testShotData();
+    tw.world.shots = &data;
+    Player& pl = tw.player;
+    GameState& gs = tw.state;
+    InputState shoot;
+    shoot.shoot = true;
+    InputState idle;
+
+    // Respawn state resolves to invulnerable on the first update, which can already shoot.
+    pl.reset(tw.world);
+    CHECK(pl.state == Player::Spawning && pl.fireTimer() == -1);
+    pl.update(tw.world, shoot);
+    CHECK(pl.state == Player::Invulnerable && pl.activeBulletCount() == 1 && pl.fireTimer() == 1);
+    CHECK(sound.played.size() == 1 && sound.played[0] == 0);
+    const Player::Bullet& first = pl.bullet(0);
+    CHECK(first.state == Player::ShotState::Fired && first.position.x == 192.0f && first.position.y == 384.0f);
+    CHECK(near(first.velocity.y, -12.0f) && first.damage == 48);
+    for (int f = 1; f < 30; ++f) pl.update(tw.world, shoot);
+    CHECK(pl.activeBulletCount() == 6 && pl.fireTimer() == -1);  // t = 0, 5, ..., 25
+    pl.update(tw.world, shoot);
+    CHECK(pl.activeBulletCount() == 7 && pl.fireTimer() == 1);  // seamless next cycle
+
+    // A one-frame tap still fires the whole cycle.
+    pl.reset(tw.world);
+    pl.update(tw.world, shoot);
+    for (int f = 1; f < 30; ++f) pl.update(tw.world, idle);
+    CHECK(pl.activeBulletCount() == 6);
+
+    // Movement speeds come from the shot type; diagonals are speed / sqrt(2).
+    gs.shotType = 2;
+    pl.reset(tw.world);
+    pl.update(tw.world, idle);
+    InputState right;
+    right.right = true;
+    pl.update(tw.world, right);
+    CHECK(pl.positionCenter.x == 197.0f);
+    InputState both;
+    both.left = both.right = both.up = both.down = true;  // right beats left, up beats down
+    pl.update(tw.world, both);
+    CHECK(near(pl.positionCenter.x, 197.0f + 5.0f / std::sqrt(2.0f)) && near(pl.positionCenter.y, 384.0f - 5.0f / std::sqrt(2.0f)));
+    gs.shotType = 0;
+
+    // Option orbs: hidden below power 8, slide in over 8 frames when focusing.
+    pl.reset(tw.world);
+    gs.power = 0;
+    pl.update(tw.world, idle);
+    CHECK(pl.orbState() == Player::OrbState::Hidden);
+    gs.power = 8;
+    pl.update(tw.world, idle);
+    CHECK(pl.orbState() == Player::OrbState::Unfocused);
+    CHECK(pl.orbPosition(0).x == pl.positionCenter.x - 24.0f && pl.orbPosition(1).x == pl.positionCenter.x + 24.0f);
+    InputState focus;
+    focus.focus = true;
+    const float focusing[8][2] = {{23.75f, -4}, {23, -8}, {21.75f, -12}, {20, -16}, {17.75f, -20}, {15, -24}, {11.75f, -28}, {8, -32}};
+    bool table = true;
+    for (int k = 0; k < 8; ++k) {
+        pl.update(tw.world, focus);
+        table = table && near(pl.positionCenter.x - pl.orbPosition(0).x, focusing[k][0]) &&
+                near(pl.orbPosition(0).y - pl.positionCenter.y, focusing[k][1]);
+    }
+    CHECK(table && pl.orbState() == Player::OrbState::Focused);
+    pl.update(tw.world, idle);
+    CHECK(near(pl.positionCenter.x - pl.orbPosition(0).x, 8.25f) && near(pl.orbPosition(0).y - pl.positionCenter.y, -28.0f));
+    for (int k = 0; k < 7; ++k) pl.update(tw.world, idle);
+    for (int k = 0; k < 3; ++k) pl.update(tw.world, focus);  // focusing, k = 3: (21.75, -12)
+    pl.update(tw.world, idle);                                // reversal: shows unfocusing with k = 8 - 3 = 5
+    CHECK(near(pl.positionCenter.x - pl.orbPosition(0).x, 14.25f) && near(pl.orbPosition(0).y - pl.positionCenter.y, -12.0f));
+    CHECK(pl.orbState() == Player::OrbState::Unfocusing);
+
+    // Homing amulet (second tier): steers toward the target the enemies chose last frame.
+    pl.reset(tw.world);
+    gs.power = 8;
+    pl.update(tw.world, shoot);  // fires main shot + amulet from the left orb
+    int amulet = -1;
+    for (int i = 0; i < Player::kMaxBullets; ++i) {
+        if (pl.bullet(i).state != Player::ShotState::Inactive && pl.bullet(i).kind == ShotHoming) amulet = i;
+    }
+    CHECK(amulet >= 0);
+    if (amulet >= 0) {
+        const Vec3f before = pl.bullet(amulet).velocity;
+        pl.considerHomingTarget({300.0f, 100.0f, 0.0f});
+        pl.considerHomingTarget({50.0f, 60.0f, 0.0f});  // higher up: not chosen
+        CHECK(pl.homingTarget().x == 300.0f);
+        pl.update(tw.world, idle);
+        const Player::Bullet& h = pl.bullet(amulet);
+        CHECK(h.velocity.x > before.x && h.speed <= 10.0f && h.speed >= 1.0f);
+        CHECK(pl.homingTarget().x < -100.0f);  // reset for this frame's enemies
+        for (int f = 0; f < 3; ++f) pl.update(tw.world, idle);  // no target: speeds back up to 10
+        CHECK(pl.bullet(amulet).speed >= 10.0f || pl.bullet(amulet).state == Player::ShotState::Inactive);
+    }
+
+    // Normal shots hit one enemy, then play their hit animation and stop counting.
+    pl.reset(tw.world);
+    gs.power = 0;
+    pl.update(tw.world, shoot);
+    const Vec3f at = pl.bullet(0).position;
+    bool bomb = true;
+    CHECK(pl.calcDamageToEnemy(tw.world, at, {12.0f, 12.0f, 0.0f}, &bomb) == 48 && !bomb);
+    CHECK(pl.bullet(0).state == Player::ShotState::Collided && pl.bullet(0).sprite.anmFileIndex == 0x400 + 96);
+    CHECK(near(pl.bullet(0).velocity.y, -1.5f));
+    CHECK(pl.calcDamageToEnemy(tw.world, at, {12.0f, 12.0f, 0.0f}, &bomb) == 0);
+    gs.bombActive = true;  // during a bomb, shots deal a third (at least 1)
+    pl.reset(tw.world);
+    pl.update(tw.world, shoot);
+    CHECK(pl.calcDamageToEnemy(tw.world, pl.bullet(0).position, {12.0f, 12.0f, 0.0f}, &bomb) == 16);
+    gs.bombActive = false;
+
+    // Missiles (Marisa A): accelerate upwards, then explode with decaying damage.
+    gs.shotType = 2;
+    gs.power = 8;
+    pl.reset(tw.world);
+    pl.update(tw.world, shoot);
+    int missile = -1;
+    for (int i = 0; i < Player::kMaxBullets; ++i) {
+        if (pl.bullet(i).state != Player::ShotState::Inactive && pl.bullet(i).kind == ShotMissile) missile = i;
+    }
+    CHECK(missile >= 0);
+    if (missile >= 0) {
+        pl.update(tw.world, idle);
+        CHECK(near(pl.bullet(missile).velocity.y, -3.3f));
+        const Vec3f mp = pl.bullet(missile).position;
+        CHECK(pl.calcDamageToEnemy(tw.world, mp, {4.0f, 4.0f, 0.0f}, &bomb) == 64);
+        CHECK(pl.bullet(missile).state == Player::ShotState::Collided && pl.bullet(missile).size.x == 42.0f &&
+              pl.bullet(missile).damage == 16);
+        CHECK(pl.calcDamageToEnemy(tw.world, mp + Vec3f{18.0f, 0.0f, 0.0f}, {4.0f, 4.0f, 0.0f}, &bomb) == 16);  // blast radius
+        CHECK(pl.bullet(missile).damage == 4);
+    }
+
+    // Lasers (Marisa B): hang from the orb, refire per period, end on ANM interrupt.
+    gs.shotType = 3;
+    pl.reset(tw.world);
+    pl.update(tw.world, shoot);
+    int laser = -1;
+    for (int i = 0; i < Player::kMaxBullets; ++i) {
+        if (pl.bullet(i).state != Player::ShotState::Inactive && pl.bullet(i).kind == ShotLaser) laser = i;
+    }
+    CHECK(laser >= 0 && pl.laserTimer(0) == 100);
+    if (laser >= 0) {
+        pl.update(tw.world, shoot);
+        const Player::Bullet& lb = pl.bullet(laser);
+        CHECK(near(lb.position.x, pl.orbPosition(0).x) && near(lb.position.y, pl.orbPosition(0).y / 2.0f - 3.0f, 1e-3f));
+        CHECK(lb.size.y == pl.orbPosition(0).y && lb.size.x == 10.0f);
+        auto activeLasers = [&] {
+            int n = 0;
+            for (int i = 0; i < Player::kMaxBullets; ++i) {
+                n += pl.bullet(i).state != Player::ShotState::Inactive && pl.bullet(i).kind == ShotLaser;
+            }
+            return n;
+        };
+        // Per-frame damage while the beam overlaps; it never switches to a hit animation.
+        const Vec3f beam{pl.orbPosition(0).x, 100.0f, 0.0f};
+        CHECK(pl.calcDamageToEnemy(tw.world, beam, {8.0f, 8.0f, 0.0f}, &bomb) == 3);
+        CHECK(pl.calcDamageToEnemy(tw.world, beam, {8.0f, 8.0f, 0.0f}, &bomb) == 3 && lb.state == Player::ShotState::Fired);
+        int alive = 0;
+        for (int f = 2; f < 31; ++f) {  // timer reaches 70 after 30 frames: interrupt 1 ends it
+            pl.update(tw.world, shoot);
+            if (f == 29) alive = activeLasers();
+        }
+        CHECK(alive == 1 && activeLasers() == 0 && pl.laserTimer(0) == 70);
+        pl.update(tw.world, shoot);
+        CHECK(pl.laserTimer(0) == 69 && activeLasers() == 0);  // no new laser before the timer runs out
+        pl.state = Player::Alive;
+        pl.checkCollision(tw.world, pl.positionCenter, {4.0f, 4.0f, 0.0f});
+        CHECK(pl.state == Player::Dead && pl.laserTimer(0) == 2 && pl.laserTimer(1) == 2);
+    }
+    {  // a fresh laser refires once its period has passed
+        pl.reset(tw.world);
+        int fired = 0;
+        for (int f = 0; f < 101; ++f) {
+            pl.update(tw.world, shoot);
+            if (f == 0 || f == 100) fired += pl.laserTimer(0) == 100;
+        }
+        CHECK(fired == 2);
+    }
+    gs.shotType = 0;
+
+    // Without the game program a basic forward shot is used.
+    tw.world.shots = nullptr;
+    pl.reset(tw.world);
+    for (int f = 0; f < 30; ++f) pl.update(tw.world, shoot);
+    CHECK(pl.activeBulletCount() == 6);
 }
 
 int main() {
@@ -2075,6 +2437,9 @@ int main() {
         {"lasers: phases, hitbox quirks, graze, drawing", testLasers},
         {"laser ECL opcodes", testLaserOpcodes},
         {"score roll, extends, clear bonus, death drops", testScoreAndLives},
+        {"SHA-256", testSha256},
+        {"shot tables from a PE32 executable", testShotDataReader},
+        {"player shots: cycle, orbs, homing, missiles, lasers", testPlayerShots},
         {"sound queue (PlaySoundByIdx / PlaySounds)", testSoundQueue},
         {"fixed 60 Hz timestep at 60/90/120/144 Hz", testFixedTimestep},
         {"whole stage from a synthetic PBG3 archive", testStageFromArchive},
