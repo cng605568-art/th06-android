@@ -42,6 +42,8 @@ add_library(th06_core STATIC
   ${TH06_SRC}/game/BulletManager.cpp
   ${TH06_SRC}/game/Ecl.cpp
   ${TH06_SRC}/game/EnemyManager.cpp
+  ${TH06_SRC}/game/ItemManager.cpp
+  ${TH06_SRC}/game/Resources.cpp
   ${TH06_SRC}/game/Player.cpp
   ${TH06_SRC}/game/Stage.cpp
   ${TH06_SRC}/third_party_impl.cpp)

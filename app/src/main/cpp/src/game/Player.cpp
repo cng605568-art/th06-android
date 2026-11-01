@@ -1,8 +1,11 @@
 #include "game/Player.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 #include "game/BulletManager.hpp"
+#include "game/ItemManager.hpp"
+#include "game/Resources.hpp"
 
 namespace th06 {
 namespace {
@@ -28,7 +31,7 @@ constexpr std::uint16_t kShotDamage = 48;
 
 constexpr float kMoveLeft = 8.0f, kMoveTop = 16.0f;
 constexpr float kMoveWidth = kGameRegionWidth - 16.0f, kMoveHeight = kGameRegionHeight - 32.0f;
-constexpr int kSoundShoot = 0, kSoundPichun = 4, kSoundGraze = 30;
+constexpr int kSoundShoot = 0, kSoundPichun = 4;
 
 bool overlap(const Vec3f& aTL, const Vec3f& aBR, const Vec3f& bTL, const Vec3f& bBR) {
     return !(aTL.x > bBR.x || aBR.x < bTL.x || aTL.y > bBR.y || aBR.y < bTL.y);
@@ -60,14 +63,13 @@ void Player::update(World& world, const InputState& in) {
     for (Bullet& b : bullets_) b.prevPosition = b.position;
 
     if (state == Dead) {
-        if (--deathTimer_ <= 0) {
-            world.bullets->removeAllBullets(false);
-            positionCenter = {kGameRegionWidth / 2.0f, kGameRegionHeight - 64.0f, 0.49f};
-            prevPosition = positionCenter;
-            state = Spawning;
-            invulnerabilityTimer_ = 240;
-        }
+        if (deathbombWindow_ > 0 && --deathbombWindow_ == 0) dropItemsOnDeath(world);
+        if (--deathTimer_ <= 0) respawn(world);
     } else {
+        if (bulletGrace_ > 0) {
+            --bulletGrace_;
+            world.bullets->removeAllBullets(world, false);
+        }
         focused = in.focus;
         const int dx = static_cast<int>(in.right) - static_cast<int>(in.left);
         const int dy = static_cast<int>(in.down) - static_cast<int>(in.up);
@@ -146,8 +148,7 @@ int Player::checkGraze(World& world, const Vec3f& center, const Vec3f& size) {
     const Vec3f br{center.x + size.x / 2.0f + 20.0f, center.y + size.y / 2.0f + 20.0f, 0};
     if (state == Dead || state == Spawning) return GrazeFalse;
     if (!overlap(hitboxTopLeft, hitboxBottomRight, tl, br)) return GrazeFalse;
-    ++world.state->grazes;
-    world.playSound(kSoundGraze);
+    addGraze(world);
     return GrazeTrue;
 }
 
@@ -163,8 +164,66 @@ int Player::checkCollision(World& world, const Vec3f& center, const Vec3f& size)
 void Player::die(World& world) {
     state = Dead;
     deathTimer_ = 30;
+    deathbombWindow_ = 6;
     ++world.state->deaths;
+    world.unported->hit("particle effects");
     world.playSound(kSoundPichun);
+}
+
+void Player::dropItemsOnDeath(World& world) {
+    GameState& gs = *world.state;
+    gs.fullPowerChain = 0;
+    if (world.items) {
+        if (gs.livesRemaining > 0) {
+            world.items->spawn(world, positionCenter, ItemPowerBig, ItemState::DeathScatter);
+            for (int i = 0; i < 5; ++i) world.items->spawn(world, positionCenter, ItemPowerSmall, ItemState::DeathScatter);
+        } else {
+            for (int i = 0; i < 5; ++i) world.items->spawn(world, positionCenter, ItemFullPower, ItemState::DeathScatter);
+        }
+    }
+    if (gs.livesRemaining > 0) {
+        gs.power = std::max(gs.power - 16, 0);
+    } else {
+        gs.power = 0;
+        gs.extendIndex = -1;
+    }
+    gs.decreaseSubrank(1600);
+}
+
+void Player::respawn(World& world) {
+    GameState& gs = *world.state;
+    if (--gs.livesRemaining < 0) {
+        // Game over: the continue screen is not ported, so play simply goes on.
+        world.unported->hit("game over / continue screen");
+        gs.livesRemaining = 2;
+        gs.extendIndex = 0;
+    }
+    gs.bombs = gs.startingBombs;
+    positionCenter = {kGameRegionWidth / 2.0f, kGameRegionHeight - 64.0f, 0.49f};
+    prevPosition = positionCenter;
+    state = Spawning;
+    invulnerabilityTimer_ = 240;
+    bulletGrace_ = 90;
+}
+
+void Player::checkLaser(World& world, const Vec3f& center, const Vec3f& size, const Vec3f& origin, float angle,
+                        bool canGraze) {
+    const float c = std::cos(angle), sn = std::sin(angle);
+    const Vec3f d = positionCenter - origin;
+    const Vec3f q{origin.x + c * d.x + sn * d.y, origin.y + c * d.y - sn * d.x, 0.0f};
+    const Vec3f ptl{q.x - hitboxSize.x, q.y - hitboxSize.y, 0.0f};
+    const Vec3f pbr{q.x + hitboxSize.x, q.y + hitboxSize.y, 0.0f};
+    Vec3f ltl{center.x - size.x / 2.0f, center.y - size.y / 2.0f, 0.0f};
+    Vec3f lbr{center.x + size.x / 2.0f, center.y + size.y / 2.0f, 0.0f};
+    if (overlap(ptl, pbr, ltl, lbr)) {
+        if (state == Alive) die(world);
+        return;
+    }
+    if (!canGraze) return;
+    ltl = ltl - Vec3f{48.0f, 48.0f, 0.0f};
+    lbr = lbr + Vec3f{48.0f, 48.0f, 0.0f};
+    if (!overlap(ptl, pbr, ltl, lbr) || state == Dead || state == Spawning) return;
+    addGraze(world);
 }
 
 int Player::calcDamageToEnemy(World& world, const Vec3f& enemyPos, const Vec3f& enemySize, bool* hitByBomb) {

@@ -5,6 +5,7 @@
 
 #include "audio/SoundPlayer.hpp"
 #include "core/Log.hpp"
+#include "game/Resources.hpp"
 #include "io/Vfs.hpp"
 
 namespace th06 {
@@ -30,10 +31,12 @@ Stage::Stage(TextureLibrary& textures, const UiArt& ui, const Vfs* vfs, SoundPla
       anm_(textures, rng_),
       bullets_(std::make_unique<BulletManager>()),
       enemies_(std::make_unique<EnemyManager>()),
+      items_(std::make_unique<ItemManager>()),
       player_(std::make_unique<Player>()) {
     world_.anm = &anm_;
     world_.bullets = bullets_.get();
     world_.enemies = enemies_.get();
+    world_.items = items_.get();
     world_.player = player_.get();
     world_.state = &state_;
     world_.rng = &rng_;
@@ -79,6 +82,9 @@ bool Stage::load(int stageNumber, int difficulty) {
     bullets_ = std::make_unique<BulletManager>();
     world_.bullets = bullets_.get();
     if (!need(bullets_->initializeTemplates(world_, &err), "BULLET TYPES")) return false;
+    items_->reset();
+    state_.grazes = 0;
+    state_.stagePointItems = 0;
     player_->reset(world_);
     enemies_->startStage(world_);
     clearTimer_ = 0;
@@ -94,6 +100,7 @@ void Stage::tick(const InputState& in) {
     if (!ready_ || paused_) return;
 
     ++state_.frame;
+    rollScore(world_);
     player_->update(world_, in);
     enemies_->update(world_);
     bullets_->update(world_);
@@ -103,9 +110,8 @@ void Stage::tick(const InputState& in) {
     // stage counts as cleared once the timeline has run out and every enemy is gone.
     if (enemies_->timelineFinished() && enemies_->activeCount() == 0) {
         if (++clearTimer_ >= kClearDelay && stageNumber_ < 6) {
-            const std::uint32_t score = state_.score;
-            load(stageNumber_ + 1, state_.difficulty);
-            state_.score = score;
+            state_.score += stageClearBonus(state_, stageNumber_);
+            load(stageNumber_ + 1, state_.difficulty);  // keeps score, power, lives and bombs
         }
     } else {
         clearTimer_ = 0;
@@ -152,14 +158,19 @@ void Stage::renderHud(SpriteSink& s, const HudInfo& hud) {
         drawText(s, ui_, x, y, std::format("STAGE {}  {}", stageNumber_, kDifficultyNames[state_.difficulty]), 1.0f,
                  rgba(170, 220, 255));
         y += 18;
-        line("SCORE", std::format("{}", state_.score));
+        line("SCORE", std::format("{}", state_.displayedScore));
+        line("PLAYER", std::format("{}", state_.livesRemaining));
+        line("BOMB", std::format("{}", state_.bombs));
+        line("POWER", state_.power >= GameState::kMaxPower ? std::string("MAX") : std::format("{}", state_.power));
         line("GRAZE", std::format("{}", state_.grazes));
-        line("MISSES", std::format("{}", state_.deaths));
+        line("POINT", std::format("{}", state_.stagePointItems));
         line("RANK", std::format("{}", state_.rank));
         y += 6;
         line("FRAME", std::format("{}", enemies_->timelineTime()));
         line("ENEMIES", std::format("{}", enemies_->activeCount()));
         line("BULLETS", std::format("{} / {}", bullets_->activeCount(), BulletManager::kMaxBullets));
+        line("LASERS", std::format("{}", bullets_->activeLaserCount()));
+        line("ITEMS", std::format("{}", items_->activeCount()));
         y += 6;
         line("FPS", std::format("{:.1f}", hud.fps));
         line("DRAWS", std::format("{}", hud.drawCalls));

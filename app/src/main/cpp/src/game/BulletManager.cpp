@@ -2,6 +2,7 @@
 
 #include <cmath>
 
+#include "game/ItemManager.hpp"
 #include "game/Player.hpp"
 
 namespace th06 {
@@ -15,6 +16,10 @@ constexpr int kSpawnEffects16[16] = {SpawnWhite, SpawnRed,   SpawnRed,   SpawnRe
 constexpr int kSpawnEffects8[8] = {SpawnWhite, SpawnRed, SpawnRed, SpawnBlue, SpawnBlue, SpawnGreen, SpawnYellow, SpawnWhite};
 
 constexpr float kSizeTiny = 8.0f, kSizeSmall = 16.0f, kSizeLarge = 32.0f;
+constexpr int kAnmSpriteSpawnBigBall = kAnmOffsetBullet3 + 140;  // + spawn-effect colour: laser origin glow
+constexpr int kLaserGrazeInterval = 12;
+constexpr float kLaserCullOffset = 640.0f;
+constexpr float kLaserStarSpacing = 32.0f;
 
 // etama3 script ids (+0x200) and etama4 script ids (+0x29a).
 enum : int {
@@ -223,6 +228,7 @@ out:
 }
 
 void BulletManager::update(World& world) {
+    if (world.items) world.items->update(world);
     int count = 0;
     for (Bullet& b : *bullets_) {
         if (b.state == Inactive) continue;
@@ -332,7 +338,7 @@ void BulletManager::update(World& world) {
                         checkHit = true;
                     } else if (graze == Player::CanceledByBomb) {
                         b.state = Despawning;
-                        world.unported->hit("items (point items from cancelled bullets)");
+                        if (world.items) world.items->spawn(world, b.pos, ItemStar, ItemState::Magnet);
                     }
                 }
                 if (checkHit) {
@@ -355,32 +361,95 @@ void BulletManager::update(World& world) {
         b.timer++;
     }
     if (count > peak_) peak_ = count;
+    updateLasers(world);
 }
 
 void BulletManager::draw(World& world, SpriteSink& sink, float alpha) {
-    for (Bullet& b : *bullets_) {
-        if (b.state == Inactive) continue;
-        AnmVm* vm;
-        switch (b.state) {
-            case SpawningFast: vm = &b.sprites.spriteSpawnEffectFast; break;
-            case SpawningNormal: vm = &b.sprites.spriteSpawnEffectNormal; break;
-            case SpawningSlow: vm = &b.sprites.spriteSpawnEffectSlow; break;
-            case Despawning: vm = &b.sprites.spriteSpawnEffectDonut; break;
-            default: vm = &b.sprites.spriteBullet; break;
+    // Lasers: beam, then the glow at its origin while the tail is near it.
+    for (Laser& l : lasers_) {
+        if (!l.inUse) continue;
+        const float start = l.prevStartOffset + (l.startOffset - l.prevStartOffset) * alpha;
+        const float end = l.prevEndOffset + (l.endOffset - l.prevEndOffset) * alpha;
+        const float c = std::cos(l.angle), sn = std::sin(l.angle);
+        const float mid = start + (end - start) / 2.0f;
+        l.vm.pos = {l.pos.x + c * mid, l.pos.y + sn * mid, 0.0f};
+        world.anm->drawWorld(sink, l.vm, kGameRegionX, kGameRegionY);
+        if (start < 16.0f || l.speed == 0.0f) {
+            AnmVm& g = l.glowVm;
+            g.pos = {l.pos.x + c * start, l.pos.y + sn * start, 0.0f};
+            g.color = (l.vm.color & 0x00ffffffu) | 0xff000000u;
+            g.colorAdd = true;
+            g.additive = true;
+            g.rotation = {};
+            g.anchor = AnmAnchor::Center;
+            float scale = l.width / 10.0f * (16.0f - start) / 16.0f;
+            if (scale < 0.0f) scale = l.width / 10.0f;
+            g.scaleX = g.scaleY = scale;
+            world.anm->drawWorld(sink, g, kGameRegionX, kGameRegionY);
         }
-        const Vec3f p = lerp(b.prevPos, b.pos, alpha);
-        vm->pos = {p.x, p.y, 0.0f};
-        vm->color = colorCombineAlpha(0xffffffffu, vm->color);
-        if (vm->autoRotate != 0) vm->rotation.z = kZunHalfPi - b.angle;
-        world.anm->drawWorld(sink, *vm, kGameRegionX, kGameRegionY);
+    }
+
+    if (world.items) world.items->draw(world, sink, alpha);
+
+    // Bullets in four passes so small bullets end up on top of big ones: taller than 16 px;
+    // 16 px balls and ring balls; other 16 px bullets; smaller ones.
+    auto passOf = [](const Bullet& b) {
+        const int h = b.sprites.bulletHeight;
+        if (h > 16) return 0;
+        if (h == 16) {
+            const int script = b.sprites.spriteBullet.anmFileIndex;
+            return (script == b3(B3RingBall) || script == b3(B3Ball)) ? 1 : 2;
+        }
+        return 3;
+    };
+    for (int pass = 0; pass < 4; ++pass) {
+        for (Bullet& b : *bullets_) {
+            if (b.state == Inactive || passOf(b) != pass) continue;
+            AnmVm* vm;
+            switch (b.state) {
+                case SpawningFast: vm = &b.sprites.spriteSpawnEffectFast; break;
+                case SpawningNormal: vm = &b.sprites.spriteSpawnEffectNormal; break;
+                case SpawningSlow: vm = &b.sprites.spriteSpawnEffectSlow; break;
+                case Despawning: vm = &b.sprites.spriteSpawnEffectDonut; break;
+                default: vm = &b.sprites.spriteBullet; break;
+            }
+            const Vec3f p = lerp(b.prevPos, b.pos, alpha);
+            vm->pos = {p.x, p.y, 0.0f};
+            vm->color = colorCombineAlpha(0xffffffffu, vm->color);
+            if (vm->autoRotate != 0) vm->rotation.z = kZunHalfPi - b.angle;
+            world.anm->drawWorld(sink, *vm, kGameRegionX, kGameRegionY);
+        }
     }
 }
 
-void BulletManager::removeAllBullets(bool turnIntoItem) {
+void BulletManager::laserStars(World& world, const Laser& l) {
+    if (!world.items) return;
+    const float c = std::cos(l.angle), sn = std::sin(l.angle);
+    for (float d = l.startOffset; d < l.endOffset; d += kLaserStarSpacing) {
+        world.items->spawn(world, {l.pos.x + c * d, l.pos.y + sn * d, l.pos.z}, ItemStar, ItemState::Magnet);
+    }
+}
+
+void BulletManager::removeAllBullets(World& world, bool convert) {
     for (Bullet& b : *bullets_) {
         if (b.state == Inactive || b.state == Despawning) continue;
-        if (turnIntoItem) b = Bullet{};
-        else b.state = Despawning;
+        if (convert) {
+            if (world.items) world.items->spawn(world, b.pos, ItemStar, ItemState::Magnet);
+            b = Bullet{};
+        } else {
+            b.state = Despawning;
+        }
+    }
+    for (Laser& l : lasers_) {
+        if (!l.inUse) continue;
+        if (l.state < LaserDespawning) {
+            l.state = LaserDespawning;
+            l.timer = 0;
+            if (convert) laserStars(world, l);
+        }
+    }
+    for (Laser& l : lasers_) {
+        if (l.inUse) l.hitboxEndDelay = 0;
     }
 }
 
@@ -389,14 +458,150 @@ std::int32_t BulletManager::despawnBullets(World& world, std::int32_t maxBonusSc
     std::int32_t bulletScore = 2000;
     for (Bullet& b : *bullets_) {
         if (b.state == Inactive) continue;
-        if (awardPoints) world.unported->hit("items (point items from cancelled bullets)");
+        if (awardPoints && world.items) world.items->spawn(world, b.pos, ItemStar, ItemState::Magnet);
         total += bulletScore;
         bulletScore += 10;
         if (bulletScore > maxBonusScore) bulletScore = maxBonusScore;
         b.state = Despawning;
     }
+    for (Laser& l : lasers_) {
+        if (!l.inUse) continue;
+        if (l.state < LaserDespawning) {
+            l.state = LaserDespawning;
+            l.timer = 0;
+            if (awardPoints) {
+                if (world.items) world.items->spawn(world, l.pos, ItemStar, ItemState::Magnet);
+                laserStars(world, l);
+            }
+        }
+    }
+    for (Laser& l : lasers_) {
+        if (l.inUse) l.hitboxEndDelay = 0;
+    }
     world.state->score += static_cast<std::uint32_t>(total);
+    if (total != 0) world.unported->hit("score popups and banners");
     return total;
+}
+
+int BulletManager::spawnLaser(World& world, const LaserProps& p) {
+    for (int i = 0; i < kMaxLasers; ++i) {
+        Laser& l = lasers_[static_cast<std::size_t>(i)];
+        if (l.inUse) continue;
+        world.anm->setAndExecuteScript(l.vm, kAnmScriptBullet3LineLaser + p.sprite);
+        world.anm->setActiveSprite(l.vm, l.vm.activeSpriteIndex + p.color);
+        world.anm->initializeAndSetSprite(l.glowVm, kAnmSpriteSpawnBigBall + kSpawnEffects16[p.color & 15]);
+        l.glowVm.additive = true;
+        l.pos = p.position;
+        l.color = p.color;
+        l.inUse = true;
+        l.angle = p.angle;
+        if (p.aimed) l.angle += world.player->angleToPlayer(p.position);
+        l.flags = p.flags;
+        l.timer = 0;
+        l.startOffset = l.prevStartOffset = p.startOffset;
+        l.endOffset = l.prevEndOffset = p.endOffset;
+        l.startLength = p.startLength;
+        l.width = p.width;
+        l.speed = p.speed;
+        l.startTime = p.startTime;
+        l.duration = p.duration;
+        l.despawnDuration = p.despawnDuration;
+        l.hitboxStartTime = p.hitboxStartTime;
+        l.hitboxEndDelay = p.hitboxEndDelay;
+        l.state = p.startTime == 0 ? LaserActive : LaserStartDelay;
+        return i;
+    }
+    return -1;
+}
+
+void BulletManager::updateLasers(World& world) {
+    for (Laser& l : lasers_) {
+        if (!l.inUse) continue;
+        l.prevStartOffset = l.startOffset;
+        l.prevEndOffset = l.endOffset;
+
+        l.endOffset += l.speed;
+        if (l.endOffset - l.startOffset > l.startLength) l.startOffset = l.endOffset - l.startLength;
+        if (l.startOffset < 0.0f) l.startOffset = 0.0f;
+
+        // Hitbox in the laser's own frame: along +x from the origin, half the visual width thick.
+        Vec3f center{l.pos.x + l.startOffset + (l.endOffset - l.startOffset) / 2.0f, l.pos.y, 0.0f};
+        Vec3f size{l.endOffset - l.startOffset, l.width / 2.0f, 0.0f};
+        const AnmLoadedSprite* sprite = world.anm->sprite(l.vm);
+        const float spriteW = sprite ? sprite->widthPx : 16.0f;
+        const float spriteH = sprite ? sprite->heightPx : 16.0f;
+        l.vm.scaleX = l.width / spriteW;
+        l.vm.scaleY = (l.endOffset - l.startOffset) / spriteH;
+        l.vm.rotation.z = kZunHalfPi - l.angle;
+
+        auto test = [&] {
+            world.player->checkLaser(world, center, size, l.pos, l.angle, l.timer % kLaserGrazeInterval == 0);
+        };
+        auto fadeAlpha = [&] {
+            if (l.startTime == 0) return 255;
+            const int a = static_cast<int>(static_cast<float>(l.timer) * 255.0f / static_cast<float>(l.startTime));
+            return a > 255 ? 255 : a;
+        };
+        // The thinning beam during warning and despawn: note the original stores the half
+        // width into the hitbox *length*, shrinking the hitbox to a speck at the midpoint.
+        auto setThickness = [&](float w) {
+            l.vm.scaleX = w / 16.0f;
+            size.x = w / 2.0f;
+        };
+
+        bool tick = false;  // reached the end of the state machine without freeing the laser
+        if (l.state == LaserStartDelay) {
+            if (l.flags & kLaserFlagFadeInOut) {
+                l.vm.color = static_cast<std::uint32_t>(fadeAlpha()) << 24;
+            } else {
+                const std::int32_t ramp = std::min(l.startTime, 30);
+                setThickness(l.timer > l.startTime - ramp
+                                 ? static_cast<float>(l.timer) * l.width / static_cast<float>(l.startTime)
+                                 : 1.2f);
+            }
+            if (l.timer >= l.hitboxStartTime) test();
+            if (l.timer < l.startTime) {
+                tick = true;
+            } else {
+                l.timer = 0;
+                l.state = LaserActive;
+            }
+        }
+        if (!tick && l.state == LaserActive) {
+            test();
+            if (l.timer < l.duration) {
+                tick = true;
+            } else {
+                l.timer = 0;
+                l.state = LaserDespawning;
+                if (l.despawnDuration == 0) {
+                    l.inUse = false;
+                    continue;
+                }
+            }
+        }
+        if (!tick && l.state == LaserDespawning) {
+            if (l.flags & kLaserFlagFadeInOut) {
+                l.vm.color = static_cast<std::uint32_t>(fadeAlpha()) << 24;
+            } else if (l.despawnDuration > 0) {
+                setThickness(l.width - static_cast<float>(l.timer) * l.width / static_cast<float>(l.despawnDuration));
+            }
+            if (l.timer < l.hitboxEndDelay) test();
+            if (l.timer >= l.despawnDuration) {
+                l.inUse = false;
+                continue;
+            }
+        }
+        if (l.startOffset >= kLaserCullOffset) l.inUse = false;  // still ticks this frame
+        ++l.timer;
+        world.anm->executeScript(l.vm);
+    }
+}
+
+int BulletManager::activeLaserCount() const {
+    int n = 0;
+    for (const Laser& l : lasers_) n += l.inUse;
+    return n;
 }
 
 int BulletManager::activeCount() const {

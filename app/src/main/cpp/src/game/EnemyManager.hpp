@@ -75,6 +75,9 @@ struct Enemy {
     std::int32_t shootInterval = 0;
     std::int32_t shootIntervalTimer = 0;
     std::int32_t laserStore = 0;
+    // Laser slot references (pool indices, -1 = none). Like the original's raw pointers they
+    // are never cleared when the laser ends, so a stale one aliases whatever laser reuses it.
+    std::array<std::int16_t, 32> laserRefs{};
     std::uint8_t deathParticle1 = 0, deathParticle2 = 0, deathAnm3 = 0;
     std::int8_t itemDrop = 0;
     std::uint8_t bossId = 0;
@@ -130,6 +133,8 @@ class EnemyManager {
     std::int32_t timelineTime() const { return timelineTime_; }
     bool timelineFinished() const { return timelineFinished_; }
     std::uint64_t instructionsExecuted() const { return instructionsExecuted_; }
+    std::uint16_t randomItemSpawnIndex() const { return randomItemSpawnIndex_; }
+    std::uint16_t randomItemTableIndex() const { return randomItemTableIndex_; }
     Enemy& enemy(int i) { return (*enemies_)[static_cast<std::size_t>(i)]; }
     Enemy* boss(int i) { return i >= 0 && i < 4 ? bosses_[static_cast<std::size_t>(i)] : nullptr; }
 
@@ -152,6 +157,8 @@ class EnemyManager {
     bool handleTimerCallback(World& world, Enemy& e);
     void killAllNonBoss(World& world);
     void despawn(World& world, Enemy& e);
+    void dropDeathItem(World& world, Enemy& e);
+    Laser* laserRef(World& world, Enemy& e, std::int32_t slot);
 
     // Variable access (EclGetVar / EclGetVarFloat / EclSetVar semantics).
     void* varCell(World& world, Enemy& e, std::int32_t id, VarType* type, void* literal);
@@ -174,6 +181,8 @@ class EnemyManager {
     bool timelineFinished_ = false;
     SpellcardInfo spellcard_;
     std::uint64_t instructionsExecuted_ = 0;
+    std::uint16_t randomItemSpawnIndex_ = 0;  // every third random drop yields an item
+    std::uint16_t randomItemTableIndex_ = 0;
     // Scratch cells for computed read-only variables (the original's function statics).
     float scratchPlayerAngle_ = 0, scratchPlayerDistance_ = 0;
     std::int32_t scratchShot_ = 0, scratchDifficulty_ = 0, scratchRank_ = 0;

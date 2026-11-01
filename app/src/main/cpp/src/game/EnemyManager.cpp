@@ -1,10 +1,12 @@
 #include "game/EnemyManager.hpp"
 
 #include <bit>
+#include <array>
 #include <climits>
 #include <cmath>
 #include <cstring>
 
+#include "game/ItemManager.hpp"
 #include "game/Player.hpp"
 
 namespace th06 {
@@ -26,7 +28,15 @@ constexpr int kMaxInstructionsPerTick = 20000;
 constexpr int kAnmScriptEnemyStart = kAnmOffsetEnemy;
 constexpr int kSound2 = 2;
 constexpr int kSoundTotalBossDeath = 20;
-constexpr int kItemRandom = -1;
+constexpr int kItemRandom = kItemDropRandom;
+
+// Random drops: every third enemy with drop code -1 yields the next entry of this table.
+constexpr std::int8_t kRandomItems[32] = {
+    ItemPowerSmall, ItemPowerSmall, ItemPoint,      ItemPowerSmall, ItemPoint,      ItemPowerSmall, ItemPowerSmall, ItemPoint,
+    ItemPoint,      ItemPoint,      ItemPowerSmall, ItemPowerSmall, ItemPowerSmall, ItemPoint,      ItemPoint,      ItemPowerSmall,
+    ItemPoint,      ItemPowerSmall, ItemPoint,      ItemPowerSmall, ItemPoint,      ItemPowerSmall, ItemPoint,      ItemPowerSmall,
+    ItemPoint,      ItemPowerSmall, ItemPowerSmall, ItemPoint,      ItemPoint,      ItemPoint,      ItemPowerSmall, ItemPowerBig,
+};
 
 float f32Bits(std::int32_t v) { return std::bit_cast<float>(v); }
 std::int32_t i32Bits(float v) { return std::bit_cast<std::int32_t>(v); }
@@ -52,6 +62,8 @@ EnemyManager::EnemyManager() : enemies_(std::make_unique<std::array<Enemy, kMaxE
     template_.life = 1;
     template_.score = 100;
     template_.anmPoseLeft = template_.anmPoseRight = template_.anmPoseDefault = -1;
+    template_.laserRefs.fill(-1);
+    template_.laserStore = 0;
     template_.damageable = true;
     template_.deathMode = EnemyDeath::DespawnNoCallback;
     template_.deathCallbackSub = -1;
@@ -70,6 +82,8 @@ void EnemyManager::startStage(World& world) {
     prevTimelineTime_ = -1;
     timelineFinished_ = false;
     spellcard_ = {};
+    randomItemSpawnIndex_ = world.rng->u16InRange(3);
+    randomItemTableIndex_ = world.rng->u16InRange(8);
 }
 
 int EnemyManager::activeCount() const {
@@ -293,6 +307,73 @@ void EnemyManager::runExInstruction(World& world, Enemy& e, int index, std::uint
             world.bullets->spawnBulletPattern(world, e.bulletProps);
             break;
         }
+        case 7: {  // stage 6: three rings of eight lasers (or bullet bursts) stepping outwards
+            const std::int32_t attack = at ? world.ecl->argAt<std::int32_t>(at, 4) : 0;
+            const bool hard = world.state->difficulty >= Hard;
+            const float r = world.rng->f32InRange(kZunTwoPi);
+            for (int pass = 0; pass < 2; ++pass) {
+                const float a0 = (pass == 0 ? -kZunPi : -kZunPi * 7.0f / 8.0f) + r;
+                const float turn = pass == 0 ? kZunPi / 4.0f : -kZunPi / 4.0f;
+                std::array<Vec3f, 8> points;
+                float a = a0;
+                for (Vec3f& p : points) {
+                    p = e.position + Vec3f{std::cos(a) * 32.0f, std::sin(a) * 32.0f, 0.0f};
+                    a += kZunPi / 4.0f;
+                }
+                a = a0;
+                for (int k = 0; k < 3; ++k) {
+                    const float segment = k < 2 ? 112.0f : 480.0f;
+                    for (Vec3f& p : points) {
+                        if (attack == 0) {
+                            LaserProps lp;
+                            lp.sprite = 1;
+                            lp.color = hard ? 8 : 2;
+                            lp.position = p;
+                            lp.angle = a;
+                            lp.speed = 0.0f;
+                            lp.startOffset = 0.0f;
+                            lp.endOffset = lp.startLength = hard ? 440.0f : segment;
+                            lp.width = hard ? 20.0f : 28.0f;
+                            lp.startTime = 60 + 16 * k;
+                            lp.duration = 90 - 16 * k;
+                            lp.despawnDuration = 16;
+                            lp.hitboxStartTime = 50;
+                            lp.hitboxEndDelay = 16;
+                            lp.flags = 2;
+                            world.bullets->spawnLaser(world, lp);
+                        } else {
+                            e.bulletProps.position = p;
+                            world.bullets->spawnBulletPattern(world, e.bulletProps);
+                        }
+                        p += Vec3f{std::cos(a) * segment, std::sin(a) * segment, 0.0f};
+                        a += kZunPi / 4.0f;
+                    }
+                    a += turn - kZunTwoPi;
+                }
+            }
+            break;
+        }
+        case 12:  // stage 4: shoot from 64 px along each of the first eight lasers (y mirrored, as in the original)
+            for (int i = 0; i < 8; ++i) {
+                const Laser* l = laserRef(world, e, i);
+                if (!l || !l->inUse) continue;
+                e.bulletProps.position = e.position + Vec3f{std::cos(l->angle) * 64.0f, -std::sin(l->angle) * 64.0f, 0.0f};
+                world.bullets->spawnBulletPattern(world, e.bulletProps);
+            }
+            break;
+        case 14:  // extra: shoot from every 48 px along each of the first eight lasers
+            e.ctx.int3 = 0;
+            for (int i = 0; i < 8; ++i) {
+                const Laser* l = laserRef(world, e, i);
+                if (!l || !l->inUse) continue;
+                const float c = std::cos(l->angle), sn = std::sin(l->angle);
+                for (float t = l->startOffset; t < l->endOffset; t += 48.0f) {
+                    e.bulletProps.position = l->pos + Vec3f{c * t, sn * t, 0.0f};
+                    world.bullets->spawnBulletPattern(world, e.bulletProps);
+                }
+                ++e.ctx.int3;
+            }
+            break;
         default: {
             static const char* kNames[] = {
                 "", "", "ECL ex-instruction 2 (star pattern)", "ECL ex-instruction 3 (Patchouli shot vars)",
@@ -301,7 +382,9 @@ void EnemyManager::runExInstruction(World& world, Enemy& e, int index, std::uint
                 "ECL ex-instruction 10 (bat transformation)", "ECL ex-instruction 11 (stage 6)",
                 "ECL ex-instruction 12 (stage 4)", "ECL ex-instruction 13 (extra)", "ECL ex-instruction 14 (extra)",
                 "ECL ex-instruction 15 (extra)", "ECL ex-instruction 16 (Flandre)"};
-            world.unported->hit(index >= 2 && index <= 16 ? kNames[index] : "ECL ex-instruction (unknown index)");
+            world.unported->hit(index >= 2 && index <= 16 && index != 7 && index != 12 && index != 14
+                                    ? kNames[index]
+                                    : "ECL ex-instruction (unknown index)");
             break;
         }
     }
@@ -588,16 +671,61 @@ restart_sub_changed:
                                  readFloat(world, e, ecl.argAt<float>(at, 8))};
                 break;
             case ecl_op::LaserCreate:
-            case ecl_op::LaserCreateAimed:
-            case ecl_op::LaserRotate:
-            case ecl_op::LaserRotateFromPlayer:
-            case ecl_op::LaserOffset:
-            case ecl_op::LaserCancel:
-                world.unported->hit("lasers");
+            case ecl_op::LaserCreateAimed: {
+                const auto args = ecl.argAt<EclRawInstrLaserArgs>(at, 0);
+                LaserProps p;
+                p.sprite = args.sprite;
+                p.color = args.color;
+                p.position = e.position + e.shootOffset;
+                p.angle = readFloat(world, e, args.angle);
+                p.speed = readFloat(world, e, args.speed);
+                p.startOffset = readFloat(world, e, args.startOffset);
+                p.endOffset = readFloat(world, e, args.endOffset);
+                p.startLength = readFloat(world, e, args.startLength);
+                p.width = args.width;
+                p.startTime = args.startTime;
+                p.duration = args.duration;
+                p.despawnDuration = args.despawnDuration;
+                p.hitboxStartTime = args.hitboxStartTime;
+                p.hitboxEndDelay = args.hitboxEndDelay;
+                p.flags = static_cast<std::uint16_t>(args.flags);
+                p.aimed = cur.opCode == ecl_op::LaserCreateAimed;
+                const int slot = world.bullets->spawnLaser(world, p);
+                if (e.laserStore >= 0 && e.laserStore < static_cast<std::int32_t>(e.laserRefs.size())) {
+                    e.laserRefs[static_cast<std::size_t>(e.laserStore)] = static_cast<std::int16_t>(slot);
+                } else {
+                    log::warn("ECL: laser index {} out of range", e.laserStore);  // original: unchecked write
+                }
                 break;
+            }
             case ecl_op::LaserIndex: e.laserStore = readInt(world, e, ecl.argAt<std::int32_t>(at, 0)); break;
-            case ecl_op::LaserTest: e.ctx.compareRegister = 1; break;  // "laser not in use"
-            case ecl_op::LaserClearAll: break;
+            case ecl_op::LaserRotate:
+                if (Laser* l = laserRef(world, e, ecl.argAt<std::int32_t>(at, 0))) {
+                    l->angle += readFloat(world, e, ecl.argAt<float>(at, 4));
+                }
+                break;
+            case ecl_op::LaserRotateFromPlayer:
+                if (Laser* l = laserRef(world, e, ecl.argAt<std::int32_t>(at, 0))) {
+                    l->angle = world.player->angleToPlayer(l->pos) + readFloat(world, e, ecl.argAt<float>(at, 4));
+                }
+                break;
+            case ecl_op::LaserOffset:
+                if (Laser* l = laserRef(world, e, ecl.argAt<std::int32_t>(at, 0))) {
+                    l->pos = e.position + Vec3f{ecl.argAt<float>(at, 4), ecl.argAt<float>(at, 8), ecl.argAt<float>(at, 12)};
+                }
+                break;
+            case ecl_op::LaserTest: {
+                const Laser* l = laserRef(world, e, ecl.argAt<std::int32_t>(at, 0));
+                e.ctx.compareRegister = (l && l->inUse) ? 0 : 1;
+                break;
+            }
+            case ecl_op::LaserCancel:
+                if (Laser* l = laserRef(world, e, ecl.argAt<std::int32_t>(at, 0)); l && l->inUse && l->state < LaserDespawning) {
+                    l->state = LaserDespawning;
+                    l->timer = 0;
+                }
+                break;
+            case ecl_op::LaserClearAll: e.laserRefs.fill(-1); break;
             case ecl_op::BossSet: {
                 const std::int32_t id = ecl.argAt<std::int32_t>(at, 0);
                 if (id >= 0) {
@@ -697,7 +825,7 @@ restart_sub_changed:
                 spellcard_.isCapturing = true;
                 spellcard_.isActive = 1;
                 spellcard_.idx = ecl.argAt<std::int16_t>(at, 2);
-                world.bullets->removeAllBullets(true);
+                world.bullets->removeAllBullets(world, true);
                 e.resetRank();
                 break;
             case ecl_op::SpellcardEnd:
@@ -717,12 +845,14 @@ restart_sub_changed:
             case ecl_op::EnemyFlagInteractable: e.interactable = ecl.argAt<std::int32_t>(at, 0) != 0; break;
             case ecl_op::EffectParticle: world.unported->hit("particle effects"); break;
             case ecl_op::DropItems: {
-                world.unported->hit("items");
-                // Consume the RNG exactly as the item spawns would (2 floats per item).
-                const std::int32_t n = ecl.argAt<std::int32_t>(at, 0);
+                const std::int32_t n = ecl.argAt<std::int32_t>(at, 0);  // literal, never a variable
                 for (std::int32_t i = 0; i < n; ++i) {
-                    world.rng->f32InRange(144.0f);
-                    world.rng->f32InRange(144.0f);
+                    Vec3f p = e.position;
+                    p.x += world.rng->f32InRange(144.0f) - 72.0f;
+                    p.y += world.rng->f32InRange(144.0f) - 72.0f;
+                    const int type = world.state->power < GameState::kMaxPower ? (i == 0 ? ItemPowerBig : ItemPowerSmall)
+                                                                               : ItemPoint;
+                    if (world.items) world.items->spawn(world, p, type, ItemState::Falling);
                 }
                 break;
             }
@@ -734,7 +864,9 @@ restart_sub_changed:
                 break;
             }
             case ecl_op::EclTimeAdd: e.ctx.time += readInt(world, e, ecl.argAt<std::int32_t>(at, 0)); break;
-            case ecl_op::DropItemId: world.unported->hit("items"); break;
+            case ecl_op::DropItemId:
+                if (world.items) world.items->spawn(world, e.position, ecl.argAt<std::int32_t>(at, 0), ItemState::Falling);
+                break;
             case ecl_op::StdUnpause: world.unported->hit("stage backgrounds (STD)"); break;
             case ecl_op::BossSetLifeCount: world.unported->hit("boss HUD (life count, timer)"); break;
             case ecl_op::EnemyCreate: {
@@ -752,7 +884,7 @@ restart_sub_changed:
                 }
                 break;
             }
-            case ecl_op::BulletCancel: world.bullets->removeAllBullets(true); break;
+            case ecl_op::BulletCancel: world.bullets->removeAllBullets(world, true); break;
             case ecl_op::BulletSound: {
                 const std::int32_t sfx = ecl.argAt<std::int32_t>(at, 0);
                 if (sfx >= 0) {
@@ -855,6 +987,28 @@ restart_sub_changed:
 
 // ---- callbacks, timeline, update -----------------------------------------------------
 
+Laser* EnemyManager::laserRef(World& world, Enemy& e, std::int32_t slot) {
+    if (slot < 0 || slot >= static_cast<std::int32_t>(e.laserRefs.size())) return nullptr;
+    const std::int16_t index = e.laserRefs[static_cast<std::size_t>(slot)];
+    return index >= 0 ? &world.bullets->laser(index) : nullptr;
+}
+
+void EnemyManager::dropDeathItem(World& world, Enemy& e) {
+    if (!world.items) return;
+    const ItemState state = ItemState::Falling;  // a bomb kill would drop homing items (bombs: not ported)
+    if (e.itemDrop >= 0) {
+        world.unported->hit("particle effects");
+        world.items->spawn(world, e.position, e.itemDrop, state);
+    } else if (e.itemDrop == kItemRandom) {
+        if (randomItemSpawnIndex_ % 3 == 0) {
+            world.unported->hit("particle effects");
+            world.items->spawn(world, e.position, kRandomItems[randomItemTableIndex_], state);
+            randomItemTableIndex_ = static_cast<std::uint16_t>((randomItemTableIndex_ + 1) % 32);
+        }
+        ++randomItemSpawnIndex_;
+    }
+}
+
 void EnemyManager::killAllNonBoss(World& world) {
     for (Enemy& other : *enemies_) {
         if (!other.slotOccupied || other.isBoss) continue;
@@ -892,7 +1046,7 @@ bool EnemyManager::handleTimerCallback(World& world, Enemy& e) {
     if (!e.timeoutSpell) {
         spellcard_.isCapturing = false;
         if (spellcard_.isActive) spellcard_.isActive++;
-        world.bullets->removeAllBullets(false);
+        world.bullets->removeAllBullets(world, false);
     }
     killAllNonBoss(world);
     e.resetRank();
@@ -1080,7 +1234,7 @@ void EnemyManager::update(World& world) {
                         [[fallthrough]];
                     case EnemyDeath::DropItemsOnly:
                     drop_items:
-                        if (e.itemDrop >= 0 || e.itemDrop == kItemRandom) world.unported->hit("items");
+                        dropDeathItem(world, e);
                         if (e.isBoss && !spellcard_.isActive) world.bullets->despawnBullets(world, 12800, false);
                         e.life = 0;
                         break;

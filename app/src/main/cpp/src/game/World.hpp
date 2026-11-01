@@ -16,6 +16,7 @@ class AnmManager;
 class BulletManager;
 class EnemyManager;
 class EclFile;
+class ItemManager;
 class Player;
 
 // Playfield of the original: 384x448 at screen (32, 16) inside 640x480.
@@ -49,17 +50,35 @@ class UnportedFeatures {
 };
 
 struct GameState {
+    static constexpr std::int32_t kMaxPower = 128;
+    static constexpr std::int32_t kMaxLives = 8;
+    static constexpr std::int32_t kMaxBombs = 8;
+
     int difficulty = Normal;
     std::int32_t rank = 16;  // starting rank for every difficulty (DifficultyInfo table)
     std::int32_t minRank = 10, maxRank = 32;  // Normal; see setDifficulty
     std::int32_t subRank = 0;
-    std::uint32_t score = 0;
     std::uint32_t frame = 0;
-    std::int32_t power = 0;
-    std::int32_t livesRemaining = 2;
+    std::int32_t power = 0;           // 0..128
+    std::int32_t livesRemaining = 2;  // spare lives (the HUD's stars)
+    std::int32_t bombs = 3;
+    std::int32_t startingBombs = 3;
     bool bossPresent = false;
-    std::uint32_t grazes = 0;
+    bool bombActive = false;  // bombs are not ported: always false
     std::uint32_t deaths = 0;
+
+    // Score. `score` is the real value; `displayedScore` rolls up towards it each frame and
+    // is what extends are checked against, like the HUD counter of the original.
+    std::uint32_t score = 0;
+    std::uint32_t displayedScore = 0;
+    std::uint32_t scoreStep = 0;
+    std::int32_t extendIndex = 0;  // next extend threshold; -1 = no more extends
+
+    std::uint32_t grazes = 0;       // this stage (caps at 9999)
+    std::uint32_t totalGrazes = 0;  // whole game (caps at 999999)
+    std::uint32_t stagePointItems = 0;
+    std::uint32_t totalPointItems = 0;
+    std::int32_t fullPowerChain = 0;  // index into the full-power score table
 
     bool isInBounds(float x, float y, float width, float height) const {
         if (width / 2.0f + x < 0.0f) return false;
@@ -76,6 +95,7 @@ struct GameState {
         minRank = kInfo[difficulty][1];
         maxRank = kInfo[difficulty][2];
         subRank = 0;
+        extendIndex = difficulty == Extra ? 4 : 0;
     }
     void increaseSubrank(std::int32_t amount) {
         subRank += amount;
@@ -95,12 +115,28 @@ struct GameState {
     }
     std::int32_t rankLerpInt(std::int32_t lo, std::int32_t hi) const { return rank * (hi - lo) / 32 + lo; }
     float rankLerpFloat(float lo, float hi) const { return static_cast<float>(rank) * (hi - lo) / 32.0f + lo; }
+
+    // Shot tier 0..8 from power (thresholds 8, 16, 32, 48, 64, 80, 96, 127).
+    int shotTier() const {
+        static constexpr std::int32_t kTiers[] = {8, 16, 32, 48, 64, 80, 96, 127};
+        int tier = 0;
+        while (tier < 8 && power >= kTiers[tier]) ++tier;
+        return tier;
+    }
+    // Power-up popup level: how many of 8, 16, 32, 48, 64, 80, 96, 128 the power has reached.
+    int powerLevel() const {
+        static constexpr std::int32_t kLevels[] = {8, 16, 32, 48, 64, 80, 96, 128};
+        int level = 0;
+        for (std::int32_t l : kLevels) level += power >= l;
+        return level;
+    }
 };
 
 struct World {
     AnmManager* anm = nullptr;
     BulletManager* bullets = nullptr;
     EnemyManager* enemies = nullptr;
+    ItemManager* items = nullptr;
     Player* player = nullptr;
     EclFile* ecl = nullptr;  // mutable: the original lets scripts write into their own arguments
     GameState* state = nullptr;

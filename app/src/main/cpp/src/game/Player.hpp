@@ -43,6 +43,10 @@ class Player {
     float angleToPlayer(const Vec3f& pos) const;
     int checkGraze(World& world, const Vec3f& center, const Vec3f& size);
     int checkCollision(World& world, const Vec3f& center, const Vec3f& size);
+    // Laser hit and graze test. center/size describe the laser's box in its own unrotated
+    // frame (laser along +x from origin); the player is rotated into that frame.
+    void checkLaser(World& world, const Vec3f& center, const Vec3f& size, const Vec3f& origin, float angle,
+                    bool canGraze);
     // Sum of damage of shots overlapping the enemy box; those shots switch to their hit
     // animation (CalcDamageToEnemy).
     int calcDamageToEnemy(World& world, const Vec3f& enemyPos, const Vec3f& enemySize, bool* hitByBomb);
@@ -54,6 +58,8 @@ class Player {
 
   private:
     void die(World& world);
+    void dropItemsOnDeath(World& world);
+    void respawn(World& world);
 
     AnmVm sprite_;
     std::array<Bullet, kMaxBullets> bullets_{};
@@ -62,6 +68,8 @@ class Player {
     float previousSpeedX_ = 0.0f;
     std::int32_t invulnerabilityTimer_ = 0;
     std::int32_t deathTimer_ = 0;
+    std::int32_t deathbombWindow_ = 0;  // frames after a hit until the death drops happen
+    std::int32_t bulletGrace_ = 0;      // frames after respawning during which bullets are cleared
     std::uint32_t shotTimer_ = 0;
 };
 

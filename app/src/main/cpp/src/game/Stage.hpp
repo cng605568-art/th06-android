@@ -14,6 +14,7 @@
 #include "game/BulletManager.hpp"
 #include "game/Ecl.hpp"
 #include "game/EnemyManager.hpp"
+#include "game/ItemManager.hpp"
 #include "game/Input.hpp"
 #include "game/Player.hpp"
 #include "game/World.hpp"
@@ -51,6 +52,7 @@ class Stage {
     const UnportedFeatures& unported() const { return unported_; }
     EnemyManager& enemies() { return *enemies_; }
     BulletManager& bullets() { return *bullets_; }
+    ItemManager& items() { return *items_; }
     Player& player() { return *player_; }
     AnmManager& anm() { return anm_; }
     int stageNumber() const { return stageNumber_; }
@@ -68,6 +70,7 @@ class Stage {
     AnmManager anm_;
     std::unique_ptr<BulletManager> bullets_;
     std::unique_ptr<EnemyManager> enemies_;
+    std::unique_ptr<ItemManager> items_;
     std::unique_ptr<Player> player_;
     EclFile ecl_;
     World world_;

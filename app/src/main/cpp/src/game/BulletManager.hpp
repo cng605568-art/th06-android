@@ -9,6 +9,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <string>
 
 #include "core/ZunMath.hpp"
 #include "game/World.hpp"
@@ -85,33 +86,75 @@ struct Bullet {
     std::uint8_t isGrazed = 0;
 };
 
+// Enemy lasers (ECL LASER_CREATE). A laser grows from its origin along `angle`: the tip
+// (endOffset) advances by `speed` each frame and the tail (startOffset) follows once the
+// laser is `startLength` long. It goes through a warning phase (thin line, START_DELAY),
+// the active phase and a shrinking despawn phase.
+enum LaserState : std::uint8_t { LaserStartDelay = 0, LaserActive = 1, LaserDespawning = 2 };
+inline constexpr std::uint16_t kLaserFlagFadeInOut = 0x1;
+
+struct LaserProps {
+    std::int16_t sprite = 0;  // 0 = line laser, 1 = beam
+    std::int16_t color = 0;
+    Vec3f position;
+    float angle = 0, speed = 0, startOffset = 0, endOffset = 0, startLength = 0, width = 0;
+    std::int32_t startTime = 0, duration = 0, despawnDuration = 0, hitboxStartTime = 0, hitboxEndDelay = 0;
+    std::uint16_t flags = 0;
+    bool aimed = false;
+};
+
+struct Laser {
+    AnmVm vm;      // the beam
+    AnmVm glowVm;  // glow at the origin
+    Vec3f pos;
+    float angle = 0, startOffset = 0, endOffset = 0, startLength = 0, width = 0, speed = 0;
+    float prevStartOffset = 0, prevEndOffset = 0;  // render interpolation (not part of the original)
+    std::int32_t startTime = 0, hitboxStartTime = 0, duration = 0, despawnDuration = 0, hitboxEndDelay = 0;
+    std::int32_t timer = 0;
+    std::uint16_t flags = 0;
+    std::int16_t color = 0;
+    std::uint8_t state = LaserStartDelay;
+    bool inUse = false;
+};
+
 class BulletManager {
   public:
     static constexpr int kMaxBullets = 640;
     static constexpr int kBulletTypes = 10;
+    static constexpr int kMaxLasers = 64;
 
-    // Requires etama3.anm / etama4.anm loaded into the AnmManager.
     bool initializeTemplates(World& world, std::string* error);
 
-    // SpawnBulletPattern: count2 rows x count1 bullets; stops silently when full.
     void spawnBulletPattern(World& world, const EnemyShooter& props);
-    // Returns false when no slot was free.
     bool spawnSingleBullet(World& world, const EnemyShooter& props, int idx1, int idx2, float angleToPlayer);
+    // Lowest free laser slot, or -1 when all 64 are in use.
+    int spawnLaser(World& world, const LaserProps& props);
 
+    // Items first, then bullets, then lasers (the original's order within one frame).
     void update(World& world);
+    // Lasers, then items, then bullets in four size passes.
     void draw(World& world, SpriteSink& sink, float alpha);
 
-    void removeAllBullets(bool turnIntoItem);  // turnIntoItem: items are not ported, bullets vanish
+    // convert: every bullet becomes a homing star item at once (else it plays its cancel
+    // animation); lasers start despawning (leaving a trail of stars when converting).
+    void removeAllBullets(World& world, bool convert);
+    // Spell card end / boss defeat: cancels everything for a growing per-bullet bonus.
     std::int32_t despawnBullets(World& world, std::int32_t maxBonusScore, bool awardPoints);
 
     int activeCount() const;
+    int activeLaserCount() const;
     int peakCount() const { return peak_; }
     std::uint64_t spawnFailures() const { return spawnFailures_; }
     Bullet& at(int i) { return (*bullets_)[static_cast<std::size_t>(i)]; }
+    Laser& laser(int i) { return lasers_[static_cast<std::size_t>(i)]; }
 
   private:
+    void updateLasers(World& world);
+    void laserStars(World& world, const Laser& l);
+
     std::array<BulletTypeSprites, kBulletTypes> templates_{};
     std::unique_ptr<std::array<Bullet, kMaxBullets>> bullets_ = std::make_unique<std::array<Bullet, kMaxBullets>>();
+    std::array<Laser, kMaxLasers> lasers_{};
     int nextBulletIndex_ = 0;
     int peak_ = 0;
     std::uint64_t spawnFailures_ = 0;

@@ -4,6 +4,7 @@
 // No GPU, no SDL, no game assets.
 #include <unistd.h>
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <chrono>
@@ -27,7 +28,9 @@
 #include "game/BulletManager.hpp"
 #include "game/Ecl.hpp"
 #include "game/EnemyManager.hpp"
+#include "game/ItemManager.hpp"
 #include "game/Player.hpp"
+#include "game/Resources.hpp"
 #include "game/Stage.hpp"
 #include "gfx/Anm.hpp"
 #include "gfx/AnmManager.hpp"
@@ -475,6 +478,22 @@ static BulletWords bulletWords(std::int16_t sprite, std::int16_t color, std::int
 }
 #define BW(bw) {bw.w[0], bw.w[1], bw.w[2], bw.w[3], bw.w[4], bw.w[5], bw.w[6], bw.w[7]}
 
+// EclRawInstrLaserArgs as thirteen words.
+struct LaserWords {
+    std::uint32_t w[13];
+};
+static LaserWords laserWords(std::int16_t sprite, std::int16_t color, float angle, float speed, float startOffset,
+                             float endOffset, float startLength, float width, std::int32_t startTime,
+                             std::int32_t duration, std::int32_t despawnDuration, std::int32_t hitboxStartTime,
+                             std::int32_t hitboxEndDelay, std::uint32_t flags) {
+    return {{static_cast<std::uint16_t>(sprite) | (static_cast<std::uint32_t>(static_cast<std::uint16_t>(color)) << 16),
+             fbits(angle), fbits(speed), fbits(startOffset), fbits(endOffset), fbits(startLength), fbits(width),
+             static_cast<std::uint32_t>(startTime), static_cast<std::uint32_t>(duration),
+             static_cast<std::uint32_t>(despawnDuration), static_cast<std::uint32_t>(hitboxStartTime),
+             static_cast<std::uint32_t>(hitboxEndDelay), flags}};
+}
+#define LW(lw) {lw.w[0], lw.w[1], lw.w[2], lw.w[3], lw.w[4], lw.w[5], lw.w[6], lw.w[7], lw.w[8], lw.w[9], lw.w[10], lw.w[11], lw.w[12]}
+
 // ---- synthetic game data (generated shapes, no game assets) ---------------------------
 
 static void paintDisc(Image& img, int x0, int y0, int size, std::array<std::uint8_t, 3> c) {
@@ -512,36 +531,81 @@ constexpr std::array<std::array<std::uint8_t, 3>, 8> kTestColors = {{
     {200, 200, 200}, {230, 40, 60}, {240, 140, 30}, {240, 220, 40}, {60, 200, 80}, {40, 200, 220}, {60, 90, 240}, {170, 60, 230},
 }};
 
-// etama3.anm: 9 bullet types x 8 colours (16x16, ids type*8+colour), then 10 spawn-effect
-// scripts on 80 sprites. Script ids follow the real file (0..8 bullets, 11..20 effects).
+// etama3.anm, laid out like the real file where the engine hard-codes sprite numbers:
+//   sprites 0..6 items, 7..13 their above-screen indicators (scripts 21..27)
+//   16 + type*8 + colour: 9 bullet types x 8 colours (scripts 0..8; pellets are 8x8)
+//   88..137 spawn effects (scripts 11..20), 140..144 the big spawn glow (laser origins),
+//   146..153 line laser colours (script 9), 154..161 beam colours (script 10).
 static Bytes syntheticEtama3() {
     std::vector<AnmSprite> sprites;
+    for (std::uint32_t i = 0; i < 14; ++i) sprites.push_back({i, i * 16.0f, 0, 16, 16});
     for (std::uint32_t t = 0; t < 9; ++t) {
-        const float size = t == 0 ? 8.0f : 16.0f;  // pellets are 8x8
-        for (std::uint32_t c = 0; c < 8; ++c) sprites.push_back({t * 8 + c, c * 16.0f, t * 16.0f, size, size});
+        const float size = t == 0 ? 8.0f : 16.0f;
+        for (std::uint32_t c = 0; c < 8; ++c) sprites.push_back({16 + t * 8 + c, c * 16.0f, 16 + t * 16.0f, size, size});
     }
-    for (std::uint32_t j = 0; j < 80; ++j) sprites.push_back({72 + j, (j % 8) * 16.0f, ((j / 8) % 9) * 16.0f, 16, 16});
+    for (std::uint32_t j = 0; j < 50; ++j) sprites.push_back({88 + j, (j % 8) * 16.0f, 32, 16, 16});
+    for (std::uint32_t k = 0; k < 5; ++k) sprites.push_back({140 + k, 128 + k * 16.0f, 16, 16, 16});
+    for (std::uint32_t c = 0; c < 8; ++c) sprites.push_back({146 + c, 128 + c * 16.0f, 32, 16, 16});
+    for (std::uint32_t c = 0; c < 8; ++c) sprites.push_back({154 + c, 128 + c * 16.0f, 48, 16, 16});
     std::vector<AnmScriptBytes> scripts;
     for (std::uint32_t t = 0; t < 9; ++t) {
         AnmCode c;
-        c.ins(0, anm_op::SetSprite, {t * 8});
+        c.ins(0, anm_op::SetSprite, {16 + t * 8});
         c.ins(0, anm_op::Static);
         scripts.push_back({t, c.bytes});
     }
+    for (std::uint32_t k = 0; k < 2; ++k) {  // 9 line laser, 10 beam
+        AnmCode c;
+        c.ins(0, anm_op::SetSprite, {k == 0 ? 146u : 154u});
+        c.ins(1, anm_op::Halt);
+        scripts.push_back({9 + k, c.bytes});
+    }
     for (std::uint32_t s = 11; s <= 20; ++s) {
         AnmCode c;
-        c.ins(0, anm_op::SetSprite, {72 + 8 * (s - 11)});
+        c.ins(0, anm_op::SetSprite, {88 + 5 * (s - 11)});
         c.ins(0, anm_op::BlendAdditive);
         c.ins(0, anm_op::AlphaInterpLinear, {0, 8});
         c.ins(8, anm_op::Delete);
         scripts.push_back({s, c.bytes});
     }
+    for (std::uint32_t type = 0; type < 7; ++type) {  // items
+        AnmCode c;
+        c.ins(0, anm_op::SetSprite, {type});
+        if (type == 6) c.ins(0, anm_op::RotationSpeed, {fbits(0.0f), fbits(0.0f), fbits(0.2f)});
+        c.ins(1, anm_op::Halt);
+        scripts.push_back({21 + type, c.bytes});
+    }
     return buildAnmScripts(256, 256, "data/etama3.dds", sprites, scripts);
 }
 static Bytes syntheticEtama3Texture() {
-    Image img(128, 144);
+    Image img(256, 160);
+    constexpr std::array<std::array<std::uint8_t, 3>, 7> kItemColors = {{
+        {230, 40, 50}, {60, 110, 240}, {230, 40, 50}, {60, 200, 80}, {240, 210, 40}, {240, 120, 200}, {250, 250, 250},
+    }};
+    for (int i = 0; i < 14; ++i) {
+        const auto& c = kItemColors[static_cast<std::size_t>(i % 7)];
+        const int inset = (i % 7 == 0 || i % 7 == 6) ? 4 : 1;  // small power and stars are smaller
+        paintBox(img, i * 16 + inset, inset, 16 - 2 * inset, 16 - 2 * inset, {c[0], c[1], c[2], i >= 7 ? std::uint8_t(160) : std::uint8_t(255)});
+    }
     for (int t = 0; t < 9; ++t) {
-        for (int c = 0; c < 8; ++c) paintDisc(img, c * 16, t * 16, t == 0 ? 8 : 16, kTestColors[static_cast<std::size_t>(c)]);
+        for (int c = 0; c < 8; ++c) paintDisc(img, c * 16, 16 + t * 16, t == 0 ? 8 : 16, kTestColors[static_cast<std::size_t>(c)]);
+    }
+    for (int k = 0; k < 5; ++k) paintDisc(img, 128 + k * 16, 16, 16, kTestColors[static_cast<std::size_t>(k)]);
+    for (int row = 0; row < 2; ++row) {
+        for (int c = 0; c < 8; ++c) {  // lasers: bright core fading to the colour at the edges
+            const auto& col = kTestColors[static_cast<std::size_t>(c)];
+            for (int x = 0; x < 16; ++x) {
+                const float core = 1.0f - std::fabs(x - 7.5f) / 8.0f;
+                const auto mix = [&](int v) { return static_cast<std::uint8_t>(v + (255 - v) * core * core); };
+                for (int y = 0; y < 16; ++y) {
+                    std::uint8_t* p = img.pixel(128 + c * 16 + x, 32 + row * 16 + y);
+                    p[0] = mix(col[0]);
+                    p[1] = mix(col[1]);
+                    p[2] = mix(col[2]);
+                    p[3] = static_cast<std::uint8_t>(255 * std::min(1.0f, core * 2.0f));
+                }
+            }
+        }
     }
     return ddsFromImage(img);
 }
@@ -658,7 +722,13 @@ static Bytes syntheticStageEcl() {
     e.sub();  // 1: spinner
     e.ins(0, ecl_op::AnmSetMain, {1});
     e.ins(0, ecl_op::MoveAxisSpeed, {fbits(0.0f), fbits(2.0f), fbits(0.0f)});
+    const LaserWords down = laserWords(0, 5, kZunHalfPi, 8.0f, 0.0f, 0.0f, 400.0f, 24.0f, 40, 120, 24, 30, 12, 0);
+    e.ins(20, ecl_op::LaserCreate, LW(down));
+    e.ins(30, ecl_op::LaserIndex, {1});
+    const LaserWords aimed = laserWords(1, 1, 0.35f, 6.0f, 0.0f, 0.0f, 300.0f, 16.0f, 30, 90, 20, 20, 10, 0);
+    e.ins(30, ecl_op::LaserCreateAimed, LW(aimed));
     e.ins(40, ecl_op::MoveAxisSpeed, {fbits(0.0f), fbits(0.0f), fbits(0.0f)});
+    e.ins(40, ecl_op::DropItems, {4});
     const std::uint32_t loop = e.ins(40, ecl_op::SetInt, {static_cast<std::uint32_t>(kI0), 0});
     const BulletWords spin = bulletWords(0, 3, 12, 1, 1.8f, 1.0f, static_cast<float>(kF0), 0.0f, 0);
     e.ins(40, ecl_op::BulletCircle, BW(spin));
@@ -690,6 +760,7 @@ struct TestWorld {
     AnmManager anm{lib, rng};
     std::unique_ptr<BulletManager> bullets = std::make_unique<BulletManager>();
     std::unique_ptr<EnemyManager> enemies = std::make_unique<EnemyManager>();
+    std::unique_ptr<ItemManager> items = std::make_unique<ItemManager>();
     Player player;
     GameState state;
     UnportedFeatures unported;
@@ -708,6 +779,7 @@ struct TestWorld {
         world.anm = &anm;
         world.bullets = bullets.get();
         world.enemies = enemies.get();
+        world.items = items.get();
         world.player = &player;
         world.ecl = &ecl;
         world.state = &state;
@@ -1280,7 +1352,7 @@ static void testBullets() {
     for (int i = 0; i < 6; ++i) {
         const Bullet& b = bm.at(i);
         CHECK(near(b.angle, fan[i % 3], 1e-5f) && near(b.speed, i < 3 ? 3.0f : 2.5f));
-        CHECK(b.sprites.spriteBullet.activeSpriteIndex == kAnmOffsetBullet3 + 3 * 8 + 1);  // type 3, colour 1
+        CHECK(b.sprites.spriteBullet.activeSpriteIndex == kAnmOffsetBullet3 + 16 + 3 * 8 + 1);  // type 3, colour 1
         CHECK(b.sprites.grazeSize.x == 6.0f);
     }
     s.count1 = 2;
@@ -1295,7 +1367,7 @@ static void testBullets() {
 
     // removeAllBullets(false): each bullet plays its cancel (donut) animation, then frees
     // its slot; the synthetic donut scripts end at script time 8.
-    bm.removeAllBullets(false);
+    bm.removeAllBullets(tw.world, false);
     CHECK(bm.activeCount() == 8 && bm.at(0).state == Despawning);
     for (int f = 0; f < 8; ++f) bm.update(tw.world);
     CHECK(bm.activeCount() == 0);
@@ -1314,14 +1386,14 @@ static void testBullets() {
         }
     }
     CHECK(firstFired == 7);  // the template VM already ran its first frame, as in the original
-    bm.removeAllBullets(true);
+    bm.removeAllBullets(tw.world, true);
 
     // The original's fixed 640 slots: a 700-way ring fills them and stops.
     s.flags = 0;
     s.count1 = 700;
     bm.spawnBulletPattern(tw.world, s);
     CHECK(bm.activeCount() == BulletManager::kMaxBullets && bm.spawnFailures() == 1 && bm.peakCount() >= 6);
-    bm.removeAllBullets(true);
+    bm.removeAllBullets(tw.world, true);
     CHECK(bm.activeCount() == 0);
 
     // Off-screen bullets are culled.
@@ -1333,6 +1405,444 @@ static void testBullets() {
     bm.spawnBulletPattern(tw.world, s);
     for (int f = 0; f < 120; ++f) bm.update(tw.world);
     CHECK(bm.activeCount() == 0);
+}
+
+static void testItems() {
+    TestWorld tw;
+    CHECK(tw.ok);
+    if (!tw.ok) return;
+    RecordingSound sound;
+    tw.world.sound = &sound;
+    ItemManager& im = *tw.items;
+    GameState& gs = tw.state;
+    Player& pl = tw.player;
+    pl.state = Player::Alive;
+    pl.positionCenter = {192.0f, 384.0f, 0.0f};
+
+    // Trajectory: rises at 2.2 px/frame, gravity 0.03, falls at most 3 px/frame.
+    CHECK(im.spawn(tw.world, {50.0f, 300.0f, 0.0f}, ItemPowerSmall, ItemState::Falling));
+    float y = 300.0f, vy = -2.2f;
+    bool same = true;
+    for (int f = 0; f < 200 && im.at(0).active; ++f) {
+        im.update(tw.world);
+        y += vy;
+        if (y >= 464.0f) break;
+        if (vy < 3.0f) vy += 0.03f;
+        else vy = 3.0f;
+        same = same && im.at(0).pos.y == y && im.at(0).velocity.y == vy;
+    }
+    CHECK(same);
+    const std::int32_t rankBefore = gs.rank;
+    for (int f = 0; f < 200 && im.at(0).active; ++f) im.update(tw.world);
+    CHECK(!im.at(0).active && gs.rank == rankBefore - 1 && gs.subRank == 97);  // lost item: subrank -3
+    gs.setDifficulty(Normal);
+
+    // Grab box 24x24 vs item box 16x16, touching edges count.
+    pl.positionCenter = {100.0f, 100.0f, 0.0f};
+    CHECK(im.spawn(tw.world, {120.0f, 102.2f, 0.0f}, ItemPoint, ItemState::Falling));    // dx 20: touches
+    CHECK(im.spawn(tw.world, {120.5f, 102.2f, 0.0f}, ItemPowerSmall, ItemState::Falling));  // dx 20.5: misses
+    im.update(tw.world);
+    CHECK(gs.score == 100000 && gs.stagePointItems == 1 && gs.subRank == 30);  // above the line: top value
+    CHECK(im.activeCount() == 1 && sound.played.size() == 1 && sound.played[0] == 21);
+    CHECK(ItemManager::pointItemValue(Normal, 200.9f) == 52800);
+    CHECK(ItemManager::pointItemValue(Lunatic, 127.9f) == 200000);
+    CHECK(ItemManager::pointItemValue(Hard, 300.0f) == 69040);
+    CHECK(ItemManager::pointItemValue(Extra, 128.0f) == 200000);
+
+    // Power: +1 per small item, a power-up sound when a level threshold is crossed.
+    auto collectAt = [&](int type) {
+        im.spawn(tw.world, {pl.positionCenter.x, pl.positionCenter.y + 2.2f, 0.0f}, type, ItemState::Falling);
+        im.update(tw.world);
+    };
+    im.reset();
+    gs.score = 0;
+    sound.played.clear();
+    for (int i = 0; i < 7; ++i) collectAt(ItemPowerSmall);
+    CHECK(gs.power == 7 && gs.score == 70 && std::count(sound.played.begin(), sound.played.end(), 31) == 0);
+    collectAt(ItemPowerSmall);
+    CHECK(gs.power == 8 && gs.powerLevel() == 1 && std::count(sound.played.begin(), sound.played.end(), 31) == 1);
+    collectAt(ItemPowerBig);
+    CHECK(gs.power == 16 && gs.shotTier() == 2);
+
+    // Reaching full power turns every bullet into a homing star.
+    EnemyShooter s;
+    s.sprite = 3;
+    s.position = {192.0f, 50.0f, 0.0f};
+    s.aimMode = Circle;
+    s.count1 = 10;
+    s.count2 = 1;
+    s.speed1 = s.speed2 = 1.0f;
+    tw.bullets->spawnBulletPattern(tw.world, s);
+    CHECK(tw.bullets->activeCount() == 10);
+    gs.power = 127;
+    collectAt(ItemPowerSmall);
+    CHECK(gs.power == 128 && tw.bullets->activeCount() == 0);
+    int stars = 0;
+    for (int i = 0; i < ItemManager::kMaxItems; ++i) stars += im.at(i).active && im.at(i).type == ItemStar;
+    CHECK(stars == 10);
+    for (int i = 0; i < ItemManager::kMaxItems; ++i) {
+        if (im.at(i).active) CHECK(im.at(i).state == ItemState::Magnet);
+    }
+    // Full power: small/big items score from the chain table.
+    im.reset();
+    gs.score = 0;
+    gs.fullPowerChain = 0;
+    collectAt(ItemPowerSmall);
+    CHECK(gs.score == 20 && gs.fullPowerChain == 1);
+    collectAt(ItemPowerBig);
+    CHECK(gs.score == 20 + 100 && gs.fullPowerChain == 9);
+    for (int i = 0; i < 10; ++i) collectAt(ItemPowerBig);
+    CHECK(gs.fullPowerChain == 30 && ItemManager::fullPowerScore(30) == 51200);
+
+    // Above the collection line at full power, falling items home in at 8 px/frame.
+    im.reset();
+    pl.positionCenter = {192.0f, 100.0f, 0.0f};
+    im.spawn(tw.world, {192.0f, 300.0f, 0.0f}, ItemPoint, ItemState::Falling);
+    im.update(tw.world);
+    CHECK(im.at(0).state == ItemState::Magnet && near(im.at(0).pos.y, 292.0f, 1e-4f) && near(im.at(0).pos.x, 192.0f, 1e-4f));
+    pl.positionCenter = {192.0f, 200.0f, 0.0f};  // below the line: no homing for new items
+    im.spawn(tw.world, {50.0f, 300.0f, 0.0f}, ItemPoint, ItemState::Falling);
+    im.update(tw.world);
+    CHECK(im.at(1).state == ItemState::Falling);
+
+    // Bombs cap at 8, lives at 8; a 1up plays the extend sound; stars score by graze.
+    im.reset();
+    gs.bombs = 7;
+    collectAt(ItemBomb);
+    collectAt(ItemBomb);
+    CHECK(gs.bombs == 8);
+    gs.livesRemaining = 2;
+    sound.played.clear();
+    collectAt(ItemLife);
+    CHECK(gs.livesRemaining == 3 && std::count(sound.played.begin(), sound.played.end(), 28) == 1);
+    gs.score = 0;
+    gs.grazes = 31;
+    collectAt(ItemStar);
+    CHECK(gs.score == 600);
+
+    // Two items collected in one frame: one pickup sound.
+    sound.played.clear();
+    im.spawn(tw.world, {pl.positionCenter.x, pl.positionCenter.y, 0.0f}, ItemPoint, ItemState::Falling);
+    im.spawn(tw.world, {pl.positionCenter.x + 1, pl.positionCenter.y, 0.0f}, ItemPoint, ItemState::Falling);
+    im.update(tw.world);
+    CHECK(std::count(sound.played.begin(), sound.played.end(), 21) == 1);
+
+    // Only alive or invulnerable players collect.
+    pl.state = Player::Spawning;
+    im.spawn(tw.world, {pl.positionCenter.x, pl.positionCenter.y, 0.0f}, ItemPoint, ItemState::Falling);
+    im.update(tw.world);
+    CHECK(im.activeCount() == 1);
+    pl.state = Player::Alive;
+
+    // Pool of 512; the 513th spawn fails without drawing random numbers.
+    im.reset();
+    pl.positionCenter = {10.0f, 440.0f, 0.0f};
+    for (int i = 0; i < 512; ++i) im.spawn(tw.world, {300.0f, 50.0f, 0.0f}, ItemPoint, ItemState::Falling);
+    const std::uint32_t gens = tw.rng.generations();
+    CHECK(!im.spawn(tw.world, {300.0f, 50.0f, 0.0f}, ItemPowerSmall, ItemState::DeathScatter));
+    CHECK(tw.rng.generations() == gens && im.activeCount() == 512);
+
+    // Death scatter: two random floats pick the target, then a 60-frame lerp.
+    im.reset();
+    ZunRng predict = tw.rng;
+    const float tx = predict.f32InRange(288.0f) + 48.0f;
+    const float ty = predict.f32InRange(192.0f) - 64.0f;
+    const Vec3f start{192.0f, 384.0f, 0.0f};
+    im.spawn(tw.world, start, ItemPowerBig, ItemState::DeathScatter);
+    CHECK(im.at(0).target.x == tx && im.at(0).target.y == ty);
+    for (int f = 0; f < 31; ++f) im.update(tw.world);
+    const Vec3f mid = Vec3f{tx, ty, 0.0f} * 0.5f + start * (1.0f - 0.5f);
+    CHECK(im.at(0).pos.x == mid.x && im.at(0).pos.y == mid.y);
+
+    // Drawing: off the top an item becomes its indicator, pinned to the edge and faded.
+    RecordingSink sink;
+    im.reset();
+    im.spawn(tw.world, {100.0f, -72.0f, 0.0f}, ItemPoint, ItemState::Falling);
+    tw.anm.beginFrame();
+    im.draw(tw.world, sink, 1.0f);
+    CHECK(sink.items.size() == 1);
+    if (!sink.items.empty()) {
+        CHECK(im.at(0).vm.activeSpriteIndex == ItemManager::kAnmSpriteFirstIndicator + ItemPoint);
+        CHECK(sink.items[0].s.y == kGameRegionY + 8.0f);
+        CHECK((sink.items[0].s.color >> 24) == 96);  // 255 - trunc((8 + 72) * 255 / 128)
+    }
+}
+
+static void testItemDrops() {
+    TestWorld tw;
+    CHECK(tw.ok);
+    if (!tw.ok) return;
+    // Six enemies with random drops die on spawn: exactly two drop, from the table.
+    EclBuilder e;
+    for (int i = 0; i < 6; ++i) e.spawn(0, timeline_op::EnemyCreate, 0, 50.0f + 40.0f * i, 100.0f, 0, -1, 0);
+    e.spawn(1, timeline_op::EnemyCreate, 1, 200.0f, 200.0f, 10, -2, 0);
+    e.sub();
+    e.ins(1000, ecl_op::EnemyDelete);
+    e.sub();
+    e.ins(0, ecl_op::DropItems, {3});
+    e.ins(0, ecl_op::DropItemId, {ItemLife});
+    e.ins(1000, ecl_op::EnemyDelete);
+    std::string err;
+    CHECK(tw.ecl.load(e.build(), &err));
+    ZunRng predict = tw.rng;
+    const std::uint16_t r0 = predict.u16InRange(3);
+    const std::uint16_t t0 = predict.u16InRange(8);
+    tw.enemies->startStage(tw.world);
+    CHECK(tw.enemies->randomItemSpawnIndex() == r0 && tw.enemies->randomItemTableIndex() == t0);
+    tw.player.positionCenter = {10.0f, 440.0f, 0.0f};  // out of the way
+    tw.enemies->update(tw.world);
+    CHECK(tw.enemies->activeCount() == 0);
+    CHECK(tw.items->activeCount() == 2 && tw.enemies->randomItemSpawnIndex() == r0 + 6);
+    static constexpr int kTable[32] = {0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 0,
+                                       1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 2};
+    CHECK(tw.items->at(0).type == kTable[t0] && tw.items->at(1).type == kTable[(t0 + 1) % 32]);
+
+    // DROP_ITEMS: big power then small power, scattered by two random floats each.
+    tw.items->reset();
+    ZunRng p2 = tw.rng;
+    float dx[3], dy[3];
+    for (int i = 0; i < 3; ++i) {
+        dx[i] = p2.f32InRange(144.0f) - 72.0f;
+        dy[i] = p2.f32InRange(144.0f) - 72.0f;
+    }
+    tw.enemies->update(tw.world);  // timeline time 1: the dropper spawns and runs
+    CHECK(tw.items->activeCount() == 4);
+    CHECK(tw.items->at(0).type == ItemPowerBig && tw.items->at(1).type == ItemPowerSmall &&
+          tw.items->at(2).type == ItemPowerSmall && tw.items->at(3).type == ItemLife);
+    // (positions after this frame's item update are not run here: items update in the bullet manager)
+    CHECK(tw.items->at(0).pos.x == 200.0f + dx[0] && tw.items->at(0).pos.y == 200.0f + dy[0]);
+    CHECK(tw.items->at(2).pos.x == 200.0f + dx[2] && tw.items->at(2).pos.y == 200.0f + dy[2]);
+}
+
+static void testLasers() {
+    TestWorld tw;
+    CHECK(tw.ok);
+    if (!tw.ok) return;
+    BulletManager& bm = *tw.bullets;
+    Player& pl = tw.player;
+    pl.positionCenter = {10.0f, 440.0f, 0.0f};
+    pl.state = Player::Alive;
+
+    // Growth and the three phases with their exact frame counts.
+    LaserProps p;
+    p.position = {100.0f, 200.0f, 0.0f};
+    p.angle = 0.0f;
+    p.speed = 4.0f;
+    p.startLength = 50.0f;
+    p.width = 16.0f;
+    p.startTime = 10;
+    p.duration = 20;
+    p.despawnDuration = 8;
+    p.hitboxStartTime = 5;
+    p.hitboxEndDelay = 4;
+    const int slot = bm.spawnLaser(tw.world, p);
+    CHECK(slot == 0 && bm.laser(0).inUse && bm.laser(0).state == LaserStartDelay);
+    CHECK(bm.laser(0).vm.activeSpriteIndex == kAnmOffsetBullet3 + 146);  // line laser, colour 0
+    CHECK(bm.laser(0).glowVm.activeSpriteIndex == kAnmOffsetBullet3 + 140 && bm.laser(0).glowVm.additive);
+    bm.update(tw.world);
+    CHECK(near(bm.laser(0).vm.scaleX, 1.2f / 16.0f));  // warning line 1.2 px wide
+    for (int f = 2; f <= 6; ++f) bm.update(tw.world);
+    CHECK(near(bm.laser(0).vm.scaleX, 0.5f));  // ramping up: timer 5 of 10
+    for (int f = 7; f <= 10; ++f) bm.update(tw.world);
+    CHECK(bm.laser(0).state == LaserStartDelay && bm.laser(0).timer == 10);
+    bm.update(tw.world);  // 11
+    CHECK(bm.laser(0).state == LaserActive && bm.laser(0).timer == 1);
+    CHECK(bm.laser(0).endOffset == 44.0f && bm.laser(0).startOffset == 0.0f);
+    for (int f = 12; f <= 30; ++f) bm.update(tw.world);
+    CHECK(bm.laser(0).endOffset == 120.0f && bm.laser(0).startOffset == 70.0f);  // 50 long, tail follows
+    CHECK(near(bm.laser(0).vm.scaleY, 50.0f / 16.0f) && near(bm.laser(0).vm.rotation.z, kZunHalfPi));
+    bm.update(tw.world);  // 31
+    CHECK(bm.laser(0).state == LaserDespawning && bm.laser(0).timer == 1);
+    for (int f = 32; f <= 38; ++f) bm.update(tw.world);
+    CHECK(bm.laser(0).inUse);
+    bm.update(tw.world);  // 39
+    CHECK(!bm.laser(0).inUse && bm.activeLaserCount() == 0);
+
+    // Hit test: deadly thickness is half the visual width.
+    LaserProps q;
+    q.position = {100.0f, 200.0f, 0.0f};
+    q.endOffset = q.startLength = 200.0f;
+    q.width = 16.0f;
+    q.duration = 100;
+    bm.spawnLaser(tw.world, q);
+    pl.positionCenter = {150.0f, 203.5f, 0.0f};
+    bm.update(tw.world);
+    CHECK(pl.state == Player::Dead && tw.state.deaths == 1);
+    bm.removeAllBullets(tw.world, false);
+    for (int f = 0; f < 40; ++f) bm.update(tw.world);
+    CHECK(bm.activeLaserCount() == 0);
+
+    // Graze: within 48 px of the box, once every 12 frames, +500 and subrank +6.
+    pl.state = Player::Alive;
+    pl.positionCenter = {150.0f, 205.3f, 0.0f};
+    tw.state.score = 0;
+    const std::uint32_t grazesBefore = tw.state.grazes;
+    bm.spawnLaser(tw.world, q);
+    for (int f = 0; f < 25; ++f) bm.update(tw.world);
+    CHECK(pl.state == Player::Alive && tw.state.grazes == grazesBefore + 3 && tw.state.score == 1500);
+    bm.removeAllBullets(tw.world, false);
+    for (int f = 0; f < 40; ++f) bm.update(tw.world);
+
+    // Rotated laser: the player is rotated into the laser's frame.
+    LaserProps r = q;
+    r.position = {100.0f, 100.0f, 0.0f};
+    r.angle = kZunHalfPi;  // straight down
+    bm.spawnLaser(tw.world, r);
+    pl.positionCenter = {106.0f, 150.0f, 0.0f};  // 6 px beside it: graze only
+    tw.state.grazes = 0;
+    bm.update(tw.world);
+    CHECK(pl.state == Player::Alive && tw.state.grazes == 1);
+    pl.positionCenter = {101.0f, 150.0f, 0.0f};
+    bm.update(tw.world);
+    CHECK(pl.state == Player::Dead);
+    pl.state = Player::Spawning;  // respawning players are neither hit nor graze
+    tw.state.grazes = 0;
+    pl.positionCenter = {101.0f, 160.0f, 0.0f};
+    for (int f = 0; f < 13; ++f) bm.update(tw.world);
+    CHECK(pl.state == Player::Spawning && tw.state.grazes == 0);
+
+    // Cancelling into stars: one every 32 px along the visible part.
+    tw.items->reset();
+    bm.removeAllBullets(tw.world, true);
+    CHECK(bm.laser(0).state == LaserDespawning && bm.laser(0).hitboxEndDelay == 0);
+    CHECK(tw.items->activeCount() == 7);  // 0, 32, ..., 192 < 200
+    for (int f = 0; f < 40; ++f) bm.update(tw.world);
+
+    // Warning-line quirk: the hitbox shrinks to a speck at the laser's midpoint.
+    LaserProps w = q;
+    w.startTime = 30;
+    w.hitboxStartTime = 0;
+    bm.spawnLaser(tw.world, w);
+    pl.state = Player::Alive;
+    pl.positionCenter = {120.0f, 200.0f, 0.0f};  // on the line, far from the middle
+    bm.update(tw.world);
+    CHECK(pl.state == Player::Alive);
+    pl.positionCenter = {200.0f, 200.0f, 0.0f};  // the midpoint
+    bm.update(tw.world);
+    CHECK(pl.state == Player::Dead);
+    bm.removeAllBullets(tw.world, false);
+    for (int f = 0; f < 40; ++f) bm.update(tw.world);
+
+    // Drawing: beam centred on the visible part, rotated along the laser; glow at the origin.
+    pl.state = Player::Spawning;
+    tw.items->reset();
+    LaserProps d = q;
+    d.angle = kZunHalfPi;
+    d.position = {200.0f, 50.0f, 0.0f};
+    bm.spawnLaser(tw.world, d);
+    bm.update(tw.world);
+    RecordingSink sink;
+    tw.anm.beginFrame();
+    bm.draw(tw.world, sink, 1.0f);
+    CHECK(sink.items.size() == 2);
+    if (sink.items.size() == 2) {
+        const auto& beam = sink.items[0].s;
+        CHECK(near(beam.x, kGameRegionX + 200.0f, 1e-3f) && near(beam.y, kGameRegionY + 150.0f, 1e-3f));
+        CHECK(near(beam.w, 16.0f, 1e-3f) && near(beam.h, 200.0f, 1e-3f) && near(beam.angle, 0.0f, 1e-6f));
+        CHECK(sink.items[1].blend == Blend::AdditiveColorAdd && near(sink.items[1].s.w, 16.0f * 1.6f, 1e-3f));
+    }
+}
+
+static void testLaserOpcodes() {
+    TestWorld tw;
+    CHECK(tw.ok);
+    if (!tw.ok) return;
+    tw.player.positionCenter = {192.0f, 384.0f, 0.0f};
+    tw.player.state = Player::Spawning;
+    EclBuilder e;
+    e.spawn(0, timeline_op::EnemyCreate, 0, 192.0f, 100.0f, 100, -2, 0);
+    e.sub();
+    e.ins(0, ecl_op::LaserIndex, {2});
+    const LaserWords lw = laserWords(0, 3, 0.25f, 0.0f, 0.0f, 100.0f, 100.0f, 12.0f, 0, 50, 10, 0, 5, 0);
+    e.ins(0, ecl_op::LaserCreateAimed, LW(lw));
+    e.ins(0, ecl_op::LaserRotate, {2, fbits(0.5f)});
+    e.ins(0, ecl_op::LaserTest, {2});
+    e.ins(1, ecl_op::LaserOffset, {2, fbits(10.0f), fbits(20.0f), fbits(0.0f)});
+    e.ins(2, ecl_op::LaserCancel, {2});
+    e.ins(3, ecl_op::LaserClearAll);
+    e.ins(3, ecl_op::LaserTest, {2});
+    e.ins(1000, ecl_op::EnemyDelete);
+    std::string err;
+    CHECK(tw.ecl.load(e.build(), &err));
+    tw.enemies->startStage(tw.world);
+    Enemy& en = tw.enemies->enemy(0);
+    tw.enemies->update(tw.world);  // spawn: time 0 runs, then time 1
+    Laser& l = tw.bullets->laser(0);
+    CHECK(l.inUse && en.laserRefs[2] == 0 && en.laserRefs[0] == -1);
+    CHECK(near(l.angle, kZunHalfPi + 0.25f + 0.5f, 1e-5f));  // aimed straight down, +0.25, rotated +0.5
+    CHECK(l.vm.activeSpriteIndex == kAnmOffsetBullet3 + 146 + 3);
+    CHECK(l.pos.x == 202.0f && l.pos.y == 120.0f);  // offset by time 1
+    tw.enemies->update(tw.world);  // time 2: cancel
+    CHECK(l.state == LaserDespawning && l.timer == 0);
+    tw.enemies->update(tw.world);  // time 3: references cleared, test fails
+    CHECK(en.laserRefs[2] == -1 && en.ctx.compareRegister == 1 && l.inUse);
+    static_assert(ecl_op::LaserCreate == 85 && ecl_op::LaserCancel == 92 && ecl_op::DropItems == 119 &&
+                  ecl_op::DropItemId == 124 && ecl_op::LaserClearAll == 134);
+}
+
+static void testScoreAndLives() {
+    TestWorld tw;
+    CHECK(tw.ok);
+    if (!tw.ok) return;
+    RecordingSound sound;
+    tw.world.sound = &sound;
+    GameState& gs = tw.state;
+
+    // The displayed score rolls up by 1/32 of the gap, in multiples of 10, at least 10.
+    gs.score = 1000;
+    rollScore(tw.world);
+    CHECK(gs.displayedScore == 30);
+    rollScore(tw.world);
+    CHECK(gs.displayedScore == 60);
+    for (int f = 0; f < 200; ++f) rollScore(tw.world);
+    CHECK(gs.displayedScore == 1000);
+
+    // Extend at 10M of displayed score: one life, sound 28, subrank +200.
+    gs.livesRemaining = 2;
+    gs.score = 10'000'000;
+    const std::int32_t rank = gs.rank;
+    int frames = 0;
+    while (gs.livesRemaining == 2 && frames < 1000) {
+        rollScore(tw.world);
+        ++frames;
+    }
+    CHECK(gs.livesRemaining == 3 && gs.extendIndex == 1 && gs.rank == rank + 2 && frames > 100);
+    CHECK(std::count(sound.played.begin(), sound.played.end(), 28) == 1);
+
+    // Stage-clear bonus.
+    gs.grazes = 100;
+    gs.power = 64;
+    gs.stagePointItems = 50;
+    gs.difficulty = Normal;
+    CHECK(stageClearBonus(gs, 2) == (2000 + 1000 + 6400) * 50);
+    gs.difficulty = Hard;
+    gs.livesRemaining = 2;
+    gs.bombs = 3;
+    CHECK(stageClearBonus(gs, 6) == ((6000 + 1000 + 6400) * 50 + 2 * 3'000'000 + 3 * 1'000'000) * 12 / 10);
+
+    // Death: drops after 6 frames (1 big + 5 small, power -16), a life is lost at respawn.
+    Player& pl = tw.player;
+    pl.state = Player::Alive;
+    gs.power = 40;
+    gs.livesRemaining = 1;
+    gs.bombs = 1;
+    tw.items->reset();
+    pl.checkCollision(tw.world, pl.positionCenter, {4.0f, 4.0f, 0.0f});
+    CHECK(pl.state == Player::Dead);
+    InputState none;
+    for (int f = 0; f < 5; ++f) pl.update(tw.world, none);
+    CHECK(tw.items->activeCount() == 0);
+    pl.update(tw.world, none);
+    CHECK(tw.items->activeCount() == 6 && gs.power == 24 && tw.items->at(0).type == ItemPowerBig &&
+          tw.items->at(0).state == ItemState::DeathScatter);
+    for (int f = 0; f < 30; ++f) pl.update(tw.world, none);
+    CHECK(pl.state != Player::Dead && gs.livesRemaining == 0 && gs.bombs == gs.startingBombs);
+    // Last life: five full-power items, power 0, no more extends.
+    pl.state = Player::Alive;
+    tw.items->reset();
+    pl.checkCollision(tw.world, pl.positionCenter, {4.0f, 4.0f, 0.0f});
+    for (int f = 0; f < 6; ++f) pl.update(tw.world, none);
+    CHECK(tw.items->activeCount() == 5 && tw.items->at(0).type == ItemFullPower && gs.power == 0 && gs.extendIndex == -1);
 }
 
 static void testSoundQueue() {
@@ -1432,6 +1942,8 @@ static void testStageFromArchive() {
             int stage;
             std::size_t unported;
             std::size_t bulletDraws, enemyDraws, playerDraws;
+            int maxLasers;
+            std::uint64_t itemsCollected;
         } r{};
         Vfs vfs;
         vfs.mount(open("SYNTH_ST.DAT", archive));
@@ -1452,6 +1964,7 @@ static void testStageFromArchive() {
             in.left = phase == 1;
             in.right = phase == 3;
             stage.tick(in);
+            r.maxLasers = std::max(r.maxLasers, stage.bullets().activeLaserCount());
             if (sink && t % 120 == 119) stage.render(*sink, 0.5f, HudInfo{60.0f, 3});
         }
         r.score = stage.state().score;
@@ -1470,8 +1983,11 @@ static void testStageFromArchive() {
         }
         r.stage = stage.stageNumber();
         r.unported = stage.unported().counts().size();
+        r.itemsCollected = stage.items().collectedTotal();
         for (const auto& [name, n] : stage.unported().counts()) {
-            if (name != "items" && name != "particle effects") std::fprintf(stderr, "  unexpected unported: %s\n", name.c_str());
+            if (name != "particle effects" && name != "score popups and banners" && name != "game over / continue screen") {
+                std::fprintf(stderr, "  unexpected unported: %s\n", name.c_str());
+            }
         }
         return r;
     };
@@ -1488,9 +2004,10 @@ static void testStageFromArchive() {
     CHECK(a.peakBullets > 20);
     CHECK(a.score > 0);  // shot enemies (damage score and kills)
     CHECK(a.bulletDraws > 20 && a.enemyDraws > 0 && a.playerDraws > 0);
-    CHECK(a.unported <= 2);
+    CHECK(a.unported <= 3);
+    CHECK(a.maxLasers >= 1 && a.itemsCollected > 0);
     const auto b = run(1500, nullptr, nullptr);
-    CHECK(a.score == b.score && a.grazes == b.grazes && a.deaths == b.deaths && a.peakBullets == b.peakBullets &&
+    CHECK(a.score == b.score && a.itemsCollected == b.itemsCollected && a.grazes == b.grazes && a.deaths == b.deaths && a.peakBullets == b.peakBullets &&
           a.instructions == b.instructions);  // deterministic
 
     // Without the 2002 archives the stage refuses to start and says why.
@@ -1520,6 +2037,11 @@ int main() {
         {"ANM VM: bytecode, interrupts, drawing", testAnmVm},
         {"ECL VM: timeline, subs, vars, calls, masks", testEclVm},
         {"bullets: aim modes, spawn effects, 640 slots", testBullets},
+        {"items: physics, pickup rules, power, stars", testItems},
+        {"item drops: random table, DROP_ITEMS", testItemDrops},
+        {"lasers: phases, hitbox quirks, graze, drawing", testLasers},
+        {"laser ECL opcodes", testLaserOpcodes},
+        {"score roll, extends, clear bonus, death drops", testScoreAndLives},
         {"sound queue (PlaySoundByIdx / PlaySounds)", testSoundQueue},
         {"fixed 60 Hz timestep at 60/90/120/144 Hz", testFixedTimestep},
         {"whole stage from a synthetic PBG3 archive", testStageFromArchive},
