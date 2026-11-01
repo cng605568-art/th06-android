@@ -38,6 +38,7 @@
 #include "game/ScreenShake.hpp"
 #include "game/ShotData.hpp"
 #include "game/Stage.hpp"
+#include "game/StageBackground.hpp"
 #include "gfx/Anm.hpp"
 #include "gfx/AnmManager.hpp"
 #include "gfx/Image.hpp"
@@ -883,11 +884,92 @@ static Bytes syntheticFrontTexture() {
     return ddsFromImage(img);
 }
 // stage1.std: just the header's stage title and first song name.
+// stg1bg.anm: a grid tile (script 0, laid flat by a rotation about X), a camera-facing
+// tree (script 1) and a wall tile (script 2).
+static Bytes syntheticStageBg() {
+    const std::vector<AnmSprite> sprites = {{0, 0, 0, 256, 128}, {1, 0, 128, 64, 64}};
+    AnmCode floor;
+    floor.ins(0, anm_op::SetSprite, {0});
+    floor.ins(0, anm_op::Rotation, {fbits(kZunHalfPi), fbits(0.0f), fbits(0.0f)});
+    floor.ins(1, anm_op::Halt);
+    AnmCode tree;
+    tree.ins(0, anm_op::SetSprite, {1});
+    tree.ins(0, anm_op::SetAutoRotate, {2});
+    tree.ins(1, anm_op::Halt);
+    AnmCode wall;
+    wall.ins(0, anm_op::SetSprite, {0});
+    wall.ins(0, anm_op::Color, {0xffa0a0c0u});
+    wall.ins(1, anm_op::Halt);
+    return buildAnmScripts(256, 256, "data/stg1bg.dds", sprites, {{0, floor.bytes}, {1, tree.bytes}, {2, wall.bytes}});
+}
+static Bytes syntheticStageBgTexture() {
+    Image img(256, 192);
+    for (int y = 0; y < 128; ++y) {
+        for (int x = 0; x < 256; ++x) {
+            const bool line = x % 32 < 2 || y % 32 < 2;
+            std::uint8_t* p = img.pixel(x, y);
+            p[0] = line ? 200 : 40;
+            p[1] = line ? 220 : 70;
+            p[2] = line ? 255 : 90;
+            p[3] = 255;
+        }
+    }
+    paintDisc(img, 0, 128, 64, {60, 160, 80});
+    return ddsFromImage(img);
+}
+// stage1.std: header (title, song), two objects (floor tiles on layer 0, a tree on layer 2),
+// six instances, and a script: camera keys at 0 and 600, fog, an aim change, a pause.
 static Bytes syntheticStd() {
     Bytes b(0x490, 0);
     const std::string title = "Synthetic Stage", song = "Test Song";
     std::memcpy(b.data() + 0x10, title.data(), title.size());
     std::memcpy(b.data() + 0x90, song.data(), song.size());
+    auto f32 = [&](float v) { putLe<std::uint32_t>(b, fbits(v)); };
+    auto i16 = [&](std::int16_t v) { putLe<std::int16_t>(b, v); };
+    auto set32 = [&](std::size_t at, std::uint32_t v) { std::memcpy(b.data() + at, &v, 4); };
+    b.resize(0x490 + 8);  // object offset table (2 objects)
+    // Object 0: floor tile, layer 0, box 384 x 16 x 512; one quad 384 x 512, flat.
+    set32(0x490, static_cast<std::uint32_t>(b.size()));
+    i16(0); b.push_back(0); b.push_back(0);
+    f32(0); f32(440); f32(0);
+    f32(384); f32(16); f32(512);
+    i16(0); i16(0x1c); i16(0); i16(0); f32(192); f32(448); f32(256); f32(384); f32(512);
+    i16(-1); i16(4);
+    // Object 1: a tree, layer 2; a camera-facing quad 64 wide.
+    set32(0x494, static_cast<std::uint32_t>(b.size()));
+    i16(1); b.push_back(2); b.push_back(0);
+    f32(-32); f32(-64); f32(-8);
+    f32(64); f32(64); f32(16);
+    i16(0); i16(0x1c); i16(1); i16(0); f32(0); f32(0); f32(0); f32(64); f32(0);
+    i16(-1); i16(4);
+    // Header counts and the instance list.
+    b[0] = 2;
+    b[2] = 2;
+    set32(4, static_cast<std::uint32_t>(b.size()));
+    for (int k = 0; k < 4; ++k) {  // floor tiles going into the distance
+        i16(0); i16(0); f32(0); f32(0); f32(512.0f * k);
+    }
+    i16(1); i16(0); f32(100); f32(400); f32(300);
+    i16(1); i16(0); f32(300); f32(380); f32(700);
+    for (int k = 0; k < 16; ++k) b.push_back(0xff);
+    // Script.
+    set32(8, static_cast<std::uint32_t>(b.size()));
+    auto rec = [&](std::int32_t time, std::int16_t op, std::uint32_t a0, std::uint32_t a1, std::uint32_t a2) {
+        putLe<std::int32_t>(b, time);
+        putLe<std::int16_t>(b, op);
+        putLe<std::int16_t>(b, 12);
+        putLe<std::uint32_t>(b, a0);
+        putLe<std::uint32_t>(b, a1);
+        putLe<std::uint32_t>(b, a2);
+    };
+    rec(0, 0, fbits(0), fbits(0), fbits(0));
+    rec(0, 1, 0xff304060u, fbits(400.0f), fbits(1200.0f));
+    rec(100, 2, fbits(0), fbits(40), fbits(1));
+    rec(100, 3, 20, 0, 0);
+    rec(600, 0, fbits(0), fbits(0), fbits(1200));
+    rec(600, 5, 0, 0, 0);
+    rec(1200, 0, fbits(0), fbits(0), fbits(1500));
+    for (int k = 0; k < 20; ++k) b.push_back(0xff);
     return b;
 }
 
@@ -909,7 +991,9 @@ static Bytes syntheticStageArchive() {
                       {"text.anm", syntheticText()},
                       {"front.anm", syntheticFront()},
                       {"front.dds", syntheticFrontTexture()},
-                      {"stage1.std", syntheticStd()}});
+                      {"stage1.std", syntheticStd()},
+                      {"stg1bg.anm", syntheticStageBg()},
+                      {"stg1bg.dds", syntheticStageBgTexture()}});
 }
 
 // A World with the synthetic bullet/player art loaded straight from bytes.
@@ -960,7 +1044,17 @@ struct RecordingSink final : SpriteSink {
         SpriteInstance s;
     };
     std::vector<Item> items;
+    struct Quad3D {
+        std::uint16_t texture;
+        Blend blend;
+        std::array<Vertex3D, 4> v;
+        Draw3DState state;
+    };
+    std::vector<Quad3D> quads;
     void draw(std::uint16_t texture, Blend blend, const SpriteInstance& s) override { items.push_back({texture, blend, s}); }
+    void drawQuad3D(std::uint16_t texture, Blend blend, const Vertex3D* c, const Draw3DState& st) override {
+        quads.push_back({texture, blend, {c[0], c[1], c[2], c[3]}, st});
+    }
 };
 struct RecordingSound final : SoundSink {
     std::vector<int> played;
@@ -3260,6 +3354,103 @@ static void testDialogue() {
     gs.shotType = 0;
 }
 
+static void testStageBackground() {
+    TestWorld tw;
+    CHECK(tw.ok);
+    if (!tw.ok) return;
+    const std::uint16_t tex = tw.lib.add("bg", 256, 256, [] { return std::optional<Image>(Image(256, 256)); });
+    std::string err;
+    CHECK(tw.anm.loadAnmFromBytes(syntheticStageBg(), tex, kAnmFileStageBg, kAnmOffsetStageBg, &err));
+    StageBackground bg;
+    CHECK(bg.parse(syntheticStd(), &err));
+    if (!bg.loaded()) {
+        std::fprintf(stderr, "  std: %s\n", err.c_str());
+        return;
+    }
+    CHECK(bg.objects().size() == 2 && bg.instances().size() == 6 && bg.objects()[1].layer == 2 &&
+          bg.objects()[0].quads.size() == 1 && bg.objects()[0].quads[0].width == 384.0f);
+    bg.start(tw.world);
+    // Frame 1: the first key; the fog record after it waits a frame. Then the camera moves
+    // along the segment towards the key at 600.
+    bg.update(tw.world);
+    CHECK(bg.cameraPosition().z == 0.0f && bg.fogStart() == 200.0f && bg.fogColor() == 0xff000000u);
+    bg.update(tw.world);
+    CHECK(bg.fogStart() == 400.0f && bg.fogEnd() == 1200.0f && bg.fogColor() == 0xff304060u);
+    CHECK(near(bg.cameraPosition().z, 1200.0f * 1.0f / 600.0f, 1e-3f));
+    for (int f = 2; f < 301; ++f) bg.update(tw.world);
+    CHECK(near(bg.cameraPosition().z, 600.0f, 1e-2f));  // script time 300 of 600
+    // The aim change at 100 eased over 20 frames: (0, 40, 1).
+    CHECK(near(bg.aim().y, 40.0f) && near(bg.aim().z, 1.0f));
+    // At 600: the key, then the pause holds script time until ECL unpauses.
+    for (int f = 301; f < 610; ++f) bg.update(tw.world);
+    const float pinned = bg.cameraPosition().z;  // one frame past the key: 1200 + 600 / 600
+    CHECK(near(pinned, 1200.5f, 1e-2f));
+    const std::int32_t held = bg.scriptTime();
+    for (int f = 0; f < 30; ++f) bg.update(tw.world);
+    CHECK(bg.scriptTime() == held && bg.cameraPosition().z == pinned);
+    bg.unpause();
+    bg.update(tw.world);
+    bg.update(tw.world);
+    CHECK(bg.scriptTime() > held && bg.cameraPosition().z > 1200.0f);
+
+    // Drawing: the floor tiles and trees in view become projected 3D quads with the fog.
+    {
+        RecordingSink sink;
+        bg.draw(tw.world, sink, SpriteRegion{}, 1.0f, false);
+        CHECK(!sink.quads.empty());
+        bool fogged = true, clipped = true;
+        for (const auto& q : sink.quads) {
+            fogged = fogged && q.state.fogStart == 400.0f && q.state.fogEnd == 1200.0f;
+            clipped = clipped && q.state.clipX == 32.0f && q.state.clipW == 384.0f;
+        }
+        CHECK(fogged && clipped);
+    }
+    // Default camera: a point at depth 0 lands where a playfield pixel would; deeper points
+    // shrink toward the centre by d / (d + z).
+    {
+        StageBackground flat;
+        CHECK(flat.parse(syntheticStd(), &err));
+        flat.start(tw.world);
+        float sx, sy, ze;
+        flat.update(tw.world);  // builds the camera from the default aim
+        flat.project({100.0f, 50.0f, 0.0f}, sx, sy, ze);
+        CHECK(near(sx, 132.0f, 1e-2f) && near(sy, 66.0f, 1e-2f));
+        flat.project({100.0f, 50.0f, 300.0f}, sx, sy, ze);
+        const float d = 224.0f / std::tan(15.0f * kZunPi / 180.0f), s = d / (d + 300.0f);
+        CHECK(near(sx, 32.0f + 192.0f + (100.0f - 192.0f) * s, 1e-2f) && near(sy, 16.0f + 224.0f + (50.0f - 224.0f) * s, 1e-2f));
+        // Culling looks only at the projected height of the box corners.
+        StageBackground::Instance below{0, {0.0f, 2000.0f, 0.0f}};
+        StageBackground::Instance inView{0, {0.0f, 0.0f, 0.0f}};
+        CHECK(flat.instanceVisible(inView, {}) && !flat.instanceVisible(below, {}));
+    }
+    // Spell card: 60 frames of fade over the background, then only the spell background.
+    bg.spellStart();
+    {
+        RecordingSink sink;
+        bg.draw(tw.world, sink, SpriteRegion{}, 1.0f, false);
+        CHECK(!sink.quads.empty());
+    }
+    for (int f = 0; f < 61; ++f) bg.update(tw.world);
+    CHECK(bg.spell() == StageBackground::Spell::FullyOn && bg.spellCounter() == 61);
+    {
+        RecordingSink sink;
+        bg.draw(tw.world, sink, SpriteRegion{}, 1.0f, false);
+        CHECK(sink.quads.empty());
+    }
+    bg.spellEnd();
+    {
+        RecordingSink sink;
+        bg.draw(tw.world, sink, SpriteRegion{}, 1.0f, true);  // loading screen halted: nothing
+        CHECK(sink.quads.empty());
+        bg.draw(tw.world, sink, SpriteRegion{}, 1.0f, false);
+        CHECK(!sink.quads.empty());
+    }
+    // Malformed files are rejected.
+    Bytes cut = syntheticStd();
+    cut.resize(0x495);
+    CHECK(!StageBackground().parse(cut, &err));
+}
+
 int main() {
     struct Test {
         const char* name;
@@ -3296,6 +3487,7 @@ int main() {
         {"GUI in a stage: panel, boss HUD, messages, names, popups", testGuiInStage},
         {"spell card capture bonus", testSpellcardBonus},
         {"dialogue: lines, waits, results tally, stage end", testDialogue},
+        {"stage background: STD script, camera, fog, culling, spell fade", testStageBackground},
     };
     for (const Test& t : tests) {
         const int before = g_failures;

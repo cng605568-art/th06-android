@@ -23,6 +23,7 @@ Built entirely by GitHub Actions: no Android Studio, no local SDK.
 | Effects | The 512-slot particle ring with its rolling cursor and the 20 effect types from `etama4.anm` (bubble explosions, splash and big-splash sparks, flashes, converging glows, drifting bat-wing particles) plus the stage's `eff0N.anm`. Each type moves and draws random numbers exactly as the original does, so bullet patterns stay on the same random sequence. Spawned from shot hits, grazes, enemy deaths (ECL 100 death effects), player deaths, bombs, ECL 118 and ex-instructions 0/6. Spell circles (ECL 102) orbit their enemy in 3D, grow, spin and fade when released. Effects are drawn with the original's perspective camera. |
 | GUI | The game's own side panel from `front.anm` (frame, labels, life and bomb stars, power bar and MAX, hi-score/score/power/graze/point in `ascii.anm`'s font), the boss HUD (label enter/leave, life bar filling at 1 %/frame and draining at 2 %, life count, spell timer coloured by seconds left with its countdown tick), spell-card portraits and names, the bomb portrait and name, sliding *BONUS* / *Full Power Mode!!* / *Spell Card Bonus!* messages, the 512 + 3 score-popup rings, and the stage title/song banner from `stageN.std`. Names and titles are Shift-JIS text rendered at run time into `text.anm`'s blank texture, using the system's Japanese font on Android. Capture bonus = base + base × seconds ÷ 10. |
 | Dialogue | `msgN.dat` scripts started by the stage timeline: portraits from the face files, two dialogue lines and two name/title lines rendered into `text.anm`, the opening box, waits that pass on a fresh Shot press (or time out), skip (Ctrl, gamepad Y, or BOMB on the touch pad), the timeline waiting for the conversation, no shooting or bombing while it runs, the boss HUD hidden, song-name changes, the stage-clear tally (computed one frame after the results opcode, with the original's text layout) and the jump to the next stage. Stage 6 and Extra load their final-boss art when the first conversation starts. |
+| Stage backgrounds | `stageN.std` + `stgNbg.anm`: objects of animated quads placed by the instance list, the background script (camera keyframes with one key per frame, aim easing with its one-frame lag, fog fades, pause until ECL 125), the original's perspective camera (30° FOV, eye distance from the playfield height), per-pixel linear fog, depth-sorted quads in their own depth range, camera-facing sprites, the original's height-only culling, the 61-frame fade to the spell-card background during cards, and the loading-screen halt between stages. Drawn on the GPU with perspective-correct texturing. |
 | Resources | Power (0–128), bombs, lives, graze, rolling score counter, score extends (10M/20M/40M/60M), stage-clear bonus, death drops and life loss |
 | Player | Movement and clamping, 1.25 px hitbox, graze box, `player00/01.anm` scripts, death/respawn invulnerability, option orbs that slide in when focusing (with the original's mid-transition reversal) |
 | Shots | All four shot types (Reimu A/B, Marisa A/B) at all nine power tiers: 80-slot pool, the 30-frame fire cycle (a tap fires a whole cycle), homing amulets, accelerating missiles with blast radius and decaying damage, Marisa B's beams hanging from the orbs with their period timers, one-hit normal shots with hit animations, the 70-per-frame enemy damage cap. The shot tables are read at runtime from **your** `東方紅魔郷.exe` (version 1.02h, recognised by SHA-256); without it a basic forward shot is used. |
@@ -31,8 +32,8 @@ Built entirely by GitHub Actions: no Android Studio, no local SDK.
 | Controls | Touch D-pad + Shot/Bomb/Focus/Pause registered as an **SDL virtual game controller**; physical gamepads and keyboards use the same path |
 
 **Not ported yet** (shown live under *NOT PORTED YET* in the HUD whenever the game data uses
-them): stage backgrounds (STD), the remaining ECL ex-instructions (2–5, 8–11, 13, 15, 16),
-the continue screen, the ending and results screens, background music, menus.
+them): the remaining ECL ex-instructions (2–5, 8–11, 13, 15, 16), the continue screen, the
+ending and results screens, background music, menus.
 
 Accuracy notes: game logic runs in the original order on the original data, but float math
 is not bit-identical to the x87 code of 2002, and features that are not ported
@@ -112,7 +113,8 @@ app/src/main/cpp/
   src/game/ShotData           reads the shot tables from your 東方紅魔郷.exe (PE32, SHA-256 checked)
   src/game/Bomb, ScreenShake  the four player bombs; screen shake
   src/game/EffectManager      512-slot particle effects, spell circles
-  src/game/Gui                side panel, boss HUD, names, messages, score popups, ASCII text
+  src/game/Gui                side panel, boss HUD, names, messages, score popups, ASCII text, dialogue
+  src/game/StageBackground    STD stage backgrounds: script, camera, fog, culling, spell-card fade
   src/gfx/TextRenderer        Shift-JIS text into textures (Android: system font via JNI)
   src/game/Stage              loads a stage from the archives, runs one tick, draws
   src/core/ZunMath, FixedTimestep, Sha256   ZUN's RNG and angle helpers; the 60 Hz clock; SHA-256

@@ -118,6 +118,8 @@ class Gui {
         return r;
     }
     bool tallyShown() const { return tallyOn_; }
+    // The loading screen has stopped on its last frame: the stage background is not drawn.
+    bool loadingHalted() const { return loadingActive_ && loading_.visible && loading_.stopped; }
     std::int32_t tallyTotal() const { return tallyTotal_; }
     int msgScript() const { return msg_.script; }
     int msgTimer() const { return msg_.timer; }

@@ -392,7 +392,9 @@ void App::renderFrame(float alpha) {
     // 1) The game at its native 640x480.
     target_.bind();
     glClearColor(0, 0, 0, 1);
-    glClear(GL_COLOR_BUFFER_BIT);
+    glDepthMask(GL_TRUE);
+    glClearDepthf(1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     batch_.begin(kVirtualWidth, kVirtualHeight, &gpu_);
     stage_->render(batch_, alpha, HudInfo{fps_, lastDrawCalls_});
     batch_.end();

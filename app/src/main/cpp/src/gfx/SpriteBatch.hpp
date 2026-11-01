@@ -26,6 +26,7 @@ class SpriteBatch final : public SpriteSink {
     // Starts a pass into a target of the given pixel size (y down, origin top-left).
     void begin(float targetWidth, float targetHeight, const GpuTextures* textures);
     void draw(std::uint16_t texture, Blend blend, const SpriteInstance& sprite) override;
+    void drawQuad3D(std::uint16_t texture, Blend blend, const Vertex3D* corners, const Draw3DState& state) override;
     void drawTexture(GLuint texture, Blend blend, const SpriteInstance& sprite);
     void end();
 
@@ -33,6 +34,8 @@ class SpriteBatch final : public SpriteSink {
 
   private:
     void flush();
+    void flush3D();
+    void bind2D();
 
     GLuint program_ = 0;
     GLuint vao_ = 0;
@@ -45,6 +48,16 @@ class SpriteBatch final : public SpriteSink {
     Blend currentBlend_ = Blend::Alpha;
     const GpuTextures* textures_ = nullptr;
     std::uint32_t drawCalls_ = 0;
+    float targetWidth_ = 1, targetHeight_ = 1;
+
+    // 3D quads (the stage background).
+    static constexpr std::size_t kMax3DVertices = 6 * 4096;
+    GLuint program3D_ = 0, vao3D_ = 0, vbo3D_ = 0, sampler3D_ = 0;
+    GLint u3Texture_ = -1, u3ColorAdd_ = -1, u3Fog_ = -1, u3FogColor_ = -1;
+    std::vector<Vertex3D> pending3D_;
+    GLuint texture3D_ = 0;
+    Blend blend3D_ = Blend::Alpha;
+    Draw3DState state3D_;
 };
 
 }  // namespace th06

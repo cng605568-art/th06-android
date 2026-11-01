@@ -50,6 +50,7 @@ Stage::Stage(TextureLibrary& textures, const UiArt& ui, const Vfs* vfs, SoundPla
     world_.shake = &shake_;
     world_.effects = &effects_;
     world_.gui = &gui_;
+    world_.background = &background_;
 }
 
 bool Stage::load(int stageNumber, int difficulty) {
@@ -93,6 +94,8 @@ bool Stage::load(int stageNumber, int difficulty) {
     anm_.releaseAnm(kAnmFileEnemy2);
     if (!need(anm_.loadAnm(*vfs_, kAnmFileEnemy, kEnemyAnm[s][0], kAnmOffsetEnemy, &err), "STAGE ENEMY ANM")) return false;
     if (kEnemyAnm[s][1] && !need(anm_.loadAnm(*vfs_, kAnmFileEnemy2, kEnemyAnm[s][1], kAnmOffsetEnemy, &err), "STAGE ENEMY ANM 2")) return false;
+    // The 3D background (optional: without it the playfield is plain).
+    background_.load(world_, *vfs_, stageNumber_);
     // The stage's effect file (spell-card background effect). Optional: without it that one
     // effect type simply never shows.
     anm_.releaseAnm(kAnmFileEffects);
@@ -147,6 +150,7 @@ void Stage::tick(const InputState& in) {
     gui_.updatePopups();
     ++state_.frame;
     rollScore(world_);
+    background_.update(world_);
     player_->update(world_, in);
     enemies_->update(world_);
     effects_.update(world_);
@@ -173,8 +177,11 @@ void Stage::tick(const InputState& in) {
 
 void Stage::render(SpriteSink& s, float alpha, const HudInfo& hud) {
     anm_.beginFrame();
-    s.fillRect(ui_.white, kGameRegionX, kGameRegionY, kGameRegionWidth, kGameRegionHeight, rgba(8, 6, 20));
+    // The playfield is cleared to the fog colour (the background is drawn into it).
+    const std::uint32_t clear = background_.loaded() ? argbToRgbaBytes(background_.fogColor() | 0xff000000u) : rgba(8, 6, 20);
+    s.fillRect(ui_.white, kGameRegionX, kGameRegionY, kGameRegionWidth, kGameRegionHeight, clear);
     if (ready_) {
+        background_.draw(world_, s, ui_.white, alpha, gui_.loadingHalted());
         player_->drawLow(world_, s, alpha, ui_.white);
         enemies_->draw(world_, s, alpha);
         player_->drawHits(world_, s, alpha);

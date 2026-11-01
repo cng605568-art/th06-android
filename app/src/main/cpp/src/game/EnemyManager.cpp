@@ -8,6 +8,7 @@
 
 #include "game/EffectManager.hpp"
 #include "game/Gui.hpp"
+#include "game/StageBackground.hpp"
 #include "game/ItemManager.hpp"
 #include "game/Player.hpp"
 
@@ -853,6 +854,7 @@ restart_sub_changed:
                     name.push_back(bytes[i]);
                 }
                 if (world.gui) world.gui->spellStart(world, ecl.argAt<std::int16_t>(at, 0), name);
+                if (world.background) world.background->spellStart();
                 spellcard_.isCapturing = true;
                 spellcard_.isActive = 1;
                 spellcard_.idx = ecl.argAt<std::int16_t>(at, 2);
@@ -862,6 +864,7 @@ restart_sub_changed:
                 break;
             }
             case ecl_op::SpellcardEnd:
+                if (world.background) world.background->spellEnd();
                 if (spellcard_.isActive) {
                     if (world.gui && spellcard_.isActive <= 2) world.gui->spellNameExit();
                     if (spellcard_.isActive == 1) {
@@ -912,7 +915,9 @@ restart_sub_changed:
             case ecl_op::DropItemId:
                 if (world.items) world.items->spawn(world, e.position, ecl.argAt<std::int32_t>(at, 0), ItemState::Falling);
                 break;
-            case ecl_op::StdUnpause: world.unported->hit("stage backgrounds (STD)"); break;
+            case ecl_op::StdUnpause:
+                if (world.background) world.background->unpause();
+                break;
             case ecl_op::BossSetLifeCount: world.state->bossLifeCount = ecl.argAt<std::int32_t>(at, 0); break;
             case ecl_op::EnemyCreate: {
                 const auto a = ecl.argAt<EclRawInstrEnemyCreateArgs>(at, 0);

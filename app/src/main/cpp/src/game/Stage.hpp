@@ -21,6 +21,7 @@
 #include "game/Input.hpp"
 #include "game/Player.hpp"
 #include "game/ScreenShake.hpp"
+#include "game/StageBackground.hpp"
 #include "game/ShotData.hpp"
 #include "game/World.hpp"
 #include "gfx/AnmManager.hpp"
@@ -68,6 +69,7 @@ class Stage {
     EffectManager& effects() { return effects_; }
     Gui& gui() { return gui_; }
     World& world() { return world_; }
+    StageBackground& background() { return background_; }
     Player& player() { return *player_; }
     AnmManager& anm() { return anm_; }
     int stageNumber() const { return stageNumber_; }
@@ -93,6 +95,7 @@ class Stage {
     EffectManager effects_;
     FallbackTextRenderer fallbackText_;
     Gui gui_;
+    StageBackground background_;
     bool guiLoadedOnce_ = false;
     int loadedGuiCharacter_ = -1;
     EclFile ecl_;
