@@ -1,5 +1,7 @@
 #include "gfx/TextureLibrary.hpp"
 
+#include <format>
+
 #include "core/Log.hpp"
 #include "io/Vfs.hpp"
 
@@ -7,8 +9,34 @@ namespace th06 {
 
 std::uint16_t TextureLibrary::add(std::string name, int width, int height, Producer producer,
                                   TextureFilter filter) {
-    items_.push_back(Item{std::move(name), width, height, std::move(producer), filter});
+    for (std::size_t i = 0; i < items_.size(); ++i) {
+        const Item& it = items_[i];
+        if (it.name == name && it.width == width && it.height == height && it.filter == filter) {
+            return static_cast<std::uint16_t>(i);
+        }
+    }
+    items_.push_back(Item{std::move(name), width, height, std::move(producer), filter, nullptr, 0});
     return static_cast<std::uint16_t>(items_.size() - 1);
+}
+
+std::uint16_t TextureLibrary::addDynamic(std::string name, int width, int height) {
+    for (std::size_t i = 0; i < items_.size(); ++i) {
+        const Item& it = items_[i];
+        if (it.dynamic && it.name == name && it.width == width && it.height == height) return static_cast<std::uint16_t>(i);
+    }
+    auto image = std::make_shared<Image>(width, height);  // fully transparent
+    Item item{std::move(name), width, height, [image]() -> std::optional<Image> { return *image; }, TextureFilter::Nearest,
+              image, 0};
+    items_.push_back(std::move(item));
+    return static_cast<std::uint16_t>(items_.size() - 1);
+}
+
+Image* TextureLibrary::pixels(std::uint16_t id) {
+    return id < items_.size() ? items_[id].dynamic.get() : nullptr;
+}
+
+void TextureLibrary::touch(std::uint16_t id) {
+    if (id < items_.size()) ++items_[id].version;
 }
 
 std::optional<Image> TextureLibrary::build(std::uint16_t id) const {
@@ -59,9 +87,17 @@ std::optional<LoadedAnm> loadAnm(const Vfs& vfs, TextureLibrary& lib, std::strin
     }
     auto anm = parseAnm(*bytes, error);
     if (!anm) return std::nullopt;
-    if (anm->imageName.starts_with('@')) {
-        if (error) *error = std::string(path) + " draws into a render target, not an image";
-        return std::nullopt;
+    if (anm->imageName.starts_with('@')) {  // a blank texture the engine draws into (text)
+        if (anm->textureWidth <= 0 || anm->textureHeight <= 0) {
+            if (error) *error = std::string(path) + ": blank texture without a size";
+            return std::nullopt;
+        }
+        LoadedAnm out;
+        out.texture = lib.addDynamic(std::string(path) + "|blank", anm->textureWidth, anm->textureHeight);
+        out.anm = std::move(*anm);
+        log::info("Loaded {}: {} sprites on a blank {}x{} texture", path, out.anm.sprites.size(),
+                  out.anm.textureWidth, out.anm.textureHeight);
+        return out;
     }
 
     const std::string image = resolveImage(vfs, anm->imageName);
@@ -84,15 +120,19 @@ std::optional<LoadedAnm> loadAnm(const Vfs& vfs, TextureLibrary& lib, std::strin
     }
 
     const std::uint32_t colorKey = anm->colorKey;
+    const std::uint32_t format = anm->format;
+    const bool legacyImage = image.size() > 4 && image.compare(image.size() - 4, 4, ".dds") != 0;
     const Vfs* v = &vfs;
     LoadedAnm out;
-    out.texture = lib.add(image, w, h, [v, image, alpha, colorKey, w, h]() -> std::optional<Image> {
+    const std::string key = std::format("{}|{}|key {:08x}|fmt {}", image, alpha, colorKey, format);
+    out.texture = lib.add(key, w, h, [v, image, alpha, colorKey, format, legacyImage, w, h]() -> std::optional<Image> {
         auto img = decodeFromVfs(*v, image);
         if (!img) return std::nullopt;
         if (!alpha.empty()) {
             if (auto mask = decodeFromVfs(*v, alpha)) applyAlphaFromMask(*img, *mask);
         }
         applyColorKey(*img, colorKey);
+        if (legacyImage) quantizeToD3DFormat(*img, format);  // 2002 data only; DDS art is final
         // Smaller than the header says: the original placed it top-left in a padded
         // texture. Equal or larger (New Classic high-res art): normalised UVs still hold.
         if (img->width < w || img->height < h) *img = padTo(*img, w, h);
