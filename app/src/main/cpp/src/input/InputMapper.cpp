@@ -51,6 +51,8 @@ InputState InputMapper::sample() const {
     s.bomb = keys[SDL_SCANCODE_X];
     s.focus = keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT];
     s.pause = keys[SDL_SCANCODE_ESCAPE] || keys[SDL_SCANCODE_P];
+    s.skip = keys[SDL_SCANCODE_LCTRL] || keys[SDL_SCANCODE_RCTRL];
+    s.quit = keys[SDL_SCANCODE_Q];  // the pause menu's hidden quick quit
 
     for (SDL_GameController* c : controllers_) {
         auto button = [c](SDL_GameControllerButton b) { return SDL_GameControllerGetButton(c, b) != 0; };
@@ -65,6 +67,7 @@ InputState InputMapper::sample() const {
         s.focus = s.focus || button(SDL_CONTROLLER_BUTTON_X) || button(SDL_CONTROLLER_BUTTON_LEFTSHOULDER) ||
                   SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_TRIGGERLEFT) > kTriggerThreshold;
         s.pause = s.pause || button(SDL_CONTROLLER_BUTTON_START);
+        s.skip = s.skip || button(SDL_CONTROLLER_BUTTON_Y);
     }
     return s;
 }

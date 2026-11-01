@@ -1,22 +1,23 @@
 #include "engine/App.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <thread>
 #include <vector>
 
 #include "core/Log.hpp"
-#include "game/GameArt.hpp"
 #include "platform/DataMount.hpp"
+#if defined(__ANDROID__)
+#include "platform/AndroidStorage.hpp"
+#endif
 
 namespace th06 {
 namespace {
 
-constexpr double kTickSeconds = 1.0 / 60.0;
-constexpr int kMaxTicksPerFrame = 4;        // beyond this the game slows down (like the original)
-constexpr double kVsyncSnapSeconds = 0.0005;
 constexpr int kVirtualWidth = 640;
 constexpr int kVirtualHeight = 480;
 
@@ -48,11 +49,13 @@ bool App::init(int argc, char** argv) {
     SDL_SetHint(SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1");
     SDL_SetHint(SDL_HINT_ANDROID_BLOCK_ON_PAUSE, "1");
 
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS) != 0) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS) != 0) {
         log::error("SDL_Init: {}", SDL_GetError());
         return false;
     }
     sdlReady_ = true;
+    // Without a sound device the game still runs (silently).
+    if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) log::warn("No audio: {}", SDL_GetError());
     SDL_version v;
     SDL_GetVersion(&v);
     log::info("SDL {}.{}.{}", v.major, v.minor, v.patch);
@@ -72,8 +75,17 @@ bool App::init(int argc, char** argv) {
         const std::string a = argv[i] ? argv[i] : "";
         const char* next = i + 1 < argc ? argv[i + 1] : nullptr;
         if (a == "--frames" && next) devFrames_ = std::atoi(argv[++i]);
+        else if (a == "--ticks" && next) devTicks_ = std::atoi(argv[++i]);
         else if (a == "--screenshot" && next) devScreenshot_ = argv[++i];
         else if (a == "--demo-touch") devTouch_ = true;
+        else if (a == "--demo-bomb" && next) devBombFrame_ = std::atoi(argv[++i]);
+        else if (a == "--demo-pause" && next) devPauseFrame_ = std::atoi(argv[++i]);
+        else if (a == "--demo-gameover" && next) devGameOverFrame_ = std::atoi(argv[++i]);
+        else if (a == "--demo-clear" && next) devClearFrame_ = std::atoi(argv[++i]);
+        else if (a == "--stage" && next) startStage_ = std::atoi(argv[++i]);
+        else if (a == "--difficulty" && next) startDifficulty_ = std::atoi(argv[++i]);
+        else if (a == "--shot" && next) shotType_ = std::atoi(argv[++i]);
+        else if (a == "--mischief" && next) mischief_ = static_cast<std::uint32_t>(std::atoi(argv[++i]));
         else if (a == "--size" && next) std::sscanf(argv[++i], "%dx%d", &windowWidth_, &windowHeight_);
     }
 #endif
@@ -101,18 +113,45 @@ bool App::init(int argc, char** argv) {
               reinterpret_cast<const char*>(glGetString(GL_RENDERER)),
               reinterpret_cast<const char*>(glGetString(GL_VERSION)), vsync_ ? "on" : "off", refreshHz_);
 
+    clock_.setDisplay(refreshHz_, vsync_);
+
     vfs_ = mountGameData(argc, argv);
-    GameArt art = buildGameArt(vfs_.get(), textures_);
-    ui_ = art.ui;
+    ui_ = registerUiArt(textures_);
 
     std::string err;
     if (audio_.open(&err)) {
-        loadSounds();
+        sound_ = std::make_unique<SoundPlayer>(&audio_);
+        const int found = sound_->loadSamples(*vfs_);
+        log::info("Loaded {} of {} sound effects from the archives", found, SoundPlayer::kSamples);
     } else {
         log::warn("Audio disabled: {}", err);
     }
 
-    game_ = std::make_unique<Game>(std::move(art), audio_.isOpen() ? &audio_ : nullptr);
+#if defined(__ANDROID__)
+    text_ = makeAndroidTextRenderer();
+#endif
+    stage_ = std::make_unique<Stage>(textures_, ui_, vfs_.get(), sound_.get(), text_.get());
+    if (audio_.isOpen()) {
+        music_ = std::make_unique<MusicPlayer>(vfs_.get(), &audio_);
+        stage_->setMusic(music_.get());
+        if (vfs_->looseFileCount() == 0) log::info("No bgm/*.wav in the game folder: music is silent");
+    }
+#if defined(__ANDROID__)
+    {
+        const AndroidGameOptions o = readAndroidGameOptions();
+        shotType_ = o.shotType;
+        startStage_ = o.stage;
+        startDifficulty_ = o.stage == 7 ? Extra : o.difficulty;
+        mischief_ = o.mischief;
+    }
+#endif
+    stage_->setShotType(shotType_);
+    stage_->setMischief(mischief_);
+    if (char* pref = SDL_GetPrefPath("th06", "th06-android")) {  // app storage on Android
+        stage_->setScorePath(std::string(pref) + "score.dat");
+        SDL_free(pref);
+    }
+    if (!stage_->load(startStage_, startDifficulty_)) log::warn("Stage not started: {}", stage_->error());
 
     if (!createGpu(&err)) {
         log::error("GPU setup failed: {}", err);
@@ -129,22 +168,6 @@ bool App::init(int argc, char** argv) {
     return true;
 }
 
-void App::loadSounds() {
-    if (!vfs_ || vfs_->fileCount() == 0) return;
-    int loaded = 0;
-    for (std::size_t i = 0; i < static_cast<std::size_t>(Sfx::Count); ++i) {
-        auto bytes = vfs_->read(kSfxFiles[i]);
-        if (!bytes) continue;
-        std::string err;
-        if (audio_.load(static_cast<Sfx>(i), *bytes, &err)) {
-            ++loaded;
-        } else {
-            log::warn("{}: {}", kSfxFiles[i], err);
-        }
-    }
-    log::info("Loaded {} of {} sound effects from the archives", loaded, static_cast<int>(Sfx::Count));
-}
-
 bool App::createGpu(std::string* error) {
     if (!batch_.create(error)) return false;
     if (!target_.create(kVirtualWidth, kVirtualHeight, error)) return false;
@@ -153,6 +176,9 @@ bool App::createGpu(std::string* error) {
 }
 
 void App::releaseGpu(bool contextLost) {
+    if (stage_) stage_->setCaptureReady(false);  // the snapshot lived in a GL texture
+    if (captureFbo_ && !contextLost) glDeleteFramebuffers(1, &captureFbo_);
+    captureFbo_ = 0;
     if (contextLost) {
         gpu_.abandon();
         batch_.abandon();
@@ -165,7 +191,10 @@ void App::releaseGpu(bool contextLost) {
 }
 
 void App::shutdown() {
-    game_.reset();
+    stage_.reset();  // before the mixer: the stage's SoundPlayer points at it
+    if (music_) music_->stop();
+    music_.reset();
+    sound_.reset();
     touch_.detach();
     input_.closeAll();
     audio_.close();
@@ -207,7 +236,7 @@ void App::handleEvent(const SDL_Event& e) {
             running_ = false;
             break;
         case SDL_APP_WILLENTERBACKGROUND:
-            if (game_) game_->setPaused(true);
+            if (stage_) stage_->pauseNow();
             audio_.setPaused(true);
             touch_.releaseAll();
             break;
@@ -235,13 +264,11 @@ void App::handleEvent(const SDL_Event& e) {
             }
             break;
         case SDL_KEYDOWN:
-            // Android Back: first press pauses, a second press while paused quits.
-            if (e.key.keysym.scancode == SDL_SCANCODE_AC_BACK && !e.key.repeat && game_) {
-                if (game_->paused()) {
-                    running_ = false;
-                } else {
-                    game_->setPaused(true);
-                }
+            // Android Back is the Menu button: it opens the pause menu and resumes from it
+            // (Quit is in the menu). Without a running stage it leaves.
+            if (e.key.keysym.scancode == SDL_SCANCODE_AC_BACK && !e.key.repeat && stage_) {
+                if (stage_->ready()) stage_->pressMenu();
+                else running_ = false;
             }
             break;
         case SDL_FINGERDOWN:
@@ -255,70 +282,76 @@ void App::handleEvent(const SDL_Event& e) {
 }
 
 void App::loop() {
-    const double freq = static_cast<double>(SDL_GetPerformanceFrequency());
-    Uint64 last = SDL_GetPerformanceCounter();
-    Uint64 fpsStart = last;
-    Uint64 logStart = last;
+    using Clock = FixedTimestep::Clock;
+    auto fpsStart = Clock::now();
+    auto logStart = fpsStart;
     int fpsFrames = 0;
-    double accumulator = 0;
 
     while (running_) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) handleEvent(e);
         if (!running_) break;
 
-        const Uint64 now = SDL_GetPerformanceCounter();
-        double dt = static_cast<double>(now - last) / freq;
-        last = now;
+        const auto now = Clock::now();
         if (resetClock_) {
-            dt = kTickSeconds;
-            accumulator = 0;
+            clock_.reset(now);  // after start-up or resume: no catch-up burst
             resetClock_ = false;
         }
-        // Vsync jitter: frame times within 0.5 ms of a whole number of display refreshes
-        // are treated as exact, so a 60 Hz display yields exactly one tick per frame.
-        if (vsync_ && refreshHz_ > 0) {
-            const double frame = 1.0 / refreshHz_;
-            const double k = std::round(dt / frame);
-            if (k >= 1 && std::fabs(dt - k * frame) < kVsyncSnapSeconds) dt = k * frame;
-        }
-        accumulator += std::min(dt, 0.1);
 
-        int ticks = 0;
-        while (accumulator >= kTickSeconds - 0.0002) {
-            if (ticks == kMaxTicksPerFrame) {
-                accumulator = 0;
-                break;
+        // Physics: player movement, ECL, bullets and collision, in whole 1/60 s ticks.
+        // Input is sampled once per rendered frame and applies to every tick it runs.
+        const int ticks = clock_.advance(now);
+        if (ticks > 0) {
+            const InputState in = input_.sample();
+            for (int i = 0; i < ticks && !stage_->quitRequested(); ++i) {
+                stage_->tick(in);
+                ++tickCount_;
             }
-            game_->tick(input_.sample());
-            accumulator -= kTickSeconds;
-            ++ticks;
+        }
+        if (stage_->quitRequested()) {  // Quit in the pause menu, or game over: to the launcher
+            running_ = false;
+            break;
         }
 
+        // Rendering: once per display refresh, interpolated to the present instant.
         gpu_.sync(textures_);
-        renderFrame();
+        if (stage_->takeCaptureRequest()) stage_->setCaptureReady(capturePlayfield());
+        renderFrame(stage_->paused() ? 1.0f : clock_.alpha());
         developerFrameHooks();
         SDL_GL_SwapWindow(window_);
 
         if (!vsync_) {
-            const double spent = static_cast<double>(SDL_GetPerformanceCounter() - now) / freq;
-            const double wait = kTickSeconds - accumulator - spent;
-            if (wait > 0.002) SDL_Delay(static_cast<Uint32>(wait * 1000.0) - 1);
+            // No vsync: sleep until the next tick is due rather than spinning.
+            const auto wait = clock_.untilNextTick() - (Clock::now() - now);
+            if (wait > std::chrono::milliseconds(2)) {
+                std::this_thread::sleep_for(wait - std::chrono::milliseconds(1));
+            }
         }
 
         ++fpsFrames;
-        if (now - fpsStart >= static_cast<Uint64>(freq / 2)) {
-            fps_ = static_cast<float>(fpsFrames / (static_cast<double>(now - fpsStart) / freq));
+        if (now - fpsStart >= std::chrono::milliseconds(500)) {
+            fps_ = static_cast<float>(fpsFrames / std::chrono::duration<double>(now - fpsStart).count());
             fpsFrames = 0;
             fpsStart = now;
         }
-        if (now - logStart >= static_cast<Uint64>(freq * 10)) {
-            const auto& s = game_->stats();
-            log::info("fps {:.1f} | ticks {} | bullets {} (peak {}, dropped {}) | draw calls {}", fps_,
-                      s.ticks, s.bullets, s.peakBullets, s.dropped, lastDrawCalls_);
+        if (now - logStart >= std::chrono::seconds(10)) {
+            logStats();
             logStart = now;
         }
     }
+}
+
+void App::logStats() const {
+    if (!stage_->ready()) {
+        log::info("fps {:.1f} | ticks {} | stage not running: {}", fps_, tickCount_, stage_->error());
+        return;
+    }
+    Stage& st = *stage_;
+    log::info("fps {:.1f} | ticks {} | stage {} frame {} | enemies {} | bullets {} (peak {}, slots full {}) | "
+              "ECL instructions {} | draw calls {}",
+              fps_, tickCount_, st.stageNumber(), st.enemies().timelineTime(), st.enemies().activeCount(),
+              st.bullets().activeCount(), st.bullets().peakCount(), st.bullets().spawnFailures(),
+              st.enemies().instructionsExecuted(), lastDrawCalls_);
 }
 
 void App::developerFrameHooks() {
@@ -338,7 +371,25 @@ void App::developerFrameHooks() {
             SDL_PushEvent(&e);
         }
     }
-    if (devFrames_ <= 0 || frameCount_ < static_cast<std::uint64_t>(devFrames_)) return;
+    if (devBombFrame_ >= 0 && (frameCount_ == static_cast<std::uint64_t>(devBombFrame_) ||
+                               frameCount_ == static_cast<std::uint64_t>(devBombFrame_) + 30)) {
+        float x = 0, y = 0;
+        if (touch_.locate(SDL_CONTROLLER_BUTTON_B, x, y)) {
+            SDL_Event e{};
+            e.type = frameCount_ == static_cast<std::uint64_t>(devBombFrame_) ? SDL_FINGERDOWN : SDL_FINGERUP;
+            e.tfinger.fingerId = 102;
+            e.tfinger.x = x / static_cast<float>(drawWidth_);
+            e.tfinger.y = y / static_cast<float>(drawHeight_);
+            e.tfinger.pressure = 1.0f;
+            SDL_PushEvent(&e);
+        }
+    }
+    if (devPauseFrame_ >= 0 && frameCount_ == static_cast<std::uint64_t>(devPauseFrame_)) stage_->pressMenu();
+    if (devGameOverFrame_ >= 0 && frameCount_ == static_cast<std::uint64_t>(devGameOverFrame_)) stage_->endGameForTesting();
+    if (devClearFrame_ >= 0 && frameCount_ == static_cast<std::uint64_t>(devClearFrame_)) stage_->clearGameForTesting();
+    const bool byFrames = devFrames_ > 0 && frameCount_ >= static_cast<std::uint64_t>(devFrames_);
+    const bool byTicks = devTicks_ > 0 && tickCount_ >= static_cast<std::uint64_t>(devTicks_);
+    if (!byFrames && !byTicks) return;
     if (!devScreenshot_.empty()) {
         std::vector<std::uint8_t> px(static_cast<std::size_t>(drawWidth_) * drawHeight_ * 4);
         glReadPixels(0, 0, drawWidth_, drawHeight_, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
@@ -353,19 +404,63 @@ void App::developerFrameHooks() {
             log::info("Screenshot written to {}", devScreenshot_);
         }
     }
-    const auto& s = game_->stats();
-    log::info("Exit after {} frames: ticks {} bullets {} peak {} grazes {} hits {} draw calls {}", frameCount_,
-              s.ticks, s.bullets, s.peakBullets, s.grazes, s.hits, lastDrawCalls_);
+    log::info("Exit after {} frames", frameCount_);
+    logStats();
+    if (stage_->ready()) {
+        const GameState& gs = stage_->state();
+        log::info("score {} | grazes {} | misses {} | rank {}", gs.score, gs.grazes, gs.deaths, gs.rank);
+        for (const auto& [name, count] : stage_->unported().counts()) log::info("  not ported: {} x{}", name, count);
+    }
     running_ = false;
 }
 
-void App::renderFrame() {
+bool App::capturePlayfield() {
+    const int id = stage_->captureTexture();
+    if (id < 0 || frameCount_ == 0) return false;  // no capture.anm, or nothing rendered yet
+    const auto tid = static_cast<std::uint16_t>(id);
+    const GLuint tex = gpu_.get(tid);
+    const int w = textures_.width(tid), h = textures_.height(tid);
+    if (!captureFbo_) glGenFramebuffers(1, &captureFbo_);
+    glBindFramebuffer(GL_FRAMEBUFFER, captureFbo_);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
+    const bool ok = glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+    if (ok) {
+        glViewport(0, 0, w, h);
+        glClearColor(0, 0, 0, 1);
+        glClear(GL_COLOR_BUFFER_BIT);
+        batch_.begin(static_cast<float>(w), static_cast<float>(h), &gpu_);
+        // The game target still holds the last frame, bottom-up. Drawn into the texture's
+        // framebuffer the quad's bottom edge becomes texture row 0, so it samples the
+        // playfield's top row there.
+        SpriteInstance s;
+        s.x = static_cast<float>(w) * 0.5f;
+        s.y = static_cast<float>(h) * 0.5f;
+        s.w = static_cast<float>(w);
+        s.h = static_cast<float>(h);
+        s.u0 = kGameRegionX / kVirtualWidth;
+        s.u1 = (kGameRegionX + kGameRegionWidth) / kVirtualWidth;
+        s.v0 = (kVirtualHeight - kGameRegionY - kGameRegionHeight) / kVirtualHeight;
+        s.v1 = (kVirtualHeight - kGameRegionY) / kVirtualHeight;
+        batch_.drawTexture(target_.texture(), Blend::Alpha, s);
+        batch_.end();
+    } else {
+        log::warn("Playfield capture: framebuffer incomplete");
+    }
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 0, 0);
+    RenderTarget::bindScreen();
+    gl::check("capturePlayfield");
+    return ok;
+}
+
+void App::renderFrame(float alpha) {
     // 1) The game at its native 640x480.
     target_.bind();
     glClearColor(0, 0, 0, 1);
-    glClear(GL_COLOR_BUFFER_BIT);
+    glDepthMask(GL_TRUE);
+    glClearDepthf(1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     batch_.begin(kVirtualWidth, kVirtualHeight, &gpu_);
-    game_->render(batch_, HudInfo{fps_, lastDrawCalls_});
+    stage_->render(batch_, alpha, HudInfo{fps_, lastDrawCalls_});
     batch_.end();
 
     // 2) Letterboxed onto the screen, then the touch controls at full resolution.

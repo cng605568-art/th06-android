@@ -33,6 +33,26 @@ bool Vfs::mount(std::unique_ptr<Archive> archive) {
     return useful;
 }
 
+namespace {
+std::string loosePath(std::string_view p) {
+    std::string s(p);
+    for (char& c : s) {
+        if (c == '\\') c = '/';
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return s;
+}
+}  // namespace
+
+void Vfs::addLooseFile(std::string relativePath, std::unique_ptr<MappedFile> file) {
+    if (file) loose_[loosePath(relativePath)] = std::move(file);
+}
+
+std::span<const std::uint8_t> Vfs::looseFile(std::string_view relativePath) const {
+    const auto it = loose_.find(loosePath(relativePath));
+    return it == loose_.end() ? std::span<const std::uint8_t>() : it->second->bytes();
+}
+
 std::size_t Vfs::mountDirectory(const std::string& dir, bool preferNewClassic) {
     namespace fs = std::filesystem;
     struct Candidate {
@@ -40,6 +60,21 @@ std::size_t Vfs::mountDirectory(const std::string& dir, bool preferNewClassic) {
         bool newClassic;
     };
     std::vector<Candidate> found;
+
+    // The 2002 game's music: loose WAV files in bgm/.
+    {
+        std::error_code ec;
+        const fs::path bgm = fs::path(dir) / "bgm";
+        if (fs::is_directory(bgm, ec)) {
+            for (const auto& item : fs::directory_iterator(bgm, ec)) {
+                std::string name = item.path().filename().string();
+                std::string lower = loosePath(name);
+                if (!item.is_regular_file(ec) || !lower.ends_with(".wav")) continue;
+                std::string err;
+                if (auto f = MappedFile::open(item.path().string(), &err)) addLooseFile("bgm/" + name, std::move(f));
+            }
+        }
+    }
 
     for (const fs::path& base : {fs::path(dir), fs::path(dir) / "data"}) {
         std::error_code ec;
@@ -49,7 +84,18 @@ std::size_t Vfs::mountDirectory(const std::string& dir, bool preferNewClassic) {
             std::string ext = item.path().extension().string();
             std::transform(ext.begin(), ext.end(), ext.begin(),
                            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (ext == ".exe") {
+                std::string err;
+                auto exe = MappedFile::open(item.path().string(), &err);
+                if (exe && looksLikeGameExecutable(exe->bytes())) addExecutable(item.path().filename().string(), std::move(exe));
+                continue;
+            }
             if (ext != ".dat" || item.file_size(ec) < 8) continue;  // magic decides, not size
+            if (base == fs::path(dir) && loosePath(item.path().filename().string()) == "score.dat") {
+                std::string err;  // the PC game's high scores (read until the port has its own)
+                if (auto f = MappedFile::open(item.path().string(), &err)) addLooseFile("score.dat", std::move(f));
+                continue;
+            }
             std::string err;
             auto file = MappedFile::open(item.path().string(), &err);
             if (!file || file->bytes().size() < 4) continue;
@@ -107,6 +153,22 @@ std::vector<std::string> Vfs::describe() const {
         out.push_back(std::format("{} [{}] {} files", a->label(), a->format(), a->entries().size()));
     }
     return out;
+}
+
+void Vfs::addExecutable(std::string name, std::unique_ptr<MappedFile> file) {
+    if (!file) return;
+    log::info("Found program {} ({} KB)", name, file->bytes().size() / 1024);
+    executables_.emplace_back(std::move(name), std::move(file));
+}
+
+std::vector<std::span<const std::uint8_t>> Vfs::executables() const {
+    std::vector<std::span<const std::uint8_t>> out;
+    for (const auto& [name, file] : executables_) out.push_back(file->bytes());
+    return out;
+}
+
+bool Vfs::looksLikeGameExecutable(std::span<const std::uint8_t> bytes) {
+    return bytes.size() >= 256 * 1024 && bytes.size() <= 4 * 1024 * 1024 && bytes[0] == 'M' && bytes[1] == 'Z';
 }
 
 }  // namespace th06
