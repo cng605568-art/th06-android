@@ -158,14 +158,22 @@ public class ImportActivity extends Activity {
         List<DataSources.Entry> entries = DataSources.load(this);
         StringBuilder sb = new StringBuilder(status.getText());
         if (entries.isEmpty()) {
-            sb.append("No game data selected yet.");
-            playButton.setText("Start demo (no game data)");
+            sb.append("No game data selected yet. Choose the folder of the 2002 game"
+                    + " (\u7d05\u9b54\u90f7CM.DAT, \u7d05\u9b54\u90f7ST.DAT ... or KOUMAKYO_*.dat).");
+            playButton.setText("Play (no game data selected)");
         } else {
+            boolean classic = false;
             sb.append(String.format(Locale.ROOT, "%d archive(s) in use:%n", entries.size()));
             for (DataSources.Entry e : entries) {
-                String kind = DataSources.FORMAT_PBG3.equals(e.format) ? "Classic" : "New Classic";
+                boolean isClassic = DataSources.FORMAT_PBG3.equals(e.format);
+                classic |= isClassic;
+                String kind = isClassic ? "Classic" : "New Classic";
                 sb.append(String.format(Locale.ROOT, "  %-18s %-11s %6.1f MB%n",
                         e.name, kind, e.size / 1048576.0));
+            }
+            if (!classic) {
+                sb.append(String.format(Locale.ROOT, "%nThe stage engine runs the 2002 data files;"
+                        + " New Classic archives alone cannot start a stage yet.%n"));
             }
             playButton.setText("Play");
         }

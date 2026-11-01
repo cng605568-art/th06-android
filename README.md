@@ -1,8 +1,9 @@
-# TH06 Android Port (engine foundation)
+# TH06 Android Port
 
-Native Android engine for *Touhou Koumakyou ~ the Embodiment of Scarlet Devil*, written in
-C++20 on SDL2 + OpenGL ES 3. It reads **your own copy** of the game's archives on the phone
-at runtime. No game file is in this repository or in the APK.
+Native Android engine for *Touhou Koumakyou ~ the Embodiment of Scarlet Devil* (2002),
+written in C++20 on SDL2 + OpenGL ES 3. It reads **your own copy** of the game's archives on
+the phone at runtime and runs the game's own compiled scripts: ECL for enemies and bullet
+patterns, ANM for every animation. No game file is in this repository or in the APK.
 
 Built entirely by GitHub Actions: no Android Studio, no local SDK.
 
@@ -12,17 +13,28 @@ Built entirely by GitHub Actions: no Android Studio, no local SDK.
 |---|---|
 | CI | Host unit tests → release APK (Gradle 9.4.1, AGP 9.2.1, NDK r28c, CMake) → signed with your keystore → GitHub Release on tags |
 | 2002 archives (`紅魔郷CM.DAT` / `KOUMAKYO_CM.dat` …, **PBG3**) | Full reader: bit-packed table + ZUN's LZSS. No encryption exists in this format. |
-| New Classic archives (`th06CM.dat` …, **PKGL**, Steam 2026) | Reader: XOR keystream (key from the file name) + Zstandard. DDS textures incl. BC7 are decoded on the CPU. |
-| Assets | ANM sprite tables, PNG/JPEG/BMP/TGA, DDS (BC1/2/3/7, 32-bit), alpha-mask images, colour keys, WAV sound effects |
-| Engine | Fixed 60 Hz simulation, vsync-snapped accumulator, 640x480 offscreen render letterboxed to the screen, GL context-loss recovery |
-| Bullets | `ObjectPool<T, N>`: one allocation, O(1) spawn/kill, dense iteration, generational handles. Instanced renderer: thousands of bullets in one draw call |
+| New Classic archives (`th06CM.dat` …, **PKGL**, Steam 2026) | Reader (XOR keystream + Zstandard, BC7 DDS). The stage engine itself needs the 2002 files. |
+| ANM VM | All 32 opcodes of the 2002 engine: sprites, scale/rotation/alpha/position interpolation, interrupts and labels, UV scroll, halt/static. Draw paths (Draw/Draw2/Draw3) with the original rounding and its UV-cache quirk; D3D8 blend states (`SRCALPHA/INVSRCALPHA`, `SRCALPHA/ONE`, `MODULATE`/`ADD`) mapped to GLES. 16-bit texture formats quantised like Direct3D did. |
+| ECL VM | Stage timelines (all 13 opcodes) and enemy subs: variables (incl. float arguments that name variables), jumps/loops/compares, an 8-deep call stack, difficulty masks, movement and interpolation modes, bullet patterns with rank, interrupts, life/timer/death callbacks, boss slots, spellcard damage scaling. Quirks of the executable are kept (self-modifying `INC`/`DEC` on literals, interrupt return skipping one instruction). |
+| Bullets | The original's 640 fixed slots and slot scan, 10 bullet types from `etama3/etama4.anm`, all 9 aim modes, spawn/cancel animations, speed-up/acceleration/velocity/turn/bounce flags, graze and hit boxes |
+| Lasers | 64 laser slots, warning line → active → shrinking phases, the original's hitbox quirks (half-width deadly core, speck-sized hitbox while warning/shrinking), graze every 12 frames, all laser ECL opcodes incl. stale-reference behaviour, the laser ex-instructions of stages 4, 6 and Extra |
+| Items | 512-slot item pool, rise/gravity physics, homing at full power above the collection line, pickup rules for all 7 item types, point-item value by height and difficulty, full-power chain scoring, random drop table, `DROP_ITEMS`, death scatter, bullets/lasers turning into star items |
+| Resources | Power (0–128), bombs, lives, graze, rolling score counter, score extends (10M/20M/40M/60M), stage-clear bonus, death drops and life loss |
+| Player | Movement speeds and clamping, 1.25 px hitbox, graze box, `player00.anm` scripts, death/respawn invulnerability, the Reimu A level-1 shot |
+| Sound | SoundIdx → wav + DirectSound volume table, 3-entry per-frame queue with de-duplication, played once per frame |
+| Main loop | `std::chrono` fixed timestep of exactly 1/60 s (rational arithmetic, no drift), rendering once per display refresh with positions interpolated to the present instant (60/90/120/144 Hz), vsync-jitter snapping, max 4 ticks per frame |
 | Controls | Touch D-pad + Shot/Bomb/Focus/Pause registered as an **SDL virtual game controller**; physical gamepads and keyboards use the same path |
-| Game | A test stage (player, shots, bombs, graze/hit, four bullet patterns peaking at ~2,700 live bullets) that uses your bullet and player sprites when the archives are present |
 
-**Not yet:** the original stages, enemies, bosses, dialogue and menus. Those run on ZUN's
-script formats (ECL, STD, ANM scripts, MSG), which need interpreters on top of this engine.
-Background music is also not played yet (the 2002 game keeps it as WAV files in `bgm/`,
-outside the archives; New Classic uses Opus).
+**Not ported yet** (shown live under *NOT PORTED YET* in the HUD whenever the game data uses
+them): stronger shots as power rises (power is counted but the shot stays at level 1),
+other shot types, bombs, particle effects, score popups and banners, dialogue (MSG) — the
+stage currently ends when its timeline has run out instead of after the boss dialogue —
+stage backgrounds (STD), spellcard name/bonus display, boss HUD, the remaining ECL
+ex-instructions (2–6, 8–11, 13, 15, 16), the continue screen, background music, menus.
+
+Accuracy notes: game logic runs in the original order on the original data, but float math
+is not bit-identical to the x87 code of 2002, and features that are not ported (items,
+particles) would have consumed random numbers, so long runs drift from real replays.
 
 ## Set up the build (once)
 
@@ -66,7 +78,7 @@ refuse to run unsigned.
      The Steam bundle includes this version alongside New Classic.
    * New Classic (Steam): the `data` folder with `th06CM.dat`, `th06ST.dat` …
 2. Open **TH06 Port → Choose game folder** and pick that folder. Files are read in place.
-3. **Play.** Without game data the app still runs the test stage with generated art.
+3. **Play.** Stage 1 starts on Normal. Without the 2002 archives the screen says what is missing.
 
 Controls: D-pad left, **SHOT / BOMB / FOCUS** right, **II** pauses. Back pauses; Back again
 quits. A Bluetooth/USB gamepad works too (the touch overlay hides itself until you touch the
@@ -84,12 +96,19 @@ app/src/main/cpp/
   CMakeLists.txt              libSDL2.so + libmain.so (also a Linux desktop dev build)
   cmake/th06core.cmake        GL-free core shared with the tests
   src/io/                     MappedFile, BitReader, Lzss, Pbg3Archive, PkglArchive, Vfs
-  src/gfx/                    Image (PNG/DDS), Anm, TextureLibrary, SpriteBatch (instanced GLES3), RenderTarget
-  src/core/ObjectPool.hpp     the bullet pool
-  src/game/                   BulletManager, Game (test stage), GameArt
+  src/gfx/                    Image (PNG/DDS), Anm (file tables), AnmManager (ANM VM + drawing),
+                              TextureLibrary, SpriteBatch (instanced GLES3, D3D8 blend states), RenderTarget
+  src/game/Ecl                ECL file layout (packed structs), opcode tables
+  src/game/EnemyManager       timeline + ECL VM, enemies
+  src/game/BulletManager      640-slot bullet manager and the 64 lasers
+  src/game/ItemManager        512-slot items, pickups, drops
+  src/game/Resources          graze, rolling score, extends, stage-clear bonus
+  src/game/Player             player movement, hitbox, shot
+  src/game/Stage              loads a stage from the archives, runs one tick, draws
+  src/core/ZunMath, FixedTimestep   ZUN's RNG and angle helpers; the 60 Hz clock
   src/input/                  VirtualController (touch → SDL virtual pad), InputMapper
-  src/audio/AudioMixer        SDL audio, WAV sound effects
-  src/engine/App              window, GL context, fixed-step loop, lifecycle
+  src/audio/                  SoundPlayer (SoundIdx table, frame queue), AudioMixer (SDL audio)
+  src/engine/App              window, GL context, dual loop, lifecycle
 tests/                        host tests run by CI before every APK build
 ```
 
@@ -99,8 +118,9 @@ With Gradle 9.4.1 and the Android SDK installed: `gradle :app:assembleRelease`.
 
 ## Credits
 
-Format knowledge, not code: the PBG3/LZSS layout follows [thtk](https://github.com/thpatch/thtk)
-and the [th06 decompilation](https://github.com/happyhavoc/th06); the PKGL layout follows the
+Format knowledge, not code: the PBG3/LZSS layout follows [thtk](https://github.com/thpatch/thtk);
+ECL/ANM/bullet/player semantics and tables follow the CC0
+[th06 decompilation](https://github.com/happyhavoc/th06); the PKGL layout follows the
 MIT-licensed notes in [th06nc-re](https://github.com/creeperkafasi/th06nc-re). Libraries:
 SDL2 (zlib), Zstandard (BSD), stb_image (public domain), bcdec (MIT).
 

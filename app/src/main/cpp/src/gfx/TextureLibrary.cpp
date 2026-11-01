@@ -1,5 +1,7 @@
 #include "gfx/TextureLibrary.hpp"
 
+#include <format>
+
 #include "core/Log.hpp"
 #include "io/Vfs.hpp"
 
@@ -7,6 +9,12 @@ namespace th06 {
 
 std::uint16_t TextureLibrary::add(std::string name, int width, int height, Producer producer,
                                   TextureFilter filter) {
+    for (std::size_t i = 0; i < items_.size(); ++i) {
+        const Item& it = items_[i];
+        if (it.name == name && it.width == width && it.height == height && it.filter == filter) {
+            return static_cast<std::uint16_t>(i);
+        }
+    }
     items_.push_back(Item{std::move(name), width, height, std::move(producer), filter});
     return static_cast<std::uint16_t>(items_.size() - 1);
 }
@@ -84,15 +92,19 @@ std::optional<LoadedAnm> loadAnm(const Vfs& vfs, TextureLibrary& lib, std::strin
     }
 
     const std::uint32_t colorKey = anm->colorKey;
+    const std::uint32_t format = anm->format;
+    const bool legacyImage = image.size() > 4 && image.compare(image.size() - 4, 4, ".dds") != 0;
     const Vfs* v = &vfs;
     LoadedAnm out;
-    out.texture = lib.add(image, w, h, [v, image, alpha, colorKey, w, h]() -> std::optional<Image> {
+    const std::string key = std::format("{}|{}|key {:08x}|fmt {}", image, alpha, colorKey, format);
+    out.texture = lib.add(key, w, h, [v, image, alpha, colorKey, format, legacyImage, w, h]() -> std::optional<Image> {
         auto img = decodeFromVfs(*v, image);
         if (!img) return std::nullopt;
         if (!alpha.empty()) {
             if (auto mask = decodeFromVfs(*v, alpha)) applyAlphaFromMask(*img, *mask);
         }
         applyColorKey(*img, colorKey);
+        if (legacyImage) quantizeToD3DFormat(*img, format);  // 2002 data only; DDS art is final
         // Smaller than the header says: the original placed it top-left in a padded
         // texture. Equal or larger (New Classic high-res art): normalised UVs still hold.
         if (img->width < w || img->height < h) *img = padTo(*img, w, h);
