@@ -33,6 +33,26 @@ bool Vfs::mount(std::unique_ptr<Archive> archive) {
     return useful;
 }
 
+namespace {
+std::string loosePath(std::string_view p) {
+    std::string s(p);
+    for (char& c : s) {
+        if (c == '\\') c = '/';
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return s;
+}
+}  // namespace
+
+void Vfs::addLooseFile(std::string relativePath, std::unique_ptr<MappedFile> file) {
+    if (file) loose_[loosePath(relativePath)] = std::move(file);
+}
+
+std::span<const std::uint8_t> Vfs::looseFile(std::string_view relativePath) const {
+    const auto it = loose_.find(loosePath(relativePath));
+    return it == loose_.end() ? std::span<const std::uint8_t>() : it->second->bytes();
+}
+
 std::size_t Vfs::mountDirectory(const std::string& dir, bool preferNewClassic) {
     namespace fs = std::filesystem;
     struct Candidate {
@@ -40,6 +60,21 @@ std::size_t Vfs::mountDirectory(const std::string& dir, bool preferNewClassic) {
         bool newClassic;
     };
     std::vector<Candidate> found;
+
+    // The 2002 game's music: loose WAV files in bgm/.
+    {
+        std::error_code ec;
+        const fs::path bgm = fs::path(dir) / "bgm";
+        if (fs::is_directory(bgm, ec)) {
+            for (const auto& item : fs::directory_iterator(bgm, ec)) {
+                std::string name = item.path().filename().string();
+                std::string lower = loosePath(name);
+                if (!item.is_regular_file(ec) || !lower.ends_with(".wav")) continue;
+                std::string err;
+                if (auto f = MappedFile::open(item.path().string(), &err)) addLooseFile("bgm/" + name, std::move(f));
+            }
+        }
+    }
 
     for (const fs::path& base : {fs::path(dir), fs::path(dir) / "data"}) {
         std::error_code ec;

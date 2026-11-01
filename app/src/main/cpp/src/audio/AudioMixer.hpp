@@ -8,14 +8,16 @@
 
 #include <SDL.h>
 
+#include "audio/MusicPlayer.hpp"
 #include "audio/SoundPlayer.hpp"
 
 namespace th06 {
 
-// Sound-effect mixer on an SDL audio device (AAudio/OpenSL ES on Android). WAV files are
-// converted once to the device format at load time; the audio callback only sums int16
-// samples and never allocates. One voice per SoundIdx; replaying a voice restarts it.
-class AudioMixer final : public SampleBackend {
+// Sound-effect and music mixer on an SDL audio device (AAudio/OpenSL ES on Android). Effect
+// WAVs are converted once to the device format at load time; music streams from the
+// memory-mapped WAV in the game folder. The audio callback only sums samples and never
+// allocates. One voice per SoundIdx; replaying a voice restarts it.
+class AudioMixer final : public SampleBackend, public MusicBackend {
   public:
     static constexpr int kMaxSamples = 32;
     static constexpr int kMaxVoices = 32;
@@ -27,6 +29,9 @@ class AudioMixer final : public SampleBackend {
     bool loadSample(int sampleIndex, const std::uint8_t* wav, std::size_t size) override;
     void playSample(int voice, int sampleIndex, float gain) override;
     void setPaused(bool paused);
+    void startMusic(std::unique_ptr<MusicStream> stream) override;
+    void stopMusic() override;
+    void setMusicGain(float gain) override;
     bool isOpen() const { return device_ != 0; }
 
   private:
@@ -45,6 +50,7 @@ class AudioMixer final : public SampleBackend {
     std::array<std::vector<std::int16_t>, kMaxSamples> samples_;  // interleaved stereo
     std::array<Voice, kMaxVoices> voices_{};
     std::vector<std::int32_t> scratch_;
+    std::unique_ptr<MusicStream> music_;
 };
 
 }  // namespace th06

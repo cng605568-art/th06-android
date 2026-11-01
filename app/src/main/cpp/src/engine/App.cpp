@@ -127,6 +127,11 @@ bool App::init(int argc, char** argv) {
     text_ = makeAndroidTextRenderer();
 #endif
     stage_ = std::make_unique<Stage>(textures_, ui_, vfs_.get(), sound_.get(), text_.get());
+    if (audio_.isOpen()) {
+        music_ = std::make_unique<MusicPlayer>(vfs_.get(), &audio_);
+        stage_->setMusic(music_.get());
+        if (vfs_->looseFileCount() == 0) log::info("No bgm/*.wav in the game folder: music is silent");
+    }
 #if defined(__ANDROID__)
     {
         const AndroidGameOptions o = readAndroidGameOptions();
@@ -174,6 +179,8 @@ void App::releaseGpu(bool contextLost) {
 
 void App::shutdown() {
     stage_.reset();  // before the mixer: the stage's SoundPlayer points at it
+    if (music_) music_->stop();
+    music_.reset();
     sound_.reset();
     touch_.detach();
     input_.closeAll();

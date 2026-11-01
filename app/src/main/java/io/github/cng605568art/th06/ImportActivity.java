@@ -178,8 +178,15 @@ public class ImportActivity extends Activity {
             playButton.setText("Play (no game data selected)");
         } else {
             boolean classic = false;
+            int tracks = 0;
+            long musicBytes = 0;
             sb.append(String.format(Locale.ROOT, "%d file(s) in use:%n", entries.size()));
             for (DataSources.Entry e : entries) {
+                if (DataSources.FORMAT_WAV.equals(e.format)) {
+                    ++tracks;
+                    musicBytes += e.size;
+                    continue;
+                }
                 boolean isClassic = DataSources.FORMAT_PBG3.equals(e.format);
                 classic |= isClassic;
                 String kind = isClassic ? "Classic"
@@ -187,6 +194,9 @@ public class ImportActivity extends Activity {
                 sb.append(String.format(Locale.ROOT, "  %-18s %-11s %6.1f MB%n",
                         e.name, kind, e.size / 1048576.0));
             }
+            sb.append(tracks > 0
+                    ? String.format(Locale.ROOT, "  Music: %d tracks from bgm/ (%.0f MB)%n", tracks, musicBytes / 1048576.0)
+                    : String.format(Locale.ROOT, "  Music: none (copy the game's bgm folder too for music)%n"));
             if (!classic) {
                 sb.append(String.format(Locale.ROOT, "%nThe stage engine runs the 2002 data files;"
                         + " New Classic archives alone cannot start a stage yet.%n"));

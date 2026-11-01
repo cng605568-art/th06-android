@@ -19,6 +19,7 @@ class EclFile;
 class EffectManager;
 class Gui;
 class StageBackground;
+class MusicPlayer;
 class ItemManager;
 class Player;
 class ScreenShake;
@@ -171,6 +172,7 @@ struct World {
     EffectManager* effects = nullptr;
     Gui* gui = nullptr;
     StageBackground* background = nullptr;
+    MusicPlayer* music = nullptr;
 
     void playSound(int idx) const {
         if (sound && idx >= 0) sound->playSound(idx);

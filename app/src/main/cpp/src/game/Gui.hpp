@@ -122,6 +122,8 @@ class Gui {
     bool loadingHalted() const { return loadingActive_ && loading_.visible && loading_.stopped; }
     std::int32_t tallyTotal() const { return tallyTotal_; }
     int msgScript() const { return msg_.script; }
+    // Song k's path from the stage file ("bgm/th06_02.mid"), empty if none.
+    std::string songPath(int k) const { return k >= 0 && k < 4 ? songPaths_[static_cast<std::size_t>(k)] : std::string(); }
     int msgTimer() const { return msg_.timer; }
 
     // Inspection (tests, HUD).
@@ -197,6 +199,7 @@ class Gui {
     std::uint32_t hiScore_ = 0;
     const Vfs* vfs_ = nullptr;
     std::array<std::vector<std::uint8_t>, 4> songs_{};
+    std::array<std::string, 4> songPaths_{};
     Msg msg_;
     bool previousShoot_ = false;
     bool tallyOn_ = false, tallyPending_ = false;

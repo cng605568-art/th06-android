@@ -27,13 +27,14 @@ Built entirely by GitHub Actions: no Android Studio, no local SDK.
 | Resources | Power (0–128), bombs, lives, graze, rolling score counter, score extends (10M/20M/40M/60M), stage-clear bonus, death drops and life loss |
 | Player | Movement and clamping, 1.25 px hitbox, graze box, `player00/01.anm` scripts, death/respawn invulnerability, option orbs that slide in when focusing (with the original's mid-transition reversal) |
 | Shots | All four shot types (Reimu A/B, Marisa A/B) at all nine power tiers: 80-slot pool, the 30-frame fire cycle (a tap fires a whole cycle), homing amulets, accelerating missiles with blast radius and decaying damage, Marisa B's beams hanging from the orbs with their period timers, one-hit normal shots with hit animations, the 70-per-frame enemy damage cap. The shot tables are read at runtime from **your** `東方紅魔郷.exe` (version 1.02h, recognised by SHA-256); without it a basic forward shot is used. |
+| Music | The 2002 game's WAV mode: the stage file's song path becomes your `bgm/th06_NN.wav`, with loop points from `th06_NN.pos` in the archives; the intro plays once, then the loop repeats gaplessly. Stage theme at stage start, boss theme from the dialogue, 4-second fade after the boss (linear in decibels to −50 dB), every request restarts its song, music keeps playing through the pause menu. Mono or other sample rates are played at the device rate. |
 | Sound | SoundIdx → wav + DirectSound volume table, 3-entry per-frame queue with de-duplication, played once per frame |
 | Main loop | `std::chrono` fixed timestep of exactly 1/60 s (rational arithmetic, no drift), rendering once per display refresh with positions interpolated to the present instant (60/90/120/144 Hz), vsync-jitter snapping, max 4 ticks per frame |
 | Controls | Touch D-pad + Shot/Bomb/Focus/Pause registered as an **SDL virtual game controller**; physical gamepads and keyboards use the same path |
 
 **Not ported yet** (shown live under *NOT PORTED YET* in the HUD whenever the game data uses
 them): the remaining ECL ex-instructions (2–5, 8–11, 13, 15, 16), the continue screen, the
-ending and results screens, background music, menus.
+ending and results screens, menus, MIDI music (only the WAV music from the `bgm` folder plays).
 
 Accuracy notes: game logic runs in the original order on the original data, but float math
 is not bit-identical to the x87 code of 2002, and features that are not ported
@@ -82,7 +83,8 @@ refuse to run unsigned.
      The Steam bundle includes this version alongside New Classic.
    * New Classic (Steam): the `data` folder with `th06CM.dat`, `th06ST.dat` …
 2. Open **TH06 Port → Choose game folder** and pick that folder. Files are read in place.
-   Keep `東方紅魔郷.exe` (1.02h) in the folder: the shot types are read from it.
+   Keep `東方紅魔郷.exe` (1.02h) in the folder: the shot types are read from it. Copy the
+   `bgm` folder too (`th06_01.wav` …) for music.
 3. Pick shot type, difficulty and starting stage, then **Play**. Without the 2002 archives
    the screen says what is missing.
 
@@ -119,7 +121,7 @@ app/src/main/cpp/
   src/game/Stage              loads a stage from the archives, runs one tick, draws
   src/core/ZunMath, FixedTimestep, Sha256   ZUN's RNG and angle helpers; the 60 Hz clock; SHA-256
   src/input/                  VirtualController (touch → SDL virtual pad), InputMapper
-  src/audio/                  SoundPlayer (SoundIdx table, frame queue), AudioMixer (SDL audio)
+  src/audio/                  SoundPlayer (SoundIdx table, frame queue), MusicPlayer (WAV + .pos looping, fades), AudioMixer (SDL audio)
   src/engine/App              window, GL context, dual loop, lifecycle
 tests/                        host tests run by CI before every APK build
 ```

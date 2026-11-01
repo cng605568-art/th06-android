@@ -76,6 +76,7 @@ class App {
     RenderTarget target_;
     AudioMixer audio_;
     std::unique_ptr<SoundPlayer> sound_;
+    std::unique_ptr<MusicPlayer> music_;
     InputMapper input_;
     VirtualController touch_;
     UiArt ui_;

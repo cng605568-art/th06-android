@@ -6,6 +6,7 @@
 #include <format>
 
 #include "core/Log.hpp"
+#include "audio/MusicPlayer.hpp"
 #include "game/EffectManager.hpp"
 #include "game/Resources.hpp"
 #include "io/Vfs.hpp"
@@ -198,9 +199,14 @@ void Gui::startStage(World& world, const Vfs& vfs, int stage, bool firstStage) {
     // Stage title and song names from the stage file's header.
     std::vector<std::uint8_t> title;
     songs_ = {};
+    songPaths_ = {};
     if (auto header = vfs.read(std::format("data/stage{}.std", stage_))) {
         title = fixedString(*header, 0x10, 128);
-        for (int i = 0; i < 4; ++i) songs_[static_cast<std::size_t>(i)] = fixedString(*header, 0x90 + 128 * static_cast<std::size_t>(i), 128);
+        for (int i = 0; i < 4; ++i) {
+            songs_[static_cast<std::size_t>(i)] = fixedString(*header, 0x90 + 128 * static_cast<std::size_t>(i), 128);
+            const auto path = fixedString(*header, 0x290 + 128 * static_cast<std::size_t>(i), 128);
+            songPaths_[static_cast<std::size_t>(i)].assign(path.begin(), path.end());
+        }
     }
     const std::vector<std::uint8_t>& song = songs_[0];
     // Dialogue scripts: a count, then one offset per script.
@@ -647,7 +653,7 @@ void Gui::msgStep(World& world, const InputState& input) {
                 std::vector<std::uint8_t> note(std::begin(kNoteSign), std::end(kNoteSign));
                 if (t >= 0 && t < 4) note.insert(note.end(), songs_[static_cast<std::size_t>(t)].begin(), songs_[static_cast<std::size_t>(t)].end());
                 renderText(world, songName_, note, 16, kStageNameRgb, Align::Right);
-                world.unported->hit("background music");
+                if (world.music) world.music->play(songPath(t));  // the boss theme
                 break;
             }
             case 8: {
@@ -682,7 +688,9 @@ void Gui::msgStep(World& world, const InputState& input) {
                 advanceTimer = false;
                 stop = true;
                 break;
-            case 12: world.unported->hit("background music"); break;
+            case 12:  // after the boss: the music fades over 4 seconds
+                if (world.music) world.music->fadeOut(4.0f);
+                break;
             case 13: msg_.skippable = readLe<std::int32_t>(f, a) != 0; break;
             default: break;
         }

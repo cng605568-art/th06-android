@@ -21,6 +21,7 @@
 
 #include <zstd.h>
 
+#include "audio/MusicPlayer.hpp"
 #include "audio/SoundPlayer.hpp"
 #include "core/FixedTimestep.hpp"
 #include "core/Math.hpp"
@@ -3451,6 +3452,111 @@ static void testStageBackground() {
     CHECK(!StageBackground().parse(cut, &err));
 }
 
+// A 16-bit stereo WAV whose frame i holds (i, -i).
+static Bytes syntheticWav(int frames, int rate = 44100, int channels = 2) {
+    Bytes b;
+    auto tag = [&](const char* t) { b.insert(b.end(), t, t + 4); };
+    tag("RIFF");
+    putLe<std::uint32_t>(b, 0);
+    tag("WAVE");
+    tag("LIST");  // an unrelated chunk first
+    putLe<std::uint32_t>(b, 4);
+    tag("INFO");
+    tag("fmt ");
+    putLe<std::uint32_t>(b, 16);
+    putLe<std::uint16_t>(b, 1);
+    putLe<std::uint16_t>(b, static_cast<std::uint16_t>(channels));
+    putLe<std::uint32_t>(b, static_cast<std::uint32_t>(rate));
+    putLe<std::uint32_t>(b, static_cast<std::uint32_t>(rate * 2 * channels));
+    putLe<std::uint16_t>(b, static_cast<std::uint16_t>(2 * channels));
+    putLe<std::uint16_t>(b, 16);
+    tag("data");
+    putLe<std::uint32_t>(b, static_cast<std::uint32_t>(frames * 2 * channels));
+    for (int i = 0; i < frames; ++i) {
+        putLe<std::int16_t>(b, static_cast<std::int16_t>(i));
+        if (channels == 2) putLe<std::int16_t>(b, static_cast<std::int16_t>(-i));
+    }
+    return b;
+}
+
+struct RecordingMusic final : MusicBackend {
+    std::unique_ptr<MusicStream> stream;
+    float gain = 1.0f;
+    int starts = 0, stops = 0;
+    void startMusic(std::unique_ptr<MusicStream> s) override {
+        stream = std::move(s);
+        ++starts;
+    }
+    void stopMusic() override {
+        stream.reset();
+        ++stops;
+    }
+    void setMusicGain(float g) override { gain = g; }
+};
+
+static void testMusic() {
+    // Looping: first pass [0, end), then [start, end), sample-exact.
+    const Bytes wav = syntheticWav(100);
+    MusicStream s;
+    std::string err;
+    CHECK(s.open(wav, 40, 90, &err) && s.totalFrames() == 100 && s.loopStart() == 40 && s.loopEnd() == 90);
+    std::vector<std::int32_t> acc(2 * 120, 0);
+    s.mixInto(acc.data(), 120, 44100);
+    CHECK(acc[0] == 0 && acc[2 * 89] == 89 && acc[2 * 90] == 40 && acc[2 * 90 + 1] == -40 && acc[2 * 119] == 69);
+    // No loop file: the whole song loops from the start; an end before the start loops it all.
+    MusicStream whole;
+    CHECK(whole.open(wav, 0, 0, &err) && whole.loopEnd() == 100 && whole.loopStart() == 0);
+    MusicStream bad;
+    CHECK(bad.open(wav, 80, 50, &err) && bad.loopStart() == 0 && bad.loopEnd() == 50);
+    MusicStream past;
+    CHECK(past.open(wav, 10, 500, &err) && past.loopEnd() == 100);
+    // Mono and other rates are played at the device rate.
+    MusicStream mono;
+    const Bytes monoWav = syntheticWav(100, 22050, 1);  // must outlive the stream
+    CHECK(mono.open(monoWav, 0, 0, &err));
+    std::vector<std::int32_t> m(2 * 10, 0);
+    mono.mixInto(m.data(), 10, 44100);
+    CHECK(m[0] == 0 && m[2 * 2] == 1 && m[2 * 2 + 1] == 1 && m[2 * 9] == 4);
+    const Bytes notWav = {'R', 'I', 'F', 'F', 0, 0, 0, 0, 'A', 'V', 'I', ' '};
+    CHECK(!MusicStream().open(notWav, 0, 0, &err));
+
+    // The player: song paths map to bgm/*.wav (loose) and *.pos (archive).
+    CHECK(MusicPlayer::withExtension("bgm/th06_02.mid", "wav") == "bgm/th06_02.wav" &&
+          MusicPlayer::withExtension("th06_02.mid", "pos") == "th06_02.pos" && MusicPlayer::withExtension("x", "pos") == "x.pos");
+    Bytes pos;
+    putLe<std::int32_t>(pos, 40);
+    putLe<std::int32_t>(pos, 90);
+    Vfs vfs;
+    vfs.mount(open("MD.DAT", buildPbg3({{"th06_02.pos", pos}})));
+    const std::string dir = (std::filesystem::temp_directory_path() / "th06_music_test").string();
+    std::filesystem::create_directories(dir);
+    {
+        std::ofstream(dir + "/th06_02.wav", std::ios::binary).write(reinterpret_cast<const char*>(wav.data()),
+                                                                     static_cast<std::streamsize>(wav.size()));
+    }
+    vfs.addLooseFile("bgm/TH06_02.WAV", MappedFile::open(dir + "/th06_02.wav", &err));
+    CHECK(vfs.looseFileCount() == 1 && !vfs.looseFile("bgm\\th06_02.wav").empty());
+    RecordingMusic backend;
+    UnportedFeatures unported;
+    MusicPlayer player(&vfs, &backend, &unported);
+    CHECK(player.play("bgm/th06_02.mid") && backend.stream && backend.stream->loopStart() == 40 && backend.starts == 1);
+    CHECK(player.play("bgm/th06_02.mid") && backend.starts == 2);  // every request restarts
+    CHECK(!player.play("bgm/th06_09.mid") && !backend.stream && !unported.counts().empty());
+    // Fade: linear in dB over 60 * s frames, then the song stops.
+    CHECK(player.play("bgm/th06_02.mid"));
+    player.fadeOut(4.0f);
+    player.tick();
+    CHECK(near(backend.gain, std::pow(10.0f, (5000.0f * 239.0f / 240.0f - 5000.0f) / 2000.0f), 1e-5f));
+    for (int f = 1; f < 120; ++f) player.tick();
+    CHECK(near(backend.gain, std::pow(10.0f, (5000.0f * 120.0f / 240.0f - 5000.0f) / 2000.0f), 1e-5f) && player.playing());
+    for (int f = 120; f < 239; ++f) player.tick();
+    CHECK(player.playing());
+    player.tick();
+    CHECK(!player.playing() && !backend.stream);
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+}
+
 int main() {
     struct Test {
         const char* name;
@@ -3481,6 +3587,7 @@ int main() {
         {"effects: pool, motion, RNG, orbit, drawing, spawn sites", testEffects},
         {"effect ECL opcodes: spell circles, particles, deaths", testEffectOpcodes},
         {"sound queue (PlaySoundByIdx / PlaySounds)", testSoundQueue},
+        {"music: WAV looping, loop files, fades", testMusic},
         {"fixed 60 Hz timestep at 60/90/120/144 Hz", testFixedTimestep},
         {"whole stage from a synthetic PBG3 archive", testStageFromArchive},
         {"GUI: popups, text queue, text rendering", testGuiUnits},

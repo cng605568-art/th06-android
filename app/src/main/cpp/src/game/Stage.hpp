@@ -54,6 +54,12 @@ class Stage {
     void render(SpriteSink& sink, float alpha, const HudInfo& hud);
 
     // 0 Reimu A, 1 Reimu B, 2 Marisa A, 3 Marisa B. Takes effect on the next load().
+    // Background music (null: silent). Set before load().
+    void setMusic(MusicPlayer* music) {
+        music_ = music;
+        world_.music = music;
+    }
+
     void setShotType(int shotType) { state_.shotType = shotType < 0 || shotType > 3 ? 0 : shotType; }
 
     bool paused() const { return paused_; }
@@ -96,6 +102,7 @@ class Stage {
     FallbackTextRenderer fallbackText_;
     Gui gui_;
     StageBackground background_;
+    MusicPlayer* music_ = nullptr;
     bool guiLoadedOnce_ = false;
     int loadedGuiCharacter_ = -1;
     EclFile ecl_;

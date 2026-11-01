@@ -46,6 +46,12 @@ class Vfs {
     std::vector<std::span<const std::uint8_t>> executables() const;
     static bool looksLikeGameExecutable(std::span<const std::uint8_t> bytes);
 
+    // Loose game files outside the archives, by relative path (the 2002 music:
+    // "bgm/th06_02.wav"). Case-insensitive, either slash.
+    void addLooseFile(std::string relativePath, std::unique_ptr<MappedFile> file);
+    std::span<const std::uint8_t> looseFile(std::string_view relativePath) const;  // empty if absent
+    std::size_t looseFileCount() const { return loose_.size(); }
+
   private:
     struct Ref {
         const Archive* archive;
@@ -53,6 +59,7 @@ class Vfs {
     };
     std::vector<std::unique_ptr<Archive>> archives_;
     std::vector<std::pair<std::string, std::unique_ptr<MappedFile>>> executables_;
+    std::unordered_map<std::string, std::unique_ptr<MappedFile>> loose_;
     std::unordered_map<std::string, Ref> index_;
 };
 

@@ -4,6 +4,7 @@
 #include <format>
 #include <span>
 
+#include "audio/MusicPlayer.hpp"
 #include "audio/SoundPlayer.hpp"
 #include "core/Log.hpp"
 #include "game/Resources.hpp"
@@ -133,6 +134,10 @@ bool Stage::load(int stageNumber, int difficulty) {
         guiLoadedOnce_ = true;
     }
     gui_.startStage(world_, *vfs_, stageNumber_, newRun);
+    if (music_) {  // the stage theme, from its beginning
+        music_->setUnported(&unported_);
+        music_->play(gui_.songPath(0));
+    }
     if (!shots_.loaded) unported_.hit("shot types (needs 東方紅魔郷.exe 1.02h in the game folder)");
     enemies_->startStage(world_);
     clearTimer_ = 0;
@@ -145,6 +150,7 @@ bool Stage::load(int stageNumber, int difficulty) {
 void Stage::tick(const InputState& in) {
     if (in.pause && !previousPause_) paused_ = !paused_;
     previousPause_ = in.pause;
+    if (music_ && ready_) music_->tick();  // fades run on through the pause menu
     if (!ready_ || paused_) return;
 
     gui_.updatePopups();

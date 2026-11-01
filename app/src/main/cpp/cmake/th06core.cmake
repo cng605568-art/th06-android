@@ -40,6 +40,7 @@ add_library(th06_core STATIC
   ${TH06_SRC}/gfx/ProceduralArt.cpp
   ${TH06_SRC}/gfx/TextureLibrary.cpp
   ${TH06_SRC}/audio/SoundPlayer.cpp
+  ${TH06_SRC}/audio/MusicPlayer.cpp
   ${TH06_SRC}/game/BulletManager.cpp
   ${TH06_SRC}/game/Ecl.cpp
   ${TH06_SRC}/game/EnemyManager.cpp
