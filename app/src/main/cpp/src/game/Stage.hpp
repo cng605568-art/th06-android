@@ -53,7 +53,7 @@ class Stage {
 
     // Opens the game's title screen (the menus before a game); every game then returns to
     // it. False if the title files are missing (then start a game with quickStart()).
-    bool openTitle(bool firstVisit = true);
+    bool openTitle(bool firstVisit = true, int cursor = -1);
     bool inTitle() const { return inTitle_; }
     const Title& title() const { return title_; }
     // A new game straight away, without the title (the launcher's quick start): stage 1..7

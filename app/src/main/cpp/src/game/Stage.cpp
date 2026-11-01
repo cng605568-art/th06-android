@@ -438,7 +438,7 @@ void Stage::applyConfig() {
 
 // The title object is created: back from a game (cursor on Extra Start after an Extra game,
 // on Practice Start after practice), or at start-up.
-bool Stage::openTitle(bool firstVisit) {
+bool Stage::openTitle(bool firstVisit, int cursor) {
     if (!vfs_ || !vfs_->hasFormat("PBG3")) return false;
     std::string err;
     if (!anm_.fileLoaded(kAnmFileAscii) && !anm_.loadAnm(*vfs_, kAnmFileAscii, "data/ascii.anm", kAnmOffsetAscii, &err)) {
@@ -449,7 +449,7 @@ bool Stage::openTitle(bool firstVisit) {
     for (const int slot : {kAnmFileEnemy, kAnmFileEnemy2, 11, 12, 44, 45, 46}) anm_.releaseAnm(slot);
     loadScores();  // the Extra lock and the practice stages come from score.dat
     applyConfig();
-    const int cursor = session_.difficulty == Extra ? 1 : 0;
+    if (cursor < 0) cursor = session_.difficulty == Extra ? 1 : 0;
     if (!title_.start(world_, *vfs_, textures_, scores_, config_, session_, cursor, firstVisit)) {
         title_.release(world_);
         log::warn("Title screen files missing: starting a game directly");
@@ -487,6 +487,14 @@ void Stage::tickTitle(const InputState& in, bool menuPress) {
             inTitle_ = false;
             ready_ = false;
             error_ = "THE SELECT SCREEN FILES (DATA/SELECT0N.ANM) ARE MISSING";
+            break;
+        case Title::Result::OpenScores:  // (the score viewer and the Music Room come next)
+            title_.release(world_);
+            if (!openTitle(false, 4)) quitRequested_ = true;
+            break;
+        case Title::Result::OpenMusicRoom:
+            title_.release(world_);
+            if (!openTitle(false, 5)) quitRequested_ = true;
             break;
         case Title::Result::None:
             break;
