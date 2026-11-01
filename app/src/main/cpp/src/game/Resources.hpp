@@ -9,8 +9,9 @@
 
 namespace th06 {
 
-// One graze (a bullet's or laser's graze box touched the player).
-void addGraze(World& world);
+// One graze (a bullet's or laser's graze box touched the player); the graze spark appears
+// at `sparkPos`.
+void addGraze(World& world, const Vec3f& sparkPos);
 
 // Once per frame, before anything else: clamps the score, rolls the displayed score towards
 // it and grants at most one score extend (10M, 20M, 40M, 60M, compared with the displayed

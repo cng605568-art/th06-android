@@ -1,5 +1,7 @@
 #include "game/Resources.hpp"
 
+#include "game/EffectManager.hpp"
+
 #include <algorithm>
 
 namespace th06 {
@@ -13,13 +15,13 @@ std::int64_t roundDownTo10(std::int64_t v) { return v - v % 10; }
 
 }  // namespace
 
-void addGraze(World& world) {
+void addGraze(World& world, const Vec3f& sparkPos) {
     GameState& gs = *world.state;
     if (!gs.bombActive) {
         gs.grazes = std::min<std::uint32_t>(gs.grazes + 1, 9999);
         gs.totalGrazes = std::min<std::uint32_t>(gs.totalGrazes + 1, 999999);
     }
-    world.unported->hit("particle effects");
+    spawnEffect(world, EffectParticleSmall, sparkPos, 1);
     gs.score += 500;
     gs.increaseSubrank(6);
     world.playSound(kSoundGraze);

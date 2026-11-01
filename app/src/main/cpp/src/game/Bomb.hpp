@@ -54,7 +54,8 @@ class Bomb {
     // Damage from all live regions overlapping the enemy box [tl, br]. Each overlap also
     // adds to that region's accumulated damage. Sets *hit when a region touched the enemy
     // while the bomb is active. `particleCounter` is the player's shared hit-spark counter.
-    int damageEnemy(World& world, const Vec3f& tl, const Vec3f& br, bool* hit, std::uint8_t& particleCounter);
+    int damageEnemy(World& world, const Vec3f& enemyPos, const Vec3f& tl, const Vec3f& br, bool* hit,
+                    std::uint8_t& particleCounter);
     // True if the box [tl, br] overlaps any live cancel rectangle.
     bool cancels(const Vec3f& tl, const Vec3f& br) const;
 

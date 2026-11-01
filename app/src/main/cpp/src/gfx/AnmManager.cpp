@@ -484,7 +484,7 @@ bool AnmManager::uvFor(const AnmVm& vm, const AnmLoadedSprite& s, float& u0, flo
     return true;
 }
 
-void AnmManager::drawWorld(SpriteSink& sink, const AnmVm& vm, float screenX, float screenY) {
+void AnmManager::drawWorld(SpriteSink& sink, const AnmVm& vm, float screenX, float screenY, bool roundPosition) {
     if (!vm.visible || !vm.visibleOverride) return;
     const AnmLoadedSprite* s = sprite(vm);
     if (!s) return;
@@ -496,8 +496,8 @@ void AnmManager::drawWorld(SpriteSink& sink, const AnmVm& vm, float screenX, flo
     float h = 256.0f * s->heightPx / s->textureHeight * vm.scaleY;
     float cx, cy;
     if (!rotated) {  // Draw2: rounded position
-        cx = std::rint(vm.pos.x);
-        cy = std::rint(vm.pos.y);
+        cx = roundPosition ? std::rint(vm.pos.x) : vm.pos.x;
+        cy = roundPosition ? std::rint(vm.pos.y) : vm.pos.y;
         if (static_cast<std::uint8_t>(vm.anchor) & 1) cx += s->widthPx * vm.scaleX / 2.0f;
         if (static_cast<std::uint8_t>(vm.anchor) & 2) cy += s->heightPx * vm.scaleY / 2.0f;
     } else {  // Draw3

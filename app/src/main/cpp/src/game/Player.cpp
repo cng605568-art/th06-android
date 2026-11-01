@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include "game/BulletManager.hpp"
+#include "game/EffectManager.hpp"
 #include "game/EnemyManager.hpp"
 #include "game/ItemManager.hpp"
 #include "game/Resources.hpp"
@@ -400,7 +401,7 @@ int Player::checkGraze(World& world, const Vec3f& center, const Vec3f& size) {
     if (bomb_.cancels(tl, br)) return CanceledByBomb;
     if (state == Dead || state == Spawning) return GrazeFalse;
     if (!overlap(hitboxTopLeft, hitboxBottomRight, tl, br)) return GrazeFalse;
-    addGraze(world);
+    addGraze(world, (positionCenter + center) / 2.0f);
     return GrazeTrue;
 }
 
@@ -421,7 +422,8 @@ void Player::die(World& world) {
     invulnerabilityTimer_ = 0;
     laserTimers_ = {2, 2};  // ends both lasers
     ++world.state->deaths;
-    world.unported->hit("particle effects");
+    spawnEffect(world, EffectFlash, positionCenter, 1, 0xff4040ffu);
+    spawnEffect(world, EffectParticleGreen, positionCenter, 16);
     world.playSound(kSoundPichun);
 }
 
@@ -481,7 +483,7 @@ void Player::checkLaser(World& world, const Vec3f& center, const Vec3f& size, co
     ltl = ltl - Vec3f{48.0f, 48.0f, 0.0f};
     lbr = lbr + Vec3f{48.0f, 48.0f, 0.0f};
     if (!overlap(ptl, pbr, ltl, lbr) || state == Dead || state == Spawning) return;
-    addGraze(world);
+    addGraze(world, positionCenter);
 }
 
 int Player::calcDamageToEnemy(World& world, const Vec3f& enemyPos, const Vec3f& enemySize, bool* hitByBomb) {
@@ -503,21 +505,21 @@ int Player::calcDamageToEnemy(World& world, const Vec3f& enemyPos, const Vec3f& 
                 const float blast = missileBlastSize(b.script - kAnmOffsetPlayer);
                 b.size = {blast, blast, 0.0f};
             }
-            if (b.lifetime % 6 == 0) world.unported->hit("particle effects");
+            if (b.lifetime % 6 == 0) spawnEffect(world, EffectParticleRed, b.position, 1);
         }
         if (b.kind != ShotLaser) {
             if (b.state == ShotState::Fired) {
                 world.anm->setAndExecuteScript(b.sprite, b.script + kScriptHitOffset);
-                world.unported->hit("particle effects");
+                spawnEffect(world, EffectParticleRed, b.position, 1);
                 b.position.z = 0.1f;
             }
             b.state = ShotState::Collided;
             b.velocity = b.velocity / 8.0f;
         } else if (++laserParticleCounter_ % 8 == 0) {
-            world.unported->hit("particle effects");
+            spawnEffect(world, EffectParticleRed, {b.position.x, enemyPos.y, enemyPos.z}, 1);
         }
     }
-    damage += bomb_.damageEnemy(world, etl, ebr, hitByBomb, laserParticleCounter_);
+    damage += bomb_.damageEnemy(world, enemyPos, etl, ebr, hitByBomb, laserParticleCounter_);
     (void)kDamageCap;  // the per-enemy cap is applied by the enemy manager
     return damage;
 }

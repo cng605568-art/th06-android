@@ -19,6 +19,9 @@ constexpr const char* kEnemyAnm[7][2] = {
     {"data/stg4enm.anm", nullptr},             {"data/stg5enm.anm", "data/stg5enm2.anm"}, {"data/stg6enm.anm", "data/stg6enm2.anm"},
     {"data/stg7enm.anm", "data/stg7enm2.anm"},
 };
+// Stage 6 reuses stage 5's effects and the Extra stage stage 4's.
+constexpr const char* kEffectAnm[7] = {"data/eff01.anm", "data/eff02.anm", "data/eff03.anm", "data/eff04.anm",
+                                       "data/eff05.anm", "data/eff05.anm", "data/eff04.anm"};
 constexpr const char* kDifficultyNames[5] = {"EASY", "NORMAL", "HARD", "LUNATIC", "EXTRA"};
 constexpr int kClearDelay = 180;
 
@@ -44,6 +47,7 @@ Stage::Stage(TextureLibrary& textures, const UiArt& ui, const Vfs* vfs, SoundPla
     world_.sound = sound;
     world_.unported = &unported_;
     world_.shake = &shake_;
+    world_.effects = &effects_;
 }
 
 bool Stage::load(int stageNumber, int difficulty) {
@@ -87,6 +91,12 @@ bool Stage::load(int stageNumber, int difficulty) {
     anm_.releaseAnm(kAnmFileEnemy2);
     if (!need(anm_.loadAnm(*vfs_, kAnmFileEnemy, kEnemyAnm[s][0], kAnmOffsetEnemy, &err), "STAGE ENEMY ANM")) return false;
     if (kEnemyAnm[s][1] && !need(anm_.loadAnm(*vfs_, kAnmFileEnemy2, kEnemyAnm[s][1], kAnmOffsetEnemy, &err), "STAGE ENEMY ANM 2")) return false;
+    // The stage's effect file (spell-card background effect). Optional: without it that one
+    // effect type simply never shows.
+    anm_.releaseAnm(kAnmFileEffects);
+    if (!anm_.loadAnm(*vfs_, kAnmFileEffects, kEffectAnm[s], kAnmOffsetEffects, &err)) {
+        log::warn("{} not loaded: {}", kEffectAnm[s], err);
+    }
 
     auto eclBytes = vfs_->read(kEclFiles[s]);
     if (!eclBytes) {
@@ -104,6 +114,7 @@ bool Stage::load(int stageNumber, int difficulty) {
     world_.bullets = bullets_.get();
     if (!need(bullets_->initializeTemplates(world_, &err), "BULLET TYPES")) return false;
     items_->reset();
+    effects_.reset();
     shake_.clear(world_);
     state_.grazes = 0;
     state_.stagePointItems = 0;
@@ -126,6 +137,7 @@ void Stage::tick(const InputState& in) {
     rollScore(world_);
     player_->update(world_, in);
     enemies_->update(world_);
+    effects_.update(world_);
     bullets_->update(world_);
     player_->bomb().updateGui();
     shake_.update(world_);
@@ -150,6 +162,7 @@ void Stage::render(SpriteSink& s, float alpha, const HudInfo& hud) {
         player_->drawLow(world_, s, alpha, ui_.white);
         enemies_->draw(world_, s, alpha);
         player_->drawHits(world_, s, alpha);
+        effects_.draw(world_, s, alpha);
         bullets_->draw(world_, s, alpha);
         renderBombName(s);
     }
@@ -214,6 +227,7 @@ void Stage::renderHud(SpriteSink& s, const HudInfo& hud) {
         line("BULLETS", std::format("{} / {}", bullets_->activeCount(), BulletManager::kMaxBullets));
         line("LASERS", std::format("{}", bullets_->activeLaserCount()));
         line("ITEMS", std::format("{}", items_->activeCount()));
+        line("EFFECTS", std::format("{}", effects_.activeCount()));
         y += 6;
         line("FPS", std::format("{:.1f}", hud.fps));
         line("DRAWS", std::format("{}", hud.drawCalls));

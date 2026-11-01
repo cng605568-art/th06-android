@@ -29,6 +29,7 @@
 #include "game/Bomb.hpp"
 #include "game/BulletManager.hpp"
 #include "game/Ecl.hpp"
+#include "game/EffectManager.hpp"
 #include "game/EnemyManager.hpp"
 #include "game/ItemManager.hpp"
 #include "game/Player.hpp"
@@ -628,6 +629,20 @@ static Bytes syntheticEtama4() {
         c.ins(6, anm_op::Delete);
         scripts.push_back({s, c.bytes});
     }
+    // Effects (local scripts 3..19): lifetimes chosen for the tests; the orbit (18) waits
+    // forever like a spell circle.
+    for (std::uint32_t s = 3; s <= 19; ++s) {
+        AnmCode c;
+        c.ins(0, anm_op::SetSprite, {s % 8});
+        c.ins(0, anm_op::BlendAdditive);
+        if (s == 18) {
+            c.ins(1, anm_op::Halt);
+        } else {
+            const std::int16_t life = s == 6 ? 30 : s == 7 ? 70 : s == 8 ? 250 : s == 19 ? 120 : (s >= 9 && s <= 16) ? 20 : 16;
+            c.ins(life, anm_op::Delete);
+        }
+        scripts.push_back({s, c.bytes});
+    }
     return buildAnmScripts(256, 256, "data/etama4.dds", sprites, scripts);
 }
 static Bytes syntheticEtama4Texture() {
@@ -813,6 +828,7 @@ struct TestWorld {
     std::unique_ptr<BulletManager> bullets = std::make_unique<BulletManager>();
     std::unique_ptr<EnemyManager> enemies = std::make_unique<EnemyManager>();
     std::unique_ptr<ItemManager> items = std::make_unique<ItemManager>();
+    std::unique_ptr<EffectManager> effects = std::make_unique<EffectManager>();
     Player player;
     GameState state;
     UnportedFeatures unported;
@@ -832,6 +848,7 @@ struct TestWorld {
         world.bullets = bullets.get();
         world.enemies = enemies.get();
         world.items = items.get();
+        world.effects = effects.get();
         world.player = &player;
         world.ecl = &ecl;
         world.state = &state;
@@ -2682,7 +2699,7 @@ static void testBombs() {
     // Graze still scores during a bomb, but the graze counters stay.
     gs.bombActive = true;
     const std::uint32_t grazes = gs.grazes, score = gs.score;
-    addGraze(tw.world);
+    addGraze(tw.world, tw.player.positionCenter);
     CHECK(gs.grazes == grazes && gs.score == score + 500);
     gs.bombActive = false;
 
@@ -2717,6 +2734,151 @@ static void testScreenShake() {
     gs.resetPlayfield();
 }
 
+static void testEffects() {
+    TestWorld tw;
+    CHECK(tw.ok);
+    if (!tw.ok) return;
+    EffectManager& em = *tw.effects;
+    const Vec3f at{100.0f, 120.0f, 0.0f};
+
+    // Ring pool: consecutive free slots from a rolling cursor; busy slots are skipped.
+    CHECK(em.spawn(tw.world, EffectParticleWhite, at, 3, 0xffffffffu) == 2 && em.cursor() == 3);
+    em.at(4).inUse = true;
+    CHECK(em.spawn(tw.world, EffectParticleWhite, at, 2, 0xffffffffu) == 5 && em.at(3).inUse && em.cursor() == 6);
+    // The spawn colour replaces what script frame 0 set.
+    const int red = em.spawn(tw.world, EffectFlash, at, 1, 0xff4040ffu);
+    CHECK(em.at(red).vm.color == 0xff4040ffu && em.at(red).vm.additive && em.at(red).pos.x == 100.0f);
+    // A count <= 0 fills every free slot and returns the sink; a full pool drops spawns.
+    CHECK(em.spawn(tw.world, EffectFlash, at, 0, 0xffffffffu) == EffectManager::kSink && em.activeCount() == 512);
+    const int cursor = em.cursor();
+    CHECK(em.spawn(tw.world, EffectFlash, at, 1, 0xffffffffu) == EffectManager::kSink && em.cursor() == cursor);
+
+    // Splash: two draws (x, then y) on the first update, decelerating to rest over 19 frames.
+    em.reset();
+    const int sp = em.spawn(tw.world, EffectParticleWhite, at, 1, 0xffffffffu);
+    ZunRng predict = tw.rng;
+    const float vx = (predict.f32InRange(256.0f) - 128.0f) / 12.0f;
+    const float vy = (predict.f32InRange(256.0f) - 128.0f) / 12.0f;
+    std::uint32_t gen = tw.rng.generations();
+    em.update(tw.world);
+    CHECK(tw.rng.generations() - gen == 4);
+    CHECK(near(em.at(sp).pos.x, at.x + vx, 1e-4f) && near(em.at(sp).pos.y, at.y + vy, 1e-4f));
+    for (int f = 1; f < 19; ++f) em.update(tw.world);
+    CHECK(near(em.at(sp).pos.x, at.x + 10.0f * vx, 1e-3f) && near(em.at(sp).velocity.x, 0.0f, 1e-4f));
+    gen = tw.rng.generations();
+    em.update(tw.world);  // later updates draw nothing; script frame 20 deletes it
+    CHECK(tw.rng.generations() == gen && !em.at(sp).inUse);
+
+    // Big splash: 4/33 per unit, stops after 20 frames.
+    em.reset();
+    const int bs = em.spawn(tw.world, EffectGlowBig, at, 1, 0xffffffffu);
+    predict = tw.rng;
+    const float bx = (predict.f32InRange(256.0f) - 128.0f) * 4.0f / 33.0f;
+    em.update(tw.world);
+    CHECK(near(em.at(bs).pos.x, at.x + bx, 1e-4f) && near(em.at(bs).acceleration.x, -bx / 20.0f, 1e-5f));
+
+    // Converge: appears 256 px out in a random direction, reaches its spawn point after 60.
+    em.reset();
+    const int cv = em.spawn(tw.world, EffectConverge, at, 1, 0xffffffffu);
+    gen = tw.rng.generations();
+    em.update(tw.world);
+    const Vec3f out = em.at(cv).pos - at;
+    CHECK(tw.rng.generations() - gen == 2 && near(std::sqrt(out.x * out.x + out.y * out.y), 256.0f, 1e-3f));
+    CHECK(em.at(cv).prevPos.x == em.at(cv).pos.x);  // no streak from the spawn point
+    for (int f = 1; f < 61; ++f) em.update(tw.world);
+    CHECK(near(em.at(cv).pos.x, at.x, 1e-3f) && near(em.at(cv).pos.y, at.y, 1e-3f));
+
+    // Orbit: r(cos 2a, 0, -6 sin 2a) about a y axis; the fade lasts 15 drawn frames.
+    em.reset();
+    const int ob = em.spawn(tw.world, EffectOrbit, at, 1, 0xff2020ffu);
+    EffectManager::Effect& o = em.at(ob);
+    o.axis = {0.0f, 2.0f, 0.0f};
+    o.anchor = at;
+    o.radius = 10.0f;
+    o.halfAngle = 0.0f;
+    em.update(tw.world);
+    CHECK(near(o.pos.x, 110.0f, 1e-4f) && near(o.pos.y, 120.0f, 1e-4f) && near(o.pos.z, 0.0f, 1e-4f));
+    o.halfAngle = kZunPi / 4.0f;
+    em.update(tw.world);
+    CHECK(near(o.pos.x, 100.0f, 1e-4f) && near(o.pos.z, -60.0f, 1e-3f));
+    o.fading = true;
+    em.update(tw.world);
+    CHECK(o.inUse && (o.vm.color >> 24) == 239 && near(o.vm.scaleX, 1.0625f) && (o.vm.color & 0xffffffu) == 0x2020ffu);
+    for (int k = 2; k < 16; ++k) em.update(tw.world);
+    CHECK(o.inUse && (o.vm.color >> 24) == 15);
+    em.update(tw.world);
+    CHECK(!o.inUse);
+    // Depth pulls it toward the playfield centre and shrinks it when drawn.
+    em.reset();
+    const int dz = em.spawn(tw.world, EffectFlash, {0.0f, 0.0f, 0.0f}, 1, 0xffffffffu);
+    em.at(dz).pos = em.at(dz).prevPos = {0.0f, 0.0f, 300.0f};
+    em.update(tw.world);
+    em.at(dz).pos = em.at(dz).prevPos = {0.0f, 0.0f, 300.0f};
+    {
+        RecordingSink sink;
+        em.draw(tw.world, sink, 1.0f);
+        const float d = 224.0f / std::tan(15.0f * kZunPi / 180.0f), sc = d / (d + 300.0f);
+        CHECK(sink.items.size() == 1 && near(sink.items[0].s.x, 32.0f + 192.0f - 192.0f * sc, 1e-3f) &&
+              near(sink.items[0].s.w, 32.0f * sc, 1e-3f));
+    }
+
+    // Spawn sites: shot hits, grazes and deaths.
+    em.reset();
+    Player& pl = tw.player;
+    pl.reset(tw.world);
+    InputState shoot;
+    shoot.shoot = true;
+    pl.update(tw.world, shoot);
+    bool bomb = false;
+    pl.calcDamageToEnemy(tw.world, pl.bullet(0).position, {12.0f, 12.0f, 0.0f}, &bomb);
+    CHECK(em.activeCount() == 1 && em.at(0).type == EffectParticleRed);
+    addGraze(tw.world, {50.0f, 60.0f, 0.0f});
+    CHECK(em.activeCount() == 2 && em.at(1).type == EffectParticleSmall && em.at(1).pos.x == 50.0f);
+    pl.state = Player::Alive;
+    pl.checkCollision(tw.world, pl.positionCenter, {4.0f, 4.0f, 0.0f});
+    CHECK(em.activeCount() == 2 + 17 && em.at(2).type == EffectFlash && em.at(2).vm.color == 0xff4040ffu &&
+          em.at(3).type == EffectParticleGreen);
+}
+
+static void testEffectOpcodes() {
+    TestWorld tw;
+    CHECK(tw.ok);
+    if (!tw.ok) return;
+    EffectManager& em = *tw.effects;
+    EclBuilder e;
+    e.spawn(0, timeline_op::EnemyCreate, 0, 192.0f, 100.0f, 100, 3, 0);
+    e.sub();
+    e.ins(0, ecl_op::SpellcardEffect, {5, fbits(0.0f), fbits(1.0f), fbits(0.0f), fbits(32.0f)});
+    e.ins(0, ecl_op::EffectParticle, {static_cast<std::uint32_t>(EffectParticleRed), 3, 0xff00ff00u});
+    e.ins(0, ecl_op::AnmDeathEffects, {0x0201u});  // explosion type 1, particle selector 2
+    e.ins(1000, ecl_op::EnemyDelete);
+    std::string err;
+    CHECK(tw.ecl.load(e.build(), &err));
+    tw.enemies->startStage(tw.world);
+    Enemy& en = tw.enemies->enemy(0);
+    tw.enemies->update(tw.world);  // spawn: the circle, three particles
+    CHECK(em.activeCount() == 4 && en.effectCount == 1 && en.effectRefs[0] == 0 && en.effectDistance == 32.0f);
+    CHECK(em.at(0).type == EffectOrbit && em.at(0).vm.color == 0xffff2020u && em.at(0).axis.y == 1.0f);
+    CHECK(em.at(1).vm.color == 0xff00ff00u && en.deathParticle1 == 1 && en.deathParticle2 == 2);
+    // The enemy drives its circle: anchor, radius +0.3 a frame (up to 32), angle +pi/100.
+    CHECK(near(em.at(0).radius, 0.3f) && near(em.at(0).halfAngle, kZunPi / 100.0f) && em.at(0).anchor.x == 192.0f);
+    for (int f = 0; f < 120; ++f) tw.enemies->update(tw.world);
+    CHECK(em.at(0).radius >= 32.0f && em.at(0).radius < 32.3f);
+    // Killed (drop code 3 = fixed item): 3 particles before the item, then explosion + 4 particles.
+    const int before = em.activeCount();
+    en.life = 0;
+    tw.enemies->update(tw.world);
+    CHECK(em.activeCount() == before + 3 + 1 + 4);
+    int selected = 0, explosion = 0;
+    for (int i = 0; i < EffectManager::kMaxEffects; ++i) {
+        selected += em.at(i).inUse && em.at(i).type == 2 + 4;
+        explosion += em.at(i).inUse && em.at(i).type == 1;
+    }
+    CHECK(selected == 7 && explosion == 1);
+    // A non-boss death does not release its circle.
+    CHECK(!em.at(0).fading);
+}
+
 int main() {
     struct Test {
         const char* name;
@@ -2744,6 +2906,8 @@ int main() {
         {"player shots: cycle, orbs, homing, missiles, lasers", testPlayerShots},
         {"bombs: all four, deathbomb, cancel, damage, drawing", testBombs},
         {"screen shake", testScreenShake},
+        {"effects: pool, motion, RNG, orbit, drawing, spawn sites", testEffects},
+        {"effect ECL opcodes: spell circles, particles, deaths", testEffectOpcodes},
         {"sound queue (PlaySoundByIdx / PlaySounds)", testSoundQueue},
         {"fixed 60 Hz timestep at 60/90/120/144 Hz", testFixedTimestep},
         {"whole stage from a synthetic PBG3 archive", testStageFromArchive},

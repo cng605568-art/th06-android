@@ -16,6 +16,7 @@ class AnmManager;
 class BulletManager;
 class EnemyManager;
 class EclFile;
+class EffectManager;
 class ItemManager;
 class Player;
 class ScreenShake;
@@ -160,6 +161,7 @@ struct World {
     SoundSink* sound = nullptr;
     UnportedFeatures* unported = nullptr;
     ScreenShake* shake = nullptr;
+    EffectManager* effects = nullptr;
 
     void playSound(int idx) const {
         if (sound && idx >= 0) sound->playSound(idx);

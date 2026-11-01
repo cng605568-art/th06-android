@@ -165,8 +165,10 @@ class AnmManager {
     // Drawing. A frame must start with beginFrame() (it resets the render-state cache the
     // original keeps between draws, which decides when UV scrolling is picked up).
     void beginFrame();
-    // Draw2 / Draw3: an object in the playfield (vm.pos in field pixels).
-    void drawWorld(SpriteSink& sink, const AnmVm& vm, float screenX, float screenY);
+    // Draw2 / Draw3: an object in the playfield (vm.pos in field pixels). Unrotated sprites
+    // are snapped to whole pixels like Draw2 unless `roundPosition` is false (the 3D path
+    // effects use).
+    void drawWorld(SpriteSink& sink, const AnmVm& vm, float screenX, float screenY, bool roundPosition = true);
     // Draw / DrawNoRotation: a screen-space sprite (vm.pos in screen pixels).
     void drawScreen(SpriteSink& sink, const AnmVm& vm);
 

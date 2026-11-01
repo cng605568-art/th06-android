@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstring>
 
+#include "game/EffectManager.hpp"
 #include "game/ItemManager.hpp"
 #include "game/Player.hpp"
 
@@ -280,7 +281,7 @@ void EnemyManager::runExInstruction(World& world, Enemy& e, int index, std::uint
     switch (index) {
         case 0: {  // ExInsCirnoRainbowBallJank
             const std::int32_t effect = at ? world.ecl->argAt<std::int32_t>(at, 4) : 0;
-            world.unported->hit("particle effects");
+            spawnEffect(world, EffectFlash, e.position, 1);
             for (int i = 0; i < BulletManager::kMaxBullets; ++i) {
                 Bullet& b = world.bullets->at(i);
                 if (b.state == Inactive || b.state == Despawning) continue;
@@ -374,6 +375,15 @@ void EnemyManager::runExInstruction(World& world, Enemy& e, int index, std::uint
                 ++e.ctx.int3;
             }
             break;
+        case 6:  // stage 6: bat-wing trail
+            batWingTrail(world, e);
+            break;
+        case 10:  // stage 6: the trail, then the bat transformation
+            if (e.life > 0) {
+                batWingTrail(world, e);
+                world.unported->hit("ECL ex-instruction 10 (bat transformation)");
+            }
+            break;
         default: {
             static const char* kNames[] = {
                 "", "", "ECL ex-instruction 2 (star pattern)", "ECL ex-instruction 3 (Patchouli shot vars)",
@@ -382,7 +392,8 @@ void EnemyManager::runExInstruction(World& world, Enemy& e, int index, std::uint
                 "ECL ex-instruction 10 (bat transformation)", "ECL ex-instruction 11 (stage 6)",
                 "ECL ex-instruction 12 (stage 4)", "ECL ex-instruction 13 (extra)", "ECL ex-instruction 14 (extra)",
                 "ECL ex-instruction 15 (extra)", "ECL ex-instruction 16 (Flandre)"};
-            world.unported->hit(index >= 2 && index <= 16 && index != 7 && index != 12 && index != 14
+            world.unported->hit(index >= 2 && index <= 16 && index != 6 && index != 7 && index != 10 && index != 12 &&
+                                        index != 14
                                     ? kNames[index]
                                     : "ECL ex-instruction (unknown index)");
             break;
@@ -740,7 +751,18 @@ restart_sub_changed:
                 }
                 break;
             }
-            case ecl_op::SpellcardEffect: world.unported->hit("particle effects"); break;
+            case ecl_op::SpellcardEffect: {  // a spell circle orbiting this enemy
+                const int slot = spawnEffect(world, EffectOrbit, e.position, 1,
+                                             EffectManager::colorTable(ecl.argAt<std::int32_t>(at, 0)));
+                if (world.effects) {
+                    world.effects->at(slot).axis = {ecl.argAt<float>(at, 4), ecl.argAt<float>(at, 8), ecl.argAt<float>(at, 12)};
+                }
+                e.effectDistance = ecl.argAt<float>(at, 16);
+                if (e.effectCount < static_cast<std::int32_t>(e.effectRefs.size())) {
+                    e.effectRefs[static_cast<std::size_t>(e.effectCount++)] = static_cast<std::int16_t>(slot);
+                }
+                break;
+            }
             case ecl_op::MoveVelocityInterpDecelerate: moveDirTime(world, e, at); e.moveInterpMode = EnemyInterp::Decelerate; break;
             case ecl_op::MoveVelocityInterpDecelerateFast: moveDirTime(world, e, at); e.moveInterpMode = EnemyInterp::DecelerateFast; break;
             case ecl_op::MoveVelocityInterpAccelerate: moveDirTime(world, e, at); e.moveInterpMode = EnemyInterp::Accelerate; break;
@@ -843,7 +865,10 @@ restart_sub_changed:
                 break;
             case ecl_op::TimerCallbackSub: e.timerCallbackSub = ecl.argAt<std::int32_t>(at, 0); break;
             case ecl_op::EnemyFlagInteractable: e.interactable = ecl.argAt<std::int32_t>(at, 0) != 0; break;
-            case ecl_op::EffectParticle: world.unported->hit("particle effects"); break;
+            case ecl_op::EffectParticle:
+                spawnEffect(world, ecl.argAt<std::int32_t>(at, 0), e.position, ecl.argAt<std::int32_t>(at, 4),
+                            ecl.argAt<std::uint32_t>(at, 8));
+                break;
             case ecl_op::DropItems: {
                 const std::int32_t n = ecl.argAt<std::int32_t>(at, 0);  // literal, never a variable
                 for (std::int32_t i = 0; i < n; ++i) {
@@ -997,11 +1022,11 @@ void EnemyManager::dropDeathItem(World& world, Enemy& e, bool hitByBomb) {
     if (!world.items) return;
     const ItemState state = hitByBomb ? ItemState::Magnet : ItemState::Falling;  // bomb kills drop homing items
     if (e.itemDrop >= 0) {
-        world.unported->hit("particle effects");
+        spawnEffect(world, e.deathParticle2 + 4, e.position, 3);
         world.items->spawn(world, e.position, e.itemDrop, state);
     } else if (e.itemDrop == kItemRandom) {
         if (randomItemSpawnIndex_ % 3 == 0) {
-            world.unported->hit("particle effects");
+            spawnEffect(world, e.deathParticle2 + 4, e.position, 6);
             world.items->spawn(world, e.position, kRandomItems[randomItemTableIndex_], state);
             randomItemTableIndex_ = static_cast<std::uint16_t>((randomItemTableIndex_ + 1) % 32);
         }
@@ -1052,6 +1077,56 @@ bool EnemyManager::handleTimerCallback(World& world, Enemy& e) {
     e.resetRank();
     e.stackDepth = 0;
     return true;
+}
+
+void EnemyManager::releaseEffects(World& world, Enemy& e) {
+    for (int i = 0; i < e.effectCount; ++i) {
+        if (world.effects) world.effects->at(e.effectRefs[static_cast<std::size_t>(i)]).fading = true;
+    }
+    e.effectCount = 0;
+}
+
+// Spell circles follow their enemy, grow to its radius and turn 1/200 of a circle a frame.
+void EnemyManager::driveEffects(World& world, Enemy& e) {
+    if (!world.effects) return;
+    for (int i = 0; i < e.effectCount; ++i) {
+        EffectManager::Effect& fx = world.effects->at(e.effectRefs[static_cast<std::size_t>(i)]);
+        fx.anchor = e.position;
+        if (fx.radius < e.effectDistance) fx.radius += 0.3f;
+        float a = fx.halfAngle + kZunPi / 100.0f;
+        while (a > kZunPi) a -= kZunTwoPi;
+        while (a < -kZunPi) a += kZunTwoPi;
+        fx.halfAngle = a;
+    }
+}
+
+// Red particles drifting off both sides of the enemy along a sweeping angle, firing more
+// often the longer it runs.
+void EnemyManager::batWingTrail(World& world, Enemy& e) {
+    if (e.invisible) {
+        releaseEffects(world, e);
+        return;
+    }
+    e.batAngle += kZunPi / 180.0f;
+    if (e.batAngle >= kZunPi / 4.0f) e.batAngle -= kZunHalfPi;
+    const std::int32_t t = e.batTimer;
+    if (e.batTimerTicked && (t > 120 || (t > 60 && t % 2 == 0) || (t > 30 && t % 4 == 0) || t % 8 == 0)) {
+        const int h = (t % 16) / 2;
+        const int b = h > 0 ? h + world.rng->u16InRange(static_cast<std::uint16_t>(h)) : 0;
+        const float dist = static_cast<float>(b) * 160.0f / 16.0f + 32.0f;
+        const float ang = e.batAngle - static_cast<float>(b) * kZunPi / 40.0f;
+        EffectManager::Effect unused;
+        for (const float side : {1.0f, -1.0f}) {
+            const Vec3f p{e.position.x + side * std::cos(ang) * dist, e.position.y + std::sin(ang) * dist, e.position.z};
+            const int slot = spawnEffect(world, EffectDrift, p, 1, 0xff3030ffu);
+            EffectManager::Effect& fx = world.effects ? world.effects->at(slot) : unused;
+            fx.velocity = {(world.rng->f32InRange(40.0f) - 20.0f) / 60.0f, 8.0f * static_cast<float>(b) / 60.0f - 4.0f / 15.0f,
+                           0.0f};
+            fx.acceleration = fx.velocity / -120.0f;
+        }
+    }
+    ++e.batTimer;
+    e.batTimerTicked = true;
 }
 
 void EnemyManager::despawn(World& world, Enemy& e) {
@@ -1166,6 +1241,7 @@ void EnemyManager::update(World& world) {
         if (!e.hasBeenInBounds && gs.isInBounds(e.position.x, e.position.y, w, h)) e.hasBeenInBounds = true;
         if (e.hasBeenInBounds && !gs.isInBounds(e.position.x, e.position.y, w, h)) {
             e.slotOccupied = false;
+            releaseEffects(world, e);
             despawn(world, e);
             continue;
         }
@@ -1173,6 +1249,7 @@ void EnemyManager::update(World& world) {
         if (e.timerCallbackThreshold >= 0) handleTimerCallback(world, e);
         if (!runEcl(world, e)) {
             e.slotOccupied = false;
+            releaseEffects(world, e);
             despawn(world, e);
             continue;
         }
@@ -1221,17 +1298,23 @@ void EnemyManager::update(World& world) {
                         e.damageable = false;
                         e.deathMode = EnemyDeath::DespawnNoCallback;
                         gs.bossPresent = false;
-                        world.unported->hit("particle effects");
+                        for (int k = 0; k < 3; ++k) spawnEffect(world, e.deathParticle1, e.position, 1);
                         break;
                     case EnemyDeath::DisableInteraction:
                         gs.score += static_cast<std::uint32_t>(e.score);
                         e.interactable = false;
-                        if (e.isBoss) gs.bossPresent = false;
+                        if (e.isBoss) {
+                            gs.bossPresent = false;
+                            releaseEffects(world, e);
+                        }
                         goto drop_items;
                     case EnemyDeath::DespawnNoCallback:
                         gs.score += static_cast<std::uint32_t>(e.score);
                         e.slotOccupied = false;
-                        if (e.isBoss) gs.bossPresent = false;
+                        if (e.isBoss) {
+                            gs.bossPresent = false;
+                            releaseEffects(world, e);
+                        }
                         [[fallthrough]];
                     case EnemyDeath::DropItemsOnly:
                     drop_items:
@@ -1241,7 +1324,8 @@ void EnemyManager::update(World& world) {
                         break;
                 }
                 world.playSound((enemyIdx % 2) + kSound2);
-                world.unported->hit("particle effects");
+                spawnEffect(world, e.deathParticle1, e.position, 1);
+                spawnEffect(world, e.deathParticle2 + 4, e.position, 4);
                 if (e.deathCallbackSub >= 0) {
                     e.resetRank();
                     e.stackDepth = 0;
@@ -1260,6 +1344,7 @@ void EnemyManager::update(World& world) {
                 e.primaryVm.colorAdd = false;
             }
         }
+        driveEffects(world, e);
         e.phaseTimer++;
     }
     timelineTime_++;

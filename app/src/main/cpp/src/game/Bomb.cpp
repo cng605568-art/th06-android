@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "game/EffectManager.hpp"
 #include "game/EnemyManager.hpp"
 #include "game/ItemManager.hpp"
 #include "game/Player.hpp"
@@ -138,7 +139,7 @@ void Bomb::stepReimuA(World& world, Player& player, int t) {
         player.invulnerabilityTimer_ = 360;
         partState_ = {};
         if (world.items) world.items->magnetAll();
-        world.unported->hit("particle effects");
+        spawnEffect(world, EffectFlash, player.positionCenter, 1, 0xff4040ffu);
         setRect(8, player.positionCenter, {256.0f, 256.0f, 0.0f});  // live on this step only
     }
     if (t >= 60 && t < 180 && t % 16 == 0) {
@@ -177,7 +178,8 @@ void Bomb::stepReimuA(World& world, Player& player, int t) {
             setRegion(i, p, {48.0f, 48.0f, 0.0f}, 8);
             setRect(i, p, {48.0f, 48.0f, 0.0f});
             if (regions_[ii].accumulated >= 100 || t >= duration_ - 30) {
-                world.unported->hit("particle effects");
+                spawnEffect(world, EffectParticleGreen, p, 8);
+                spawnEffect(world, EffectFlash, p, 1, 0xff4040ffu);
                 partState_[ii] = 2;
                 for (AnmVm& vm : vms_[ii]) vm.pendingInterrupt = 1;
                 setRegion(i, p, {256.0f, 256.0f, 0.0f}, 200);
@@ -365,7 +367,8 @@ float Bomb::nameVisibility() const {
     return v;
 }
 
-int Bomb::damageEnemy(World& world, const Vec3f& tl, const Vec3f& br, bool* hit, std::uint8_t& particleCounter) {
+int Bomb::damageEnemy(World& world, const Vec3f& enemyPos, const Vec3f& tl, const Vec3f& br, bool* hit,
+                      std::uint8_t& particleCounter) {
     int damage = 0;
     for (Region& r : regions_) {
         if (r.size.x <= 0.0f) continue;
@@ -374,7 +377,7 @@ int Bomb::damageEnemy(World& world, const Vec3f& tl, const Vec3f& br, bool* hit,
         if (!overlap(rtl, rbr, tl, br)) continue;
         damage += r.damage;
         r.accumulated += r.damage;
-        if (++particleCounter % 4 == 0) world.unported->hit("particle effects");
+        if (++particleCounter % 4 == 0) spawnEffect(world, EffectGlowBig, enemyPos, 1);
         if (world.state->bombActive && hit) *hit = true;
     }
     return damage;

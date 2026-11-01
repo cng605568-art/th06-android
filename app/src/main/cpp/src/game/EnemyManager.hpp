@@ -78,7 +78,16 @@ struct Enemy {
     // Laser slot references (pool indices, -1 = none). Like the original's raw pointers they
     // are never cleared when the laser ends, so a stale one aliases whatever laser reuses it.
     std::array<std::int16_t, 32> laserRefs{};
-    std::uint8_t deathParticle1 = 0, deathParticle2 = 0, deathAnm3 = 0;
+    std::uint8_t deathParticle1 = 0, deathParticle2 = 0, deathAnm3 = 0;  // ECL 100: explosion type, particle selector
+    // Spell circles (ECL 102): effect slot indices, raw like the original's pointers (never
+    // re-checked, so a reused slot gets driven too), and the radius they all grow towards.
+    std::array<std::int16_t, 12> effectRefs{};
+    std::int32_t effectCount = 0;
+    float effectDistance = 0.0f;
+    // Bat-wing trail (ex-instruction 6).
+    float batAngle = 0.0f;
+    std::int32_t batTimer = 0;
+    bool batTimerTicked = false;
     std::int8_t itemDrop = 0;
     std::uint8_t bossId = 0;
     std::uint8_t hitFlashTimer = 0;  // unk_e41
@@ -164,6 +173,9 @@ class EnemyManager {
     bool handleTimerCallback(World& world, Enemy& e);
     void killAllNonBoss(World& world);
     void despawn(World& world, Enemy& e);
+    void releaseEffects(World& world, Enemy& e);
+    void driveEffects(World& world, Enemy& e);
+    void batWingTrail(World& world, Enemy& e);
     void dropDeathItem(World& world, Enemy& e, bool hitByBomb);
     Laser* laserRef(World& world, Enemy& e, std::int32_t slot);
 
