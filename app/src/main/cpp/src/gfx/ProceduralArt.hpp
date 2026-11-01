@@ -10,9 +10,8 @@
 
 namespace th06 {
 
-// Generated art. Contains no game assets: it is the UI (touch controls, a 5x7 bitmap
-// font) plus stand-ins used only when no game data is mounted, so the APK is testable
-// on its own.
+// Generated UI art (touch controls and a 5x7 bitmap font). Contains no game assets; all
+// game graphics come from the player's archives through the ANM engine.
 
 struct UiArt {
     std::uint16_t texture = 0;
@@ -27,21 +26,18 @@ struct UiArt {
     SpriteRegion glyph(char c) const;  // 6x8 region; the 5x7 glyph sits in its top-left
 };
 
-struct FallbackGameArt {
-    std::vector<SpriteRegion> bullets;  // 16x16 round bullets, 8 colours
-    SpriteRegion player;                // 32x48
-    SpriteRegion shot;                  // 8x24
-    SpriteRegion spawner;               // 48x48 magic-circle ring
-};
-
 UiArt registerUiArt(TextureLibrary& lib);
-FallbackGameArt registerFallbackGameArt(TextureLibrary& lib);
 
 // Text in the built-in font. 6 px advance per character at scale 1; lower case renders
 // as upper case; unknown characters render as blanks.
 void drawText(SpriteSink& sink, const UiArt& ui, float x, float y, std::string_view text,
               float scale, std::uint32_t color);
 float textWidth(std::string_view text, float scale);
+
+// Writes ASCII text in the built-in font straight into an image (x, y = top-left of the
+// first glyph; `scale` whole-pixel magnification). Characters outside the font are skipped.
+void rasterizeText(Image& img, int x, int y, std::string_view text, int scale, std::uint8_t r, std::uint8_t g,
+                   std::uint8_t b);
 
 // Validates the glyph table (used by unit tests).
 bool fontSelfTest(std::string* error);

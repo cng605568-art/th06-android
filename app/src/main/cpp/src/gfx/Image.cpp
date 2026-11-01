@@ -172,6 +172,44 @@ void applyAlphaFromMask(Image& image, const Image& mask) {
     }
 }
 
+void quantizeToD3DFormat(Image& image, std::uint32_t anmFormat) {
+    // Expand an n-bit channel back to 8 bits the way D3D samples it (bit replication).
+    auto bits = [](std::uint8_t v, int n) -> std::uint8_t {
+        const unsigned q = static_cast<unsigned>(v) >> (8 - n);
+        unsigned out = q << (8 - n);
+        for (int shift = 8 - 2 * n; shift > -n; shift -= n) out |= shift >= 0 ? q << shift : q >> -shift;
+        return static_cast<std::uint8_t>(out);
+    };
+    for (std::size_t i = 0; i < image.rgba.size(); i += 4) {
+        std::uint8_t* p = image.rgba.data() + i;
+        switch (anmFormat) {
+            case 2:  // A1R5G5B5
+                p[0] = bits(p[0], 5);
+                p[1] = bits(p[1], 5);
+                p[2] = bits(p[2], 5);
+                p[3] = p[3] >= 128 ? 255 : 0;
+                break;
+            case 3:  // R5G6B5
+                p[0] = bits(p[0], 5);
+                p[1] = bits(p[1], 6);
+                p[2] = bits(p[2], 5);
+                p[3] = 255;
+                break;
+            case 4:  // R8G8B8
+                p[3] = 255;
+                break;
+            case 5:  // A4R4G4B4
+                p[0] = bits(p[0], 4);
+                p[1] = bits(p[1], 4);
+                p[2] = bits(p[2], 4);
+                p[3] = bits(p[3], 4);
+                break;
+            default:  // 0 unknown / 1 A8R8G8B8: full precision
+                break;
+        }
+    }
+}
+
 Image padTo(const Image& image, int width, int height) {
     Image out(std::max(width, image.width), std::max(height, image.height));
     for (int y = 0; y < image.height; ++y) {
