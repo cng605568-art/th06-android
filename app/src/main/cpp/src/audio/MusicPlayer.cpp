@@ -6,6 +6,7 @@
 
 #include "core/Log.hpp"
 #include "game/World.hpp"
+#include "io/MappedFile.hpp"
 #include "io/Vfs.hpp"
 
 namespace th06 {
@@ -96,24 +97,50 @@ std::string MusicPlayer::withExtension(std::string_view path, std::string_view e
     return out;
 }
 
+MusicPlayer::MusicPlayer(const Vfs* vfs, MusicBackend* backend, UnportedFeatures* unported)
+    : vfs_(vfs), backend_(backend), unported_(unported) {}
+
+MusicPlayer::~MusicPlayer() { stop(); }
+
 bool MusicPlayer::play(std::string_view songPath) {
     stop();
+    override_.reset();  // (the stream reading it is gone)
     current_ = std::string(songPath);
-    if (!enabled_ || !vfs_ || !backend_ || songPath.empty()) return false;
-    const std::span<const std::uint8_t> wav = vfs_->looseFile(withExtension(songPath, "wav"));
-    if (wav.empty()) {
-        if (unported_) unported_->hit("background music (needs the bgm folder with th06_NN.wav)");
-        return false;
-    }
+    if (!enabled_ || !backend_ || songPath.empty()) return false;
+    std::span<const std::uint8_t> wav;
     std::int64_t loopStart = 0, loopEnd = 0;
-    if (auto pos = vfs_->read(withExtension(songPath, "pos")); pos && pos->size() >= 8) {
-        loopStart = rd<std::int32_t>(*pos, 0);
-        loopEnd = rd<std::int32_t>(*pos, 4);
+    // A replacement from the launcher comes first: <override>/th06_NN.wav (+ .pos).
+    if (!overrideDir_.empty()) {
+        std::string name = withExtension(songPath, "wav");
+        if (const auto slash = name.find_last_of("/\\"); slash != std::string::npos) name.erase(0, slash + 1);
+        std::string err;
+        if (auto file = MappedFile::open(overrideDir_ + name, &err)) {
+            log::info("Music: {} (your replacement)", name);
+            override_ = std::move(file);
+            wav = override_->bytes();
+            if (auto pos = MappedFile::open(overrideDir_ + withExtension(name, "pos"), &err); pos && pos->bytes().size() >= 8) {
+                loopStart = rd<std::int32_t>(pos->bytes(), 0);
+                loopEnd = rd<std::int32_t>(pos->bytes(), 4);
+            }
+        }
+    }
+    if (wav.empty()) {
+        if (!vfs_) return false;
+        wav = vfs_->looseFile(withExtension(songPath, "wav"));
+        if (wav.empty()) {
+            if (unported_) unported_->hit("background music (needs the bgm folder with th06_NN.wav)");
+            return false;
+        }
+        if (auto pos = vfs_->read(withExtension(songPath, "pos")); pos && pos->size() >= 8) {
+            loopStart = rd<std::int32_t>(*pos, 0);
+            loopEnd = rd<std::int32_t>(*pos, 4);
+        }
     }
     auto stream = std::make_unique<MusicStream>();
     std::string err;
     if (!stream->open(wav, loopStart, loopEnd, &err)) {
         log::warn("Music {}: {}", songPath, err);
+        override_.reset();
         return false;
     }
     gain_ = 1.0f;

@@ -9,6 +9,10 @@
 //
 // MusicStream is the sample source the audio thread pulls from; MusicPlayer is the game
 // side (requests, fades) and owns no audio device.
+//
+// Replaced music (the launcher's "Replace music"): a th06_NN.wav in the override folder
+// (the app's storage) is played instead of the game folder's, with the loop points of a
+// th06_NN.pos next to it (none: the whole file loops).
 
 #include <atomic>
 #include <cstdint>
@@ -19,6 +23,7 @@
 
 namespace th06 {
 
+class MappedFile;
 class Vfs;
 class UnportedFeatures;
 
@@ -57,8 +62,13 @@ class MusicBackend {
 
 class MusicPlayer {
   public:
-    MusicPlayer(const Vfs* vfs, MusicBackend* backend, UnportedFeatures* unported = nullptr)
-        : vfs_(vfs), backend_(backend), unported_(unported) {}
+    MusicPlayer(const Vfs* vfs, MusicBackend* backend, UnportedFeatures* unported = nullptr);
+    ~MusicPlayer();  // stops the song (it may be reading a replacement file)
+
+    // Where replacement songs are looked for first (ends with '/'); empty: none.
+    void setOverrideDir(std::string dir) { overrideDir_ = std::move(dir); }
+    // The song currently playing is a replacement.
+    bool playingOverride() const { return playing_ && override_ != nullptr; }
 
     // Starts the song (from its beginning, even if it is already playing). False if its
     // WAV is not in the game folder: the music stops.
@@ -93,6 +103,8 @@ class MusicPlayer {
     std::int32_t fadeFrames_ = 0, fadeLeft_ = 0;
     float gain_ = 1.0f;
     bool enabled_ = true;
+    std::string overrideDir_;
+    std::unique_ptr<MappedFile> override_;  // the replacement file being played
 };
 
 }  // namespace th06

@@ -3948,6 +3948,29 @@ static void testMusic() {
     CHECK(player.playing());
     player.tick();
     CHECK(!player.playing() && !backend.stream);
+
+    // Replaced music (the launcher's): <override>/th06_NN.wav with its .pos comes first, even
+    // for a song the game folder lacks; without a .pos the whole file loops.
+    const std::string over = dir + "/music/";
+    std::filesystem::create_directories(over);
+    const Bytes mine = syntheticWav(300);
+    std::ofstream(over + "th06_09.wav", std::ios::binary).write(reinterpret_cast<const char*>(mine.data()), static_cast<std::streamsize>(mine.size()));
+    Bytes minePos;
+    putLe<std::int32_t>(minePos, 120);
+    putLe<std::int32_t>(minePos, 300);
+    std::ofstream(over + "th06_09.pos", std::ios::binary).write(reinterpret_cast<const char*>(minePos.data()), static_cast<std::streamsize>(minePos.size()));
+    std::ofstream(over + "th06_02.wav", std::ios::binary).write(reinterpret_cast<const char*>(mine.data()), static_cast<std::streamsize>(mine.size()));
+    player.setOverrideDir(over);
+    CHECK(player.play("bgm/th06_09.mid") && player.playingOverride() && backend.stream->totalFrames() == 300 &&
+          backend.stream->loopStart() == 120 && backend.stream->loopEnd() == 300);
+    CHECK(player.play("bgm/th06_02.mid") && player.playingOverride() && backend.stream->totalFrames() == 300 &&
+          backend.stream->loopStart() == 0 && backend.stream->loopEnd() == 300);  // not the archive's loop points
+    std::filesystem::remove(over + "th06_02.wav");
+    CHECK(player.play("bgm/th06_02.mid") && !player.playingOverride() && backend.stream->loopStart() == 40);  // the game's again
+    player.setEnabled(false);
+    CHECK(!player.play("bgm/th06_09.mid") && !backend.stream);  // music off
+    player.setEnabled(true);
+    player.stop();
     std::error_code ec;
     std::filesystem::remove_all(dir, ec);
 }

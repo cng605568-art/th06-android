@@ -13,11 +13,14 @@ import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
+import android.text.InputType;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Locale;
 import java.util.function.IntConsumer;
@@ -29,12 +32,21 @@ import java.util.function.IntConsumer;
  */
 public class ImportActivity extends Activity {
     private static final int REQUEST_TREE = 6;
+    private static final int REQUEST_AUDIO = 7;
 
     private TextView status;
     private Button chooseButton;
     private Button playButton;
     private CheckBox preferNewClassic;
     private volatile boolean scanning;
+    // Replace music
+    private Spinner musicTrack;
+    private ArrayAdapter<String> musicTracks;
+    private EditText loopFrom;
+    private Button musicPick;
+    private Button musicRestore;
+    private TextView musicStatus;
+    private volatile boolean converting;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -120,6 +132,8 @@ public class ImportActivity extends Activity {
         playButton.setOnClickListener(v -> startActivity(new Intent(this, GameActivity.class)));
         column.addView(playButton, wrap());
 
+        addMusicSection(column);
+
         ScrollView scroll = new ScrollView(this);
         scroll.setFitsSystemWindows(true);
         scroll.addView(column);
@@ -128,9 +142,122 @@ public class ImportActivity extends Activity {
         refresh();
     }
 
+    /**
+     * Replace music: pick one of the game's songs and an audio file of your own (MP3, AAC,
+     * OGG, FLAC, WAV ...); it is converted to the game's format and played (and looped) in
+     * that song's place. The game folder is not touched; "Restore" puts the original back.
+     */
+    private void addMusicSection(LinearLayout column) {
+        column.addView(label("Replace music (play your own audio file instead of one of the game's songs)"), wrap());
+        musicTracks = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, trackLabels());
+        musicTracks.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        musicTrack = new Spinner(this);
+        musicTrack.setAdapter(musicTracks);
+        musicTrack.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                showMusicStatus(null);
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {}
+        });
+        column.addView(musicTrack, wrap());
+        loopFrom = new EditText(this);
+        loopFrom.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        loopFrom.setHint("Loop from (seconds into your song; empty or 0 = loop the whole song)");
+        column.addView(loopFrom, wrap());
+        musicPick = new Button(this);
+        musicPick.setText("Choose audio file (MP3 ...)");
+        musicPick.setOnClickListener(v -> {
+            Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            pick.addCategory(Intent.CATEGORY_OPENABLE);
+            pick.setType("audio/*");
+            pick.putExtra(Intent.EXTRA_MIME_TYPES, new String[] {"audio/*", "application/ogg"});
+            pick.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivityForResult(pick, REQUEST_AUDIO);
+        });
+        column.addView(musicPick, wrap());
+        musicRestore = new Button(this);
+        musicRestore.setText("Restore the game's song");
+        musicRestore.setOnClickListener(v -> {
+            MusicReplacer.restore(this, musicTrack.getSelectedItemPosition());
+            refreshTracks();
+            showMusicStatus("Restored: the game's own song plays again.");
+        });
+        column.addView(musicRestore, wrap());
+        musicStatus = new TextView(this);
+        musicStatus.setPadding(0, dp(6), 0, dp(12));
+        column.addView(musicStatus, wrap());
+        showMusicStatus(null);
+    }
+
+    private String[] trackLabels() {
+        String[] labels = new String[MusicReplacer.TRACKS.length];
+        for (int t = 0; t < labels.length; ++t) {
+            labels[t] = MusicReplacer.TRACKS[t] + (MusicReplacer.isReplaced(this, t) ? "   (replaced)" : "");
+        }
+        return labels;
+    }
+
+    private void refreshTracks() {
+        int selected = musicTrack.getSelectedItemPosition();
+        musicTracks.clear();
+        musicTracks.addAll(trackLabels());
+        musicTracks.notifyDataSetChanged();
+        musicTrack.setSelection(selected);
+    }
+
+    private void showMusicStatus(String message) {
+        int track = musicTrack.getSelectedItemPosition();
+        String now = MusicReplacer.describe(this, track);
+        String state = now != null ? "Now: your music (" + now + ")" : "Now: the game's own song";
+        musicStatus.setText(message != null ? message + "\n" + state : state);
+        musicRestore.setEnabled(!converting && now != null);
+        musicPick.setEnabled(!converting);
+        musicTrack.setEnabled(!converting);
+    }
+
+    private void convert(Uri audio) {
+        final int track = musicTrack.getSelectedItemPosition();
+        double loop = 0;
+        try {
+            String text = loopFrom.getText().toString().trim();
+            if (!text.isEmpty()) loop = Double.parseDouble(text);
+        } catch (NumberFormatException e) {
+            showMusicStatus("The loop point must be a number of seconds.");
+            return;
+        }
+        final double loopSeconds = loop;
+        converting = true;
+        showMusicStatus("Reading your file...");
+        new Thread(() -> {
+            String result;
+            try {
+                String summary = MusicReplacer.replace(this, audio, track, loopSeconds,
+                        message -> runOnUiThread(() -> musicStatus.setText(message)));
+                result = "Done: " + MusicReplacer.TRACKS[track].substring(4) + " now plays your music (" + summary + ").";
+            } catch (IOException | RuntimeException e) {
+                result = "Could not use that file: " + e.getMessage();
+            }
+            final String message = result;
+            runOnUiThread(() -> {
+                converting = false;
+                if (isFinishing() || isDestroyed()) return;
+                refreshTracks();
+                showMusicStatus(message);
+                refresh();
+            });
+        }, "th06-music").start();
+    }
+
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_AUDIO) {
+            if (resultCode == RESULT_OK && data != null && data.getData() != null) convert(data.getData());
+            return;
+        }
         if (requestCode != REQUEST_TREE || resultCode != RESULT_OK || data == null
                 || data.getData() == null) {
             return;
@@ -227,6 +354,10 @@ public class ImportActivity extends Activity {
             sb.append(tracks > 0
                     ? String.format(Locale.ROOT, "  Music: %d tracks from bgm/ (%.0f MB)%n", tracks, musicBytes / 1048576.0)
                     : String.format(Locale.ROOT, "  Music: none (copy the game's bgm folder too for music)%n"));
+            int replaced = MusicReplacer.replacedCount(this);
+            if (replaced > 0) {
+                sb.append(String.format(Locale.ROOT, "  Replaced music: %d track(s) (see below)%n", replaced));
+            }
             if (hasScores) {
                 sb.append(String.format(Locale.ROOT, "  High scores: score.dat from your PC (new scores are saved in the app)%n"));
             }
