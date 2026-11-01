@@ -343,7 +343,12 @@ void BulletManager::update(World& world) {
                 }
                 if (checkHit) {
                     const int hit = world.player->checkCollision(world, b.pos, b.sprites.grazeSize);
-                    if (hit != Player::CollisionNone) b.state = Despawning;
+                    if (hit == Player::CollisionCanceledByBomb) {
+                        b.state = Despawning;
+                        if (world.items) world.items->spawn(world, b.pos, ItemStar, ItemState::Magnet);
+                    } else if (hit != Player::CollisionNone) {
+                        b.state = Despawning;
+                    }
                 }
                 world.anm->executeScript(b.sprites.spriteBullet);
                 break;
@@ -373,7 +378,7 @@ void BulletManager::draw(World& world, SpriteSink& sink, float alpha) {
         const float c = std::cos(l.angle), sn = std::sin(l.angle);
         const float mid = start + (end - start) / 2.0f;
         l.vm.pos = {l.pos.x + c * mid, l.pos.y + sn * mid, 0.0f};
-        world.anm->drawWorld(sink, l.vm, kGameRegionX, kGameRegionY);
+        world.anm->drawWorld(sink, l.vm, world.state->playfieldX, world.state->playfieldY);
         if (start < 16.0f || l.speed == 0.0f) {
             AnmVm& g = l.glowVm;
             g.pos = {l.pos.x + c * start, l.pos.y + sn * start, 0.0f};
@@ -385,7 +390,7 @@ void BulletManager::draw(World& world, SpriteSink& sink, float alpha) {
             float scale = l.width / 10.0f * (16.0f - start) / 16.0f;
             if (scale < 0.0f) scale = l.width / 10.0f;
             g.scaleX = g.scaleY = scale;
-            world.anm->drawWorld(sink, g, kGameRegionX, kGameRegionY);
+            world.anm->drawWorld(sink, g, world.state->playfieldX, world.state->playfieldY);
         }
     }
 
@@ -417,7 +422,7 @@ void BulletManager::draw(World& world, SpriteSink& sink, float alpha) {
             vm->pos = {p.x, p.y, 0.0f};
             vm->color = colorCombineAlpha(0xffffffffu, vm->color);
             if (vm->autoRotate != 0) vm->rotation.z = kZunHalfPi - b.angle;
-            world.anm->drawWorld(sink, *vm, kGameRegionX, kGameRegionY);
+            world.anm->drawWorld(sink, *vm, world.state->playfieldX, world.state->playfieldY);
         }
     }
 }

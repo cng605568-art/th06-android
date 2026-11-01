@@ -993,9 +993,9 @@ Laser* EnemyManager::laserRef(World& world, Enemy& e, std::int32_t slot) {
     return index >= 0 ? &world.bullets->laser(index) : nullptr;
 }
 
-void EnemyManager::dropDeathItem(World& world, Enemy& e) {
+void EnemyManager::dropDeathItem(World& world, Enemy& e, bool hitByBomb) {
     if (!world.items) return;
-    const ItemState state = ItemState::Falling;  // a bomb kill would drop homing items (bombs: not ported)
+    const ItemState state = hitByBomb ? ItemState::Magnet : ItemState::Falling;  // bomb kills drop homing items
     if (e.itemDrop >= 0) {
         world.unported->hit("particle effects");
         world.items->spawn(world, e.position, e.itemDrop, state);
@@ -1235,7 +1235,7 @@ void EnemyManager::update(World& world) {
                         [[fallthrough]];
                     case EnemyDeath::DropItemsOnly:
                     drop_items:
-                        dropDeathItem(world, e);
+                        dropDeathItem(world, e, hitByBomb);
                         if (e.isBoss && !spellcard_.isActive) world.bullets->despawnBullets(world, 12800, false);
                         e.life = 0;
                         break;
@@ -1274,13 +1274,13 @@ void EnemyManager::draw(World& world, SpriteSink& sink, float alpha) {
             if (vm.autoRotate != 0) vm.rotation.z = e.angle;
             vm.pos = p + vm.posOffset;
             vm.pos.z = 0.495f;
-            world.anm->drawWorld(sink, vm, kGameRegionX, kGameRegionY);
+            world.anm->drawWorld(sink, vm, world.state->playfieldX, world.state->playfieldY);
         };
         for (int i = 0; i < Enemy::kAnmSlots / 2; ++i) drawSlot(e.vms[static_cast<std::size_t>(i)]);
         if (e.rotateAnm) e.primaryVm.rotation.z = e.angle;
         e.primaryVm.pos = p + e.primaryVm.posOffset;
         e.primaryVm.pos.z = 0.494f;
-        world.anm->drawWorld(sink, e.primaryVm, kGameRegionX, kGameRegionY);
+        world.anm->drawWorld(sink, e.primaryVm, world.state->playfieldX, world.state->playfieldY);
         for (int i = Enemy::kAnmSlots / 2; i < Enemy::kAnmSlots; ++i) drawSlot(e.vms[static_cast<std::size_t>(i)]);
     }
 }

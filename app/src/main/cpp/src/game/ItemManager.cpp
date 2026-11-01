@@ -246,7 +246,7 @@ void ItemManager::draw(World& world, SpriteSink& sink, float alpha) {
             it.showingIndicator = false;
             it.vm.color = 0xffffffffu;
         }
-        it.vm.pos = {kGameRegionX + p.x, kGameRegionY + y, 0.01f};
+        it.vm.pos = {world.state->playfieldX + p.x, world.state->playfieldY + y, 0.01f};
         world.anm->drawScreen(sink, it.vm);
     }
 }

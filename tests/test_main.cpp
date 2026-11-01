@@ -26,12 +26,14 @@
 #include "core/Math.hpp"
 #include "core/Sha256.hpp"
 #include "core/ZunMath.hpp"
+#include "game/Bomb.hpp"
 #include "game/BulletManager.hpp"
 #include "game/Ecl.hpp"
 #include "game/EnemyManager.hpp"
 #include "game/ItemManager.hpp"
 #include "game/Player.hpp"
 #include "game/Resources.hpp"
+#include "game/ScreenShake.hpp"
 #include "game/ShotData.hpp"
 #include "game/Stage.hpp"
 #include "gfx/Anm.hpp"
@@ -633,7 +635,8 @@ static Bytes syntheticEtama4Texture() {
     for (int c = 0; c < 8; ++c) paintDisc(img, (c % 4) * 32, (c / 4) * 32, 32, kTestColors[static_cast<std::size_t>(c)]);
     return ddsFromImage(img);
 }
-// player00.anm: idle/moving scripts 0..4, shots 64..71, hits 96..100, orbs 128/129.
+// player00.anm: idle/moving 0..4, Marisa bomb 5..11, shots 64..71, hits 96..100, orbs 128/129,
+// Reimu bombs 133..140.
 static Bytes syntheticPlayer() {
     const std::vector<AnmSprite> sprites = {{0, 0, 0, 32, 48}, {1, 32, 0, 16, 16}, {2, 48, 0, 16, 16}};
     std::vector<AnmScriptBytes> scripts;
@@ -669,6 +672,29 @@ static Bytes syntheticPlayer() {
         hit.ins(0, anm_op::ScaleSpeed, {fbits(0.1f), fbits(0.1f)});
         hit.ins(6, anm_op::Delete);
         scripts.push_back({k, hit.bytes});
+    }
+    for (std::uint32_t k = 5; k <= 11; ++k) {  // Marisa's bomb stars (5..7) and Master Spark beams (8..11)
+        AnmCode c;
+        c.ins(0, anm_op::SetSprite, {k <= 7 ? 2u : 1u});
+        c.ins(1, anm_op::Halt);
+        scripts.push_back({k, c.bytes});
+    }
+    for (std::uint32_t k = 133; k <= 136; ++k) {  // Reimu A bomb orb layers: explode on interrupt 1
+        AnmCode c;
+        c.ins(0, anm_op::SetSprite, {2});
+        c.ins(1, anm_op::Halt);
+        c.ins(1, anm_op::InterruptLabel, {1});
+        c.ins(1, anm_op::BlendAdditive);
+        c.ins(29, anm_op::Delete);
+        scripts.push_back({k, c.bytes});
+    }
+    for (std::uint32_t k = 137; k <= 140; ++k) {  // Reimu B beams; the first slides right through its offset
+        AnmCode c;
+        c.ins(0, anm_op::PositionMode, {1});
+        c.ins(0, anm_op::SetSprite, {1});
+        if (k == 137) c.ins(0, anm_op::MovePositionInterpLinear, {fbits(60.0f), fbits(0.0f), fbits(0.0f), 60});
+        c.ins(1, anm_op::Halt);
+        scripts.push_back({k, c.bytes});
     }
     for (std::uint32_t k = 128; k <= 129; ++k) {  // option orbs
         AnmCode c;
@@ -766,6 +792,7 @@ static Bytes syntheticStageEcl() {
 
 static Bytes syntheticStageArchive() {
     return buildPbg3({{"player00.anm", syntheticPlayer()},
+                      {"player01.anm", syntheticPlayer()},  // Marisa: same synthetic art
                       {"player00.dds", syntheticPlayerTexture()},
                       {"etama3.anm", syntheticEtama3()},
                       {"etama3.dds", syntheticEtama3Texture()},
@@ -1880,6 +1907,8 @@ static void testScoreAndLives() {
 
     // Death: drops after 6 frames (1 big + 5 small, power -16), a life is lost at respawn.
     Player& pl = tw.player;
+    InputState idle;
+    pl.update(tw.world, idle);  // spawning ends: respawn countdown 6
     pl.state = Player::Alive;
     gs.power = 40;
     gs.livesRemaining = 1;
@@ -2333,8 +2362,8 @@ static void testPlayerShots() {
     CHECK(pl.bullet(0).state == Player::ShotState::Collided && pl.bullet(0).sprite.anmFileIndex == 0x400 + 96);
     CHECK(near(pl.bullet(0).velocity.y, -1.5f));
     CHECK(pl.calcDamageToEnemy(tw.world, at, {12.0f, 12.0f, 0.0f}, &bomb) == 0);
-    gs.bombActive = true;  // during a bomb, shots deal a third (at least 1)
     pl.reset(tw.world);
+    gs.bombActive = true;  // during a bomb, shots deal a third (at least 1)
     pl.update(tw.world, shoot);
     CHECK(pl.calcDamageToEnemy(tw.world, pl.bullet(0).position, {12.0f, 12.0f, 0.0f}, &bomb) == 16);
     gs.bombActive = false;
@@ -2415,6 +2444,279 @@ static void testPlayerShots() {
     CHECK(pl.activeBulletCount() == 6);
 }
 
+static void testBombs() {
+    TestWorld tw;
+    CHECK(tw.ok);
+    if (!tw.ok) return;
+    RecordingSound sound;
+    tw.world.sound = &sound;
+    ScreenShake shake;
+    tw.world.shake = &shake;
+    Player& pl = tw.player;
+    GameState& gs = tw.state;
+    Bomb& bomb = pl.bomb();
+    InputState idle, press;
+    press.bomb = true;
+    auto run = [&](int frames, const InputState& in) {
+        for (int f = 0; f < frames; ++f) pl.update(tw.world, in);
+    };
+    auto len2 = [](const Vec3f& v) { return std::sqrt(v.x * v.x + v.y * v.y); };
+    auto played = [&](int idx) { return std::count(sound.played.begin(), sound.played.end(), idx); };
+    const SpriteRegion white{};
+
+    // ---- Reimu A: accepted on the very first update of a stage (countdown 8) ----
+    gs.bombs = 3;
+    pl.reset(tw.world);
+    CHECK(pl.respawnCountdown() == 8 && pl.state == Player::Spawning);
+    tw.items->spawn(tw.world, {100.0f, 100.0f, 0.0f}, ItemPoint, ItemState::Falling);
+    pl.update(tw.world, press);
+    CHECK(gs.bombActive && gs.bombs == 2 && gs.bombsUsed == 1 && bomb.timer() == 1 && bomb.duration() == 300);
+    CHECK(pl.state == Player::Invulnerable && pl.invulnerabilityTimer() == 359 && pl.respawnCountdown() == 8);
+    CHECK(gs.rank == 14 && played(14) == 1);                                  // rank -2, portrait sound
+    CHECK(tw.items->at(0).state == ItemState::Magnet);                        // every item homes in
+    CHECK(bomb.liveCancelRects() == 1 && bomb.cancelRect(8).size.x == 256.0f);  // step 0 only
+    CHECK(bomb.overlayAlpha() == 2);                                          // 1 * 176 / 60
+    pl.update(tw.world, press);  // held: no new bomb
+    pl.update(tw.world, idle);
+    pl.update(tw.world, press);  // a fresh press while one runs is ignored
+    CHECK(gs.bombs == 2 && bomb.timer() == 4 && bomb.liveCancelRects() == 0);
+    run(76, idle);
+    CHECK(bomb.timer() == 80 && bomb.partState(1) == 0 && bomb.overlayAlpha() == 176);
+    const std::uint32_t gen = tw.rng.generations();
+    pl.update(tw.world, idle);  // step 80: orb 1 launches in a random direction at speed 4
+    CHECK(tw.rng.generations() - gen == 2 && played(13) == 1);
+    CHECK(bomb.partState(1) == 1 && bomb.partState(2) == 0);
+    const Vec3f pc = pl.positionCenter;
+    CHECK(near(len2(bomb.partPosition(1) - pc), 4.0f, 1e-4f));
+    CHECK(bomb.region(1).size.x == 48.0f && bomb.region(1).damage == 8 && near(bomb.region(1).center.x, pc.x) &&
+          bomb.cancelRect(1).size.x == 48.0f);
+    bool hit = false;
+    CHECK(pl.calcDamageToEnemy(tw.world, pc, {12.0f, 12.0f, 0.0f}, &hit) == 8 && hit && bomb.region(1).accumulated == 8);
+    // Steering: the orb turns toward the target the enemy pass picked.
+    const Vec3f target{300.0f, 100.0f, 0.0f};
+    pl.considerHomingTarget(target);
+    const Vec3f p0 = bomb.partPosition(1), v0 = bomb.partVelocity(1);
+    pl.update(tw.world, idle);
+    const Vec3f dv = bomb.partVelocity(1) - v0, toTarget = target - p0;
+    CHECK(dv.x * toTarget.x + dv.y * toTarget.y > 0.0f && len2(bomb.partVelocity(1)) <= 10.0f);
+    // 13 enemy hits (raw region damage >= 100) make it explode on the next step.
+    for (int i = 0; i < 12; ++i) pl.calcDamageToEnemy(tw.world, bomb.region(1).center, {4.0f, 4.0f, 0.0f}, &hit);
+    CHECK(bomb.region(1).accumulated == 104);
+    pl.update(tw.world, idle);
+    CHECK(bomb.partState(1) == 2 && bomb.region(1).size.x == 256.0f && bomb.region(1).damage == 200 &&
+          bomb.cancelRect(1).size.x == 256.0f && played(15) == 1 && shake.activeCount() == 1);
+    pl.update(tw.world, idle);
+    CHECK(bomb.partState(1) == 3 && bomb.region(1).size.x == 0.0f);  // the blast lasts one step
+    run(26, idle);
+    CHECK(bomb.partState(1) == 29);
+    pl.update(tw.world, idle);
+    CHECK(bomb.partState(1) == 0);
+    CHECK(bomb.timer() == 111);
+    run(159, idle);  // up to step 269: orbs 2..7 are all out and seeking
+    int seeking = 0;
+    for (int i = 2; i < 8; ++i) seeking += bomb.partState(i) == 1;
+    CHECK(seeking == 6 && played(13) == 7);
+    pl.update(tw.world, idle);  // step 270: everything still seeking explodes
+    int exploding = 0;
+    for (int i = 2; i < 8; ++i) exploding += bomb.partState(i) == 2;
+    CHECK(exploding == 6);
+    {
+        RecordingSink sink;
+        bomb.draw(tw.world, sink, white, 1.0f, pl.positionCenter);
+        CHECK(sink.items.size() == 1 + 6 * 4);  // overlay + 4 layers per orb
+    }
+    run(29, idle);
+    CHECK(gs.bombActive && bomb.timer() == 300 && bomb.overlayAlpha() == 0);
+    pl.update(tw.world, idle);  // end step
+    CHECK(!gs.bombActive && pl.state == Player::Invulnerable && pl.invulnerabilityTimer() == 59);
+    run(58, idle);
+    CHECK(pl.state == Player::Invulnerable);
+    pl.update(tw.world, idle);
+    CHECK(pl.state == Player::Alive);
+
+    // ---- Deathbomb: the 6 frames after a hit ----
+    tw.items->reset();
+    pl.reset(tw.world);
+    gs.bombs = 3;
+    gs.power = 40;
+    gs.livesRemaining = 2;
+    pl.update(tw.world, idle);
+    CHECK(pl.respawnCountdown() == 6);
+    pl.state = Player::Alive;
+    pl.checkCollision(tw.world, pl.positionCenter, {4.0f, 4.0f, 0.0f});
+    CHECK(pl.state == Player::Dead && gs.deaths == 1);
+    run(5, idle);
+    CHECK(pl.respawnCountdown() == 1 && tw.items->activeCount() == 0);
+    pl.update(tw.world, press);  // sixth frame after the hit: still in time
+    CHECK(gs.bombActive && pl.state == Player::Invulnerable && tw.items->activeCount() == 0 && gs.power == 40);
+    run(40, idle);
+    CHECK(gs.livesRemaining == 2 && gs.deaths == 1 && pl.respawnCountdown() == 1);  // not restored (original quirk)
+    // One frame too late: the death is committed and the press does nothing.
+    tw.items->reset();
+    pl.reset(tw.world);
+    gs.bombs = 3;
+    pl.update(tw.world, idle);
+    pl.state = Player::Alive;
+    pl.checkCollision(tw.world, pl.positionCenter, {4.0f, 4.0f, 0.0f});
+    run(6, idle);
+    CHECK(pl.respawnCountdown() == 0 && tw.items->activeCount() == 6 && gs.power == 24);
+    pl.update(tw.world, press);
+    CHECK(!gs.bombActive && gs.bombs == 3);
+    // No bombs left: nothing happens.
+    pl.reset(tw.world);
+    gs.bombs = 0;
+    pl.update(tw.world, press);
+    CHECK(!gs.bombActive);
+
+    // ---- Reimu B: four beams fixed where the bomb started ----
+    gs.shotType = 1;
+    gs.bombs = 3;
+    shake.clear(tw.world);
+    pl.reset(tw.world);
+    pl.update(tw.world, idle);
+    const Vec3f start = pl.positionCenter;
+    pl.update(tw.world, press);
+    CHECK(bomb.duration() == 140 && pl.invulnerabilityTimer() == 199 && bomb.liveRegions() == 0 &&
+          bomb.liveCancelRects() == 0 && shake.activeCount() == 1 && played(6) >= 1);
+    InputState left;
+    left.left = true;
+    pl.update(tw.world, left);  // step 1
+    CHECK(bomb.liveRegions() == 4 && bomb.liveCancelRects() == 4);
+    CHECK(bomb.region(0).size.x == 62.0f && bomb.region(0).size.y == 448.0f && bomb.region(1).size.x == 384.0f &&
+          bomb.region(1).size.y == 62.0f && bomb.region(1).damage == 8);
+    CHECK(near(bomb.region(2).center.x, start.x) && near(bomb.region(2).center.y, 224.0f) &&
+          near(bomb.region(1).center.x, 192.0f) && near(bomb.region(1).center.y, start.y));
+    pl.update(tw.world, left);  // step 2: no damage, but bullets are still cancelled
+    CHECK(bomb.liveRegions() == 0 && bomb.liveCancelRects() == 4 && near(bomb.cancelRect(2).center.x, start.x));
+    run(39, left);  // to step 41
+    CHECK(pl.positionCenter.x < start.x - 100.0f);
+    CHECK(bomb.region(0).center.x > start.x + 30.0f && near(bomb.region(2).center.x, start.x));  // beam 0 slides (script)
+    {
+        RecordingSink sink;
+        bomb.draw(tw.world, sink, white, 1.0f, pl.positionCenter);
+        CHECK(sink.items.size() == 1 + 4);
+    }
+    run(98, idle);
+    CHECK(gs.bombActive && bomb.timer() == 140);
+    pl.update(tw.world, idle);
+    CHECK(!gs.bombActive);
+
+    // ---- Marisa A: eight stars flying outwards at 2 px/frame ----
+    gs.shotType = 2;
+    gs.bombs = 3;
+    shake.clear(tw.world);
+    pl.reset(tw.world);
+    pl.update(tw.world, idle);
+    const Vec3f mc = pl.positionCenter;
+    pl.update(tw.world, press);
+    CHECK(bomb.duration() == 250 && pl.invulnerabilityTimer() == 299 && bomb.liveRegions() == 0 && shake.activeCount() == 1);
+    pl.update(tw.world, idle);  // step 1
+    CHECK(bomb.liveRegions() == 8 && bomb.region(0).size.x == 128.0f && near(bomb.region(0).center.x, mc.x + 2.0f) &&
+          near(bomb.region(2).center.y, mc.y + 2.0f, 1e-4f) && near(bomb.region(2).center.x, mc.x, 1e-4f));
+    run(2, idle);  // step 3: t mod 3 == 0, nothing live
+    CHECK(bomb.liveRegions() == 0 && bomb.liveCancelRects() == 0 && near(bomb.partPosition(4).x, mc.x - 6.0f, 1e-4f));
+    {
+        RecordingSink sink;
+        bomb.draw(tw.world, sink, white, 1.0f, pl.positionCenter);
+        CHECK(sink.items.size() == 1 + 8 * 3);  // overlay + three copies per star
+    }
+
+    // ---- Marisa B: Master Spark ----
+    gs.shotType = 3;
+    gs.bombs = 3;
+    shake.clear(tw.world);
+    tw.bullets->removeAllBullets(tw.world, false);
+    pl.reset(tw.world);
+    pl.update(tw.world, idle);
+    const float x0 = pl.positionCenter.x;
+    InputState pressRight = press;
+    pressRight.right = true;
+    pl.update(tw.world, pressRight);  // 0.3x movement from the press frame
+    CHECK(near(pl.positionCenter.x, x0 + 1.5f) && bomb.moveMultiplier() == 0.3f && played(19) >= 1);
+    InputState shoot;
+    shoot.shoot = true;
+    pl.update(tw.world, shoot);  // step 1: no new shots while sparking
+    CHECK(pl.activeBulletCount() == 0);
+    CHECK(bomb.liveRegions() == 1 && bomb.region(0).damage == 12 && bomb.region(0).size.x == 384.0f &&
+          near(bomb.region(0).size.y, pl.positionCenter.y) && near(bomb.region(0).center.y, pl.positionCenter.y / 2.0f));
+    run(2, idle);
+    pl.update(tw.world, idle);  // step 4: off
+    CHECK(bomb.liveRegions() == 0 && bomb.liveCancelRects() == 0);
+    // Every fired bullet touching a live cancel rectangle becomes a homing point item.
+    EnemyShooter s;
+    s.sprite = 3;
+    s.position = {192.0f, 50.0f, 0.0f};
+    s.aimMode = Circle;
+    s.count1 = 10;
+    s.count2 = 1;
+    s.speed1 = s.speed2 = 1.0f;
+    tw.bullets->spawnBulletPattern(tw.world, s);
+    tw.items->reset();
+    pl.update(tw.world, idle);  // step 5: on
+    tw.bullets->update(tw.world);
+    int stars = 0;
+    for (int i = 0; i < ItemManager::kMaxItems; ++i) {
+        stars += tw.items->at(i).active && tw.items->at(i).type == ItemStar && tw.items->at(i).state == ItemState::Magnet;
+    }
+    CHECK(stars == 10);
+    {
+        RecordingSink sink;
+        bomb.draw(tw.world, sink, white, 1.0f, pl.positionCenter);
+        CHECK(sink.items.size() == 1 + 4);
+    }
+    // Enemy bodies touching a cancel rectangle cannot hurt the player.
+    pl.update(tw.world, idle);  // step 6: on
+    CHECK(pl.checkCollision(tw.world, pl.positionCenter - Vec3f{0.0f, 2.0f, 0.0f}, {4.0f, 4.0f, 0.0f}) ==
+          Player::CollisionCanceledByBomb);
+    // Name banner: slides in, then leaves after the bomb.
+    for (int i = 0; i < 16; ++i) bomb.updateGui();
+    CHECK(near(bomb.nameVisibility(), 1.0f) && std::string(bomb.name()).find("MASTER SPARK") != std::string::npos);
+    run(293, idle);
+    CHECK(gs.bombActive && bomb.timer() == 300);
+    pl.update(tw.world, idle);
+    CHECK(!gs.bombActive && bomb.moveMultiplier() == 1.0f);
+    for (int i = 0; i < 32; ++i) bomb.updateGui();
+    CHECK(bomb.nameVisibility() == 0.0f);
+    gs.shotType = 0;
+
+    // Graze still scores during a bomb, but the graze counters stay.
+    gs.bombActive = true;
+    const std::uint32_t grazes = gs.grazes, score = gs.score;
+    addGraze(tw.world);
+    CHECK(gs.grazes == grazes && gs.score == score + 500);
+    gs.bombActive = false;
+
+    // A bomb during no spell card: nothing to fail, later cards take no bomb damage.
+    tw.enemies->onPlayerBomb();
+    CHECK(!tw.enemies->spellcard().usedBomb && !tw.enemies->spellcard().isCapturing);
+}
+
+static void testScreenShake() {
+    TestWorld tw;
+    GameState& gs = tw.state;
+    ScreenShake shake;
+    shake.add(16, 8.0f, 0.0f);
+    bool ok = true;
+    for (int f = 1; f < 16; ++f) {
+        const std::uint32_t gen = tw.rng.generations();
+        shake.update(tw.world);
+        const float o = 8.0f - static_cast<float>(f) / 2.0f;
+        ok = ok && tw.rng.generations() - gen == 4;  // two 32-bit draws (x, then y)
+        ok = ok && (gs.playfieldX == 32.0f || near(gs.playfieldX, 32.0f + o));
+        ok = ok && (gs.playfieldW == 384.0f || near(gs.playfieldW, 384.0f - o));
+        ok = ok && (gs.playfieldY == 16.0f || near(gs.playfieldY, 16.0f + o));
+        ok = ok && (gs.playfieldX == 32.0f || gs.playfieldW < 384.0f);  // shifting always shrinks
+    }
+    CHECK(ok && shake.activeCount() == 1);
+    shake.update(tw.world);
+    CHECK(shake.activeCount() == 0 && gs.playfieldX == 32.0f && gs.playfieldY == 16.0f && gs.playfieldW == 384.0f &&
+          gs.playfieldH == 448.0f);
+    // The shrunken size is what the on-screen tests use.
+    gs.playfieldW = 300.0f;
+    CHECK(!gs.isInBounds(320.0f, 100.0f, 10.0f, 10.0f) && gs.isInBounds(290.0f, 100.0f, 10.0f, 10.0f));
+    gs.resetPlayfield();
+}
+
 int main() {
     struct Test {
         const char* name;
@@ -2440,6 +2742,8 @@ int main() {
         {"SHA-256", testSha256},
         {"shot tables from a PE32 executable", testShotDataReader},
         {"player shots: cycle, orbs, homing, missiles, lasers", testPlayerShots},
+        {"bombs: all four, deathbomb, cancel, damage, drawing", testBombs},
+        {"screen shake", testScreenShake},
         {"sound queue (PlaySoundByIdx / PlaySounds)", testSoundQueue},
         {"fixed 60 Hz timestep at 60/90/120/144 Hz", testFixedTimestep},
         {"whole stage from a synthetic PBG3 archive", testStageFromArchive},

@@ -7,12 +7,17 @@
 // accelerating missiles that explode with decaying damage, and Marisa B's lasers).
 //
 // The bullet lists come from the player's own game executable (game/ShotData). Without it
-// a single basic forward shot is used.
+// a single basic forward shot is used. Bombs (game/Bomb) run first in every update.
+//
+// Death: a hit makes the player DEAD; the respawn countdown (6 after a respawn, 8 at stage
+// start) then runs down one per frame, and a bomb pressed while it is non-zero (the
+// deathbomb window) cancels the death. When it reaches 0 the death is committed.
 
 #include <array>
 #include <cstdint>
 
 #include "core/ZunMath.hpp"
+#include "game/Bomb.hpp"
 #include "game/Input.hpp"
 #include "game/ShotData.hpp"
 #include "game/World.hpp"
@@ -26,7 +31,7 @@ inline constexpr int kAnmOffsetPlayer = 0x400;
 class Player {
   public:
     enum GrazeResult : int { GrazeFalse = 0, GrazeTrue = 1, CanceledByBomb = 2 };
-    enum CollisionResult : int { CollisionNone = 0, CollisionHit = 1, CollisionGraze = 2 };
+    enum CollisionResult : int { CollisionNone = 0, CollisionHit = 1, CollisionCanceledByBomb = 2 };
     enum State : int { Alive, Spawning, Dead, Invulnerable };
     enum class OrbState : std::uint8_t { Hidden, Unfocused, Focusing, Focused, Unfocusing };
     enum class ShotState : std::uint8_t { Inactive, Fired, Collided };
@@ -53,20 +58,25 @@ class Player {
 
     void reset(World& world);
     void update(World& world, const InputState& input);
-    // Fired shots, the body and the orbs (drawn under the enemies).
-    void drawLow(World& world, SpriteSink& sink, float alpha);
+    // Fired shots, the bomb, the body and the orbs (drawn under the enemies). `white` is a
+    // solid texel region for the bomb's darkening overlay.
+    void drawLow(World& world, SpriteSink& sink, float alpha, const SpriteRegion& white);
     // Shots playing their hit animation (drawn over the enemies).
     void drawHits(World& world, SpriteSink& sink, float alpha);
 
     float angleToPlayer(const Vec3f& pos) const;
+    // Enemy bullet tests. Both report CanceledByBomb when the box touches a bomb's cancel
+    // rectangle (the bullet then turns into a point item); that also shields the player
+    // from enemy bodies.
     int checkGraze(World& world, const Vec3f& center, const Vec3f& size);
     int checkCollision(World& world, const Vec3f& center, const Vec3f& size);
     // Laser hit and graze test. center/size describe the laser's box in its own unrotated
     // frame (laser along +x from origin); the player is rotated into that frame.
     void checkLaser(World& world, const Vec3f& center, const Vec3f& size, const Vec3f& origin, float angle,
                     bool canGraze);
-    // Damage of every shot touching the enemy box this frame; touched shots switch to their
-    // hit animation (missiles keep exploding with decaying damage, lasers keep burning).
+    // Damage of every shot and bomb region touching the enemy box this frame; touched shots
+    // switch to their hit animation (missiles keep exploding with decaying damage, lasers
+    // keep burning). *hitByBomb tells whether a bomb region touched it.
     int calcDamageToEnemy(World& world, const Vec3f& enemyPos, const Vec3f& enemySize, bool* hitByBomb);
     // Homing target for the next frame: the eligible enemy lowest on the screen.
     void considerHomingTarget(const Vec3f& enemyPos);
@@ -80,6 +90,10 @@ class Player {
     int laserTimer(int i) const { return laserTimers_[static_cast<std::size_t>(i)]; }
     const Vec3f& homingTarget() const { return homingTarget_; }
     int shotTier(const World& world) const;
+    Bomb& bomb() { return bomb_; }
+    const Bomb& bomb() const { return bomb_; }
+    int respawnCountdown() const { return respawnCountdown_; }
+    int invulnerabilityTimer() const { return invulnerabilityTimer_; }
 
     Vec3f positionCenter;
     Vec3f prevPosition;
@@ -87,6 +101,8 @@ class Player {
     bool focused = false;
 
   private:
+    friend class Bomb;
+
     void die(World& world);
     void dropItemsOnDeath(World& world);
     void respawn(World& world);
@@ -109,7 +125,9 @@ class Player {
     float previousSpeedX_ = 0.0f;
     std::int32_t invulnerabilityTimer_ = 0;
     std::int32_t deathTimer_ = 0;
-    std::int32_t deathbombWindow_ = 0;  // frames after a hit until the death drops happen
+    std::int32_t respawnCountdown_ = 8;  // deathbomb window; 0 while spawning
+    bool previousBombInput_ = false;
+    Bomb bomb_;
     std::int32_t bulletGrace_ = 0;      // frames after respawning during which bullets are cleared
     int fireTimer_ = -1;                // position in the 30-frame fire cycle, -1 = idle
     std::array<int, 2> laserTimers_{};

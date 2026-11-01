@@ -146,6 +146,13 @@ class EnemyManager {
         bool usedBomb = false;
     };
     const SpellcardInfo& spellcard() const { return spellcard_; }
+    // A player bomb started: the current spell card can no longer be captured, and whether
+    // a card was active decides how bombs damage spell-card enemies until the next bomb.
+    void failSpellcardCapture() { spellcard_.isCapturing = false; }  // the player was hit
+    void onPlayerBomb() {
+        spellcard_.isCapturing = false;
+        spellcard_.usedBomb = spellcard_.isActive != 0;
+    }
 
   private:
     enum class VarType { Int, Float, ReadOnly, Undefined };
@@ -157,7 +164,7 @@ class EnemyManager {
     bool handleTimerCallback(World& world, Enemy& e);
     void killAllNonBoss(World& world);
     void despawn(World& world, Enemy& e);
-    void dropDeathItem(World& world, Enemy& e);
+    void dropDeathItem(World& world, Enemy& e, bool hitByBomb);
     Laser* laserRef(World& world, Enemy& e, std::int32_t slot);
 
     // Variable access (EclGetVar / EclGetVarFloat / EclSetVar semantics).

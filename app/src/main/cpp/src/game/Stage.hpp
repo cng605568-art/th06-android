@@ -4,7 +4,8 @@
 //   player00.anm (slot 5, 0x400)  etama3.anm (6, 0x200)  etama4.anm (7, 0x29a)
 //   stgNenm.anm / stgNenm2.anm (8 / 9, 0x100)            ecldataN.ecl
 // tick() advances exactly one 1/60 s game frame in the original subsystem order
-// (player, enemies + timeline, bullets); render() draws the interpolated state.
+// (player + bomb, enemies + timeline, bullets + items, GUI, screen shake); render() draws
+// the interpolated state.
 
 #include <cstdint>
 #include <memory>
@@ -17,6 +18,7 @@
 #include "game/ItemManager.hpp"
 #include "game/Input.hpp"
 #include "game/Player.hpp"
+#include "game/ScreenShake.hpp"
 #include "game/ShotData.hpp"
 #include "game/World.hpp"
 #include "gfx/AnmManager.hpp"
@@ -57,6 +59,7 @@ class Stage {
     EnemyManager& enemies() { return *enemies_; }
     BulletManager& bullets() { return *bullets_; }
     ItemManager& items() { return *items_; }
+    ScreenShake& shake() { return shake_; }
     Player& player() { return *player_; }
     AnmManager& anm() { return anm_; }
     int stageNumber() const { return stageNumber_; }
@@ -64,6 +67,7 @@ class Stage {
   private:
     void renderHud(SpriteSink& sink, const HudInfo& hud);
     void renderMessage(SpriteSink& sink);
+    void renderBombName(SpriteSink& sink);
 
     SoundPlayer* sound_;
     const Vfs* vfs_;
@@ -76,6 +80,7 @@ class Stage {
     std::unique_ptr<EnemyManager> enemies_;
     std::unique_ptr<ItemManager> items_;
     std::unique_ptr<Player> player_;
+    ScreenShake shake_;
     EclFile ecl_;
     ShotData shots_;
     bool shotsSearched_ = false;

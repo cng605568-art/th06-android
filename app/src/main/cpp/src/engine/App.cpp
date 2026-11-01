@@ -77,6 +77,7 @@ bool App::init(int argc, char** argv) {
         if (a == "--frames" && next) devFrames_ = std::atoi(argv[++i]);
         else if (a == "--screenshot" && next) devScreenshot_ = argv[++i];
         else if (a == "--demo-touch") devTouch_ = true;
+        else if (a == "--demo-bomb" && next) devBombFrame_ = std::atoi(argv[++i]);
         else if (a == "--stage" && next) startStage_ = std::atoi(argv[++i]);
         else if (a == "--difficulty" && next) startDifficulty_ = std::atoi(argv[++i]);
         else if (a == "--shot" && next) shotType_ = std::atoi(argv[++i]);
@@ -337,6 +338,19 @@ void App::developerFrameHooks() {
             SDL_Event e{};
             e.type = SDL_FINGERDOWN;
             e.tfinger.fingerId = 100 + i;
+            e.tfinger.x = x / static_cast<float>(drawWidth_);
+            e.tfinger.y = y / static_cast<float>(drawHeight_);
+            e.tfinger.pressure = 1.0f;
+            SDL_PushEvent(&e);
+        }
+    }
+    if (devBombFrame_ >= 0 && (frameCount_ == static_cast<std::uint64_t>(devBombFrame_) ||
+                               frameCount_ == static_cast<std::uint64_t>(devBombFrame_) + 30)) {
+        float x = 0, y = 0;
+        if (touch_.locate(SDL_CONTROLLER_BUTTON_B, x, y)) {
+            SDL_Event e{};
+            e.type = frameCount_ == static_cast<std::uint64_t>(devBombFrame_) ? SDL_FINGERDOWN : SDL_FINGERUP;
+            e.tfinger.fingerId = 102;
             e.tfinger.x = x / static_cast<float>(drawWidth_);
             e.tfinger.y = y / static_cast<float>(drawHeight_);
             e.tfinger.pressure = 1.0f;

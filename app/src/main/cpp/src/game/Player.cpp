@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include "game/BulletManager.hpp"
+#include "game/EnemyManager.hpp"
 #include "game/ItemManager.hpp"
 #include "game/Resources.hpp"
 
@@ -105,7 +106,10 @@ void Player::reset(World& world) {
     orbPositions_ = {positionCenter, positionCenter};
     homingTarget_ = {-999.0f, -999.0f, 0.0f};
     bulletGrace_ = 0;
-    deathbombWindow_ = 0;
+    respawnCountdown_ = 8;
+    previousBombInput_ = false;
+    bomb_.reset();
+    world.state->bombActive = false;
     world.anm->setAndExecuteScript(sprite_, kScriptIdle);
     world.anm->setAndExecuteScript(orbVms_[0], kScriptOrbLeft);
     world.anm->setAndExecuteScript(orbVms_[1], kScriptOrbRight);
@@ -129,18 +133,41 @@ int Player::activeBulletCount() const {
 void Player::update(World& world, const InputState& in) {
     prevPosition = positionCenter;
     for (Bullet& b : bullets_) b.prevPosition = b.position;
-    if (in.bomb) world.unported->hit("bombs");
+    GameState& gs = *world.state;
+
+    // Bomb: run it, or start one on a fresh press (also inside the deathbomb window).
+    bomb_.clearBoxes();
+    const bool bombPressed = in.bomb && !previousBombInput_;
+    previousBombInput_ = in.bomb;
+    if (gs.bombActive) {
+        bomb_.step(world, *this);
+    } else if (respawnCountdown_ != 0 && gs.bombs > 0 && bombPressed) {
+        bomb_.start(world, *this);
+    }
 
     // Death, respawn and invulnerability.
     if (state == Dead) {
-        if (deathbombWindow_ > 0 && --deathbombWindow_ == 0) dropItemsOnDeath(world);
+        if (respawnCountdown_ != 0 && --respawnCountdown_ == 0) dropItemsOnDeath(world);
         if (--deathTimer_ <= 0) respawn(world);
     }
     if (state == Spawning) {
         state = Invulnerable;
         invulnerabilityTimer_ = 240;
+        respawnCountdown_ = 6;
+        bomb_.resetMoveMultiplier();
     } else if (state == Invulnerable) {
-        if (--invulnerabilityTimer_ <= 0) state = Alive;
+        if (--invulnerabilityTimer_ <= 0) {
+            state = Alive;
+            invulnerabilityTimer_ = 0;
+            sprite_.colorAdd = false;
+            sprite_.color = 0xffffffffu;
+        } else if (invulnerabilityTimer_ % 8 < 2) {  // blink
+            sprite_.colorAdd = true;
+            sprite_.color = 0xff404040u;
+        } else {
+            sprite_.colorAdd = false;
+            sprite_.color = 0xffffffffu;
+        }
     }
     if (bulletGrace_ > 0 && state != Dead) {
         --bulletGrace_;
@@ -171,7 +198,7 @@ void Player::move(World& world, const InputState& in) {
     const int dx = in.right ? 1 : in.left ? -1 : 0;
     const int dy = in.up ? -1 : in.down ? 1 : 0;
     const ShotType& type = shotType(world);
-    const float ortho = focused ? type.speedFocus : type.speed;
+    const float ortho = (focused ? type.speedFocus : type.speed) * bomb_.moveMultiplier();
     const float diag = ortho / std::sqrt(2.0f);
     float speedX, speedY;
     if (dx != 0 && dy != 0) {
@@ -308,8 +335,7 @@ void Player::updateShots(World& world) {
         if (b.kind != ShotLaser) {
             const AnmLoadedSprite* s = world.anm->sprite(b.sprite);
             const float w = s ? s->widthPx : b.size.x, h = s ? s->heightPx : b.size.y;
-            if (b.position.x + w / 2.0f < 0.0f || b.position.x - w / 2.0f > kGameRegionWidth ||
-                b.position.y + h / 2.0f < 0.0f || b.position.y - h / 2.0f > kGameRegionHeight) {
+            if (!world.state->isInBounds(b.position.x, b.position.y, w, h)) {
                 b.state = ShotState::Inactive;
                 continue;
             }
@@ -371,6 +397,7 @@ void Player::spawnShots(World& world, int t) {
 int Player::checkGraze(World& world, const Vec3f& center, const Vec3f& size) {
     const Vec3f tl{center.x - size.x / 2.0f - 20.0f, center.y - size.y / 2.0f - 20.0f, 0};
     const Vec3f br{center.x + size.x / 2.0f + 20.0f, center.y + size.y / 2.0f + 20.0f, 0};
+    if (bomb_.cancels(tl, br)) return CanceledByBomb;
     if (state == Dead || state == Spawning) return GrazeFalse;
     if (!overlap(hitboxTopLeft, hitboxBottomRight, tl, br)) return GrazeFalse;
     addGraze(world);
@@ -380,6 +407,7 @@ int Player::checkGraze(World& world, const Vec3f& center, const Vec3f& size) {
 int Player::checkCollision(World& world, const Vec3f& center, const Vec3f& size) {
     const Vec3f tl{center.x - size.x / 2.0f, center.y - size.y / 2.0f, 0};
     const Vec3f br{center.x + size.x / 2.0f, center.y + size.y / 2.0f, 0};
+    if (bomb_.cancels(tl, br)) return CollisionCanceledByBomb;
     if (!overlap(hitboxTopLeft, hitboxBottomRight, tl, br)) return CollisionNone;
     if (state != Alive) return CollisionHit;
     die(world);
@@ -388,8 +416,9 @@ int Player::checkCollision(World& world, const Vec3f& center, const Vec3f& size)
 
 void Player::die(World& world) {
     state = Dead;
+    if (world.enemies) world.enemies->failSpellcardCapture();
     deathTimer_ = 30;
-    deathbombWindow_ = 6;
+    invulnerabilityTimer_ = 0;
     laserTimers_ = {2, 2};  // ends both lasers
     ++world.state->deaths;
     world.unported->hit("particle effects");
@@ -430,6 +459,8 @@ void Player::respawn(World& world) {
     hitboxTopLeft = positionCenter - hitboxSize;
     hitboxBottomRight = positionCenter + hitboxSize;
     state = Spawning;
+    respawnCountdown_ = 0;  // no bombs while spawning
+    bomb_.resetMoveMultiplier();
     bulletGrace_ = 90;
 }
 
@@ -486,6 +517,7 @@ int Player::calcDamageToEnemy(World& world, const Vec3f& enemyPos, const Vec3f& 
             world.unported->hit("particle effects");
         }
     }
+    damage += bomb_.damageEnemy(world, etl, ebr, hitByBomb, laserParticleCounter_);
     (void)kDamageCap;  // the per-enemy cap is applied by the enemy manager
     return damage;
 }
@@ -494,7 +526,7 @@ void Player::considerHomingTarget(const Vec3f& enemyPos) {
     if (homingTarget_.y < enemyPos.y) homingTarget_ = enemyPos;
 }
 
-void Player::drawLow(World& world, SpriteSink& sink, float alpha) {
+void Player::drawLow(World& world, SpriteSink& sink, float alpha, const SpriteRegion& white) {
     auto drawShot = [&](Bullet& b) {
         const Vec3f p = lerp(b.prevPosition, b.position, alpha);
         b.sprite.pos = {p.x, p.y, b.position.z};
@@ -504,25 +536,23 @@ void Player::drawLow(World& world, SpriteSink& sink, float alpha) {
             while (a <= -kZunPi) a += kZunTwoPi;
             b.sprite.rotation.z = kZunHalfPi - a;
         }
-        world.anm->drawWorld(sink, b.sprite, kGameRegionX, kGameRegionY);
+        world.anm->drawWorld(sink, b.sprite, world.state->playfieldX, world.state->playfieldY);
     };
     for (Bullet& b : bullets_) {
         if (b.state == ShotState::Fired) drawShot(b);
     }
-    if (state == Dead) return;
-    const bool blink = state == Invulnerable && ((invulnerabilityTimer_ / 4) & 1);
     const Vec3f p = lerp(prevPosition, positionCenter, alpha);
-    if (!blink) {
-        sprite_.pos = {kGameRegionX + p.x, kGameRegionY + p.y, 0.49f};
-        world.anm->drawScreen(sink, sprite_);
-    }
+    bomb_.draw(world, sink, white, alpha, p);
+    if (state == Dead) return;
+    sprite_.pos = {world.state->playfieldX + p.x, world.state->playfieldY + p.y, 0.49f};
+    world.anm->drawScreen(sink, sprite_);
     if (orbState_ != OrbState::Hidden && (state == Alive || state == Invulnerable)) {
         const Vec3f shift = p - positionCenter;  // orbs follow the interpolated body
         for (int i = 0; i < 2; ++i) {
             AnmVm& vm = orbVms_[static_cast<std::size_t>(i)];
             const Vec3f& o = orbPositions_[static_cast<std::size_t>(i)];
             vm.pos = {o.x + shift.x, o.y + shift.y, 0.491f};
-            world.anm->drawWorld(sink, vm, kGameRegionX, kGameRegionY);
+            world.anm->drawWorld(sink, vm, world.state->playfieldX, world.state->playfieldY);
         }
     }
 }
@@ -532,7 +562,7 @@ void Player::drawHits(World& world, SpriteSink& sink, float alpha) {
         if (b.state != ShotState::Collided) continue;
         const Vec3f p = lerp(b.prevPosition, b.position, alpha);
         b.sprite.pos = {p.x, p.y, 0.4f};
-        world.anm->drawWorld(sink, b.sprite, kGameRegionX, kGameRegionY);
+        world.anm->drawWorld(sink, b.sprite, world.state->playfieldX, world.state->playfieldY);
     }
 }
 

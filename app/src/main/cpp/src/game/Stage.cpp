@@ -43,6 +43,7 @@ Stage::Stage(TextureLibrary& textures, const UiArt& ui, const Vfs* vfs, SoundPla
     world_.rng = &rng_;
     world_.sound = sound;
     world_.unported = &unported_;
+    world_.shake = &shake_;
 }
 
 bool Stage::load(int stageNumber, int difficulty) {
@@ -103,6 +104,7 @@ bool Stage::load(int stageNumber, int difficulty) {
     world_.bullets = bullets_.get();
     if (!need(bullets_->initializeTemplates(world_, &err), "BULLET TYPES")) return false;
     items_->reset();
+    shake_.clear(world_);
     state_.grazes = 0;
     state_.stagePointItems = 0;
     player_->reset(world_);
@@ -125,6 +127,8 @@ void Stage::tick(const InputState& in) {
     player_->update(world_, in);
     enemies_->update(world_);
     bullets_->update(world_);
+    player_->bomb().updateGui();
+    shake_.update(world_);
     if (sound_) sound_->flush();
 
     // The original ends a stage through its post-boss dialogue; without MSG ported, the
@@ -143,10 +147,11 @@ void Stage::render(SpriteSink& s, float alpha, const HudInfo& hud) {
     anm_.beginFrame();
     s.fillRect(ui_.white, kGameRegionX, kGameRegionY, kGameRegionWidth, kGameRegionHeight, rgba(8, 6, 20));
     if (ready_) {
-        player_->drawLow(world_, s, alpha);
+        player_->drawLow(world_, s, alpha, ui_.white);
         enemies_->draw(world_, s, alpha);
         player_->drawHits(world_, s, alpha);
         bullets_->draw(world_, s, alpha);
+        renderBombName(s);
     }
     // Frame (also clips sprites that overhang the playfield).
     const auto frame = rgba(46, 18, 40);
@@ -162,6 +167,22 @@ void Stage::render(SpriteSink& s, float alpha, const HudInfo& hud) {
         const std::string_view t = "PAUSED";
         drawText(s, ui_, kGameRegionX + (kGameRegionWidth - textWidth(t, 3.0f)) * 0.5f, 220, t, 3.0f, rgba(255, 255, 255));
     }
+}
+
+// The bomb's name on a dark bar at the bottom of the playfield, sliding in from the left
+// when the bomb starts and fading when it ends. (The original draws it from the game's own
+// text and front ANM scripts; this stands in until those GUI layers are ported.)
+void Stage::renderBombName(SpriteSink& s) {
+    const Bomb& bomb = player_->bomb();
+    const float v = bomb.nameVisibility();
+    if (v <= 0.0f) return;
+    const std::string_view name = bomb.name();
+    const float w = textWidth(name, 1.0f) + 16.0f;
+    const float x = kGameRegionX - w + (w + 8.0f) * std::min(v * 2.0f, 1.0f);
+    const float y = kGameRegionY + kGameRegionHeight - 30.0f;
+    const auto a = static_cast<std::uint8_t>(255.0f * std::min(v * 1.5f, 1.0f));
+    s.fillRect(ui_.white, x, y, w, 14.0f, rgba(20, 10, 40, static_cast<std::uint8_t>(a * 0.7f)));
+    drawText(s, ui_, x + 8.0f, y + 3.0f, name, 1.0f, rgba(240, 240, 255, a));
 }
 
 void Stage::renderHud(SpriteSink& s, const HudInfo& hud) {

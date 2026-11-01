@@ -54,6 +54,7 @@ class App {
     int devFrames_ = 0;
     std::string devScreenshot_;
     bool devTouch_ = false;
+    int devBombFrame_ = -1;  // --demo-bomb N: tap the touch BOMB button on frame N
     int startStage_ = 1;
     int startDifficulty_ = 1;
     int shotType_ = 0;

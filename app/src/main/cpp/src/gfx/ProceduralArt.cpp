@@ -66,6 +66,7 @@ constexpr Glyph kGlyphs[] = {
     {'>', {" #   ", "  #  ", "   # ", "    #", "   # ", "  #  ", " #   "}},
     {'<', {"   # ", "  #  ", " #   ", "#    ", " #   ", "  #  ", "   # "}},
     {'=', {"     ", "     ", "#####", "     ", "#####", "     ", "     "}},
+    {'"', {" # # ", " # # ", " # # ", "     ", "     ", "     ", "     "}},
 };
 
 // Font cells are 8x10 with the 5x7 glyph top-left; a glyph is sampled as a 6x8 region,

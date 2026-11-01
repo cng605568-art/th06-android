@@ -18,6 +18,7 @@ class EnemyManager;
 class EclFile;
 class ItemManager;
 class Player;
+class ScreenShake;
 struct ShotData;
 
 // Playfield of the original: 384x448 at screen (32, 16) inside 640x480.
@@ -66,8 +67,20 @@ struct GameState {
     std::int32_t bombs = 3;
     std::int32_t startingBombs = 3;
     bool bossPresent = false;
-    bool bombActive = false;  // bombs are not ported: always false
+    bool bombActive = false;  // a player bomb is running (see game/Bomb)
+    std::uint32_t bombsUsed = 0;
     std::uint32_t deaths = 0;
+
+    // Where the playfield is on screen and how big it is. Screen shake moves the origin and
+    // shrinks the size; the on-screen tests use the shrunken size for the right/bottom edges.
+    float playfieldX = kGameRegionX, playfieldY = kGameRegionY;
+    float playfieldW = kGameRegionWidth, playfieldH = kGameRegionHeight;
+    void resetPlayfield() {
+        playfieldX = kGameRegionX;
+        playfieldY = kGameRegionY;
+        playfieldW = kGameRegionWidth;
+        playfieldH = kGameRegionHeight;
+    }
 
     // Score. `score` is the real value; `displayedScore` rolls up towards it each frame and
     // is what extends are checked against, like the HUD counter of the original.
@@ -84,9 +97,9 @@ struct GameState {
 
     bool isInBounds(float x, float y, float width, float height) const {
         if (width / 2.0f + x < 0.0f) return false;
-        if (x - width / 2.0f > kGameRegionWidth) return false;
+        if (x - width / 2.0f > playfieldW) return false;
         if (height / 2.0f + y < 0.0f) return false;
-        if (y - height / 2.0f > kGameRegionHeight) return false;
+        if (y - height / 2.0f > playfieldH) return false;
         return true;
     }
     void setDifficulty(int d) {
@@ -146,6 +159,7 @@ struct World {
     ZunRng* rng = nullptr;
     SoundSink* sound = nullptr;
     UnportedFeatures* unported = nullptr;
+    ScreenShake* shake = nullptr;
 
     void playSound(int idx) const {
         if (sound && idx >= 0) sound->playSound(idx);
