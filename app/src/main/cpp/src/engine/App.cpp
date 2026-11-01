@@ -82,9 +82,11 @@ bool App::init(int argc, char** argv) {
         else if (a == "--demo-pause" && next) devPauseFrame_ = std::atoi(argv[++i]);
         else if (a == "--demo-gameover" && next) devGameOverFrame_ = std::atoi(argv[++i]);
         else if (a == "--demo-clear" && next) devClearFrame_ = std::atoi(argv[++i]);
-        else if (a == "--stage" && next) startStage_ = std::atoi(argv[++i]);
-        else if (a == "--difficulty" && next) startDifficulty_ = std::atoi(argv[++i]);
-        else if (a == "--shot" && next) shotType_ = std::atoi(argv[++i]);
+        else if (a == "--stage" && next) startStage_ = std::atoi(argv[++i]), quickStart_ = true;
+        else if (a == "--difficulty" && next) startDifficulty_ = std::atoi(argv[++i]), quickStart_ = true;
+        else if (a == "--shot" && next) shotType_ = std::atoi(argv[++i]), quickStart_ = true;
+        else if (a == "--quick") quickStart_ = true;
+        else if (a == "--keys" && next) parseDevKeys(argv[++i]);
         else if (a == "--mischief" && next) mischief_ = static_cast<std::uint32_t>(std::atoi(argv[++i]));
         else if (a == "--size" && next) std::sscanf(argv[++i], "%dx%d", &windowWidth_, &windowHeight_);
     }
@@ -143,15 +145,21 @@ bool App::init(int argc, char** argv) {
         startStage_ = o.stage;
         startDifficulty_ = o.stage == 7 ? Extra : o.difficulty;
         mischief_ = o.mischief;
+        quickStart_ = o.quickStart;
     }
 #endif
     stage_->setShotType(shotType_);
     stage_->setMischief(mischief_);
     if (char* pref = SDL_GetPrefPath("th06", "th06-android")) {  // app storage on Android
         stage_->setScorePath(std::string(pref) + "score.dat");
+        stage_->setConfigPath(std::string(pref) + "th06.cfg");
         SDL_free(pref);
     }
-    if (!stage_->load(startStage_, startDifficulty_)) log::warn("Stage not started: {}", stage_->error());
+    // The game's title screen, unless the launcher asked for a quick start (or the title
+    // files are missing).
+    if (quickStart_ || !stage_->openTitle(true)) {
+        if (!stage_->quickStart(startStage_, startDifficulty_)) log::warn("Stage not started: {}", stage_->error());
+    }
 
     if (!createGpu(&err)) {
         log::error("GPU setup failed: {}", err);
@@ -267,7 +275,7 @@ void App::handleEvent(const SDL_Event& e) {
             // Android Back is the Menu button: it opens the pause menu and resumes from it
             // (Quit is in the menu). Without a running stage it leaves.
             if (e.key.keysym.scancode == SDL_SCANCODE_AC_BACK && !e.key.repeat && stage_) {
-                if (stage_->ready()) stage_->pressMenu();
+                if (stage_->ready() || stage_->inTitle()) stage_->pressMenu();  // on the title: Cancel
                 else running_ = false;
             }
             break;
@@ -302,7 +310,8 @@ void App::loop() {
         // Input is sampled once per rendered frame and applies to every tick it runs.
         const int ticks = clock_.advance(now);
         if (ticks > 0) {
-            const InputState in = input_.sample();
+            InputState in = input_.sample();
+            applyDevKeys(in);
             for (int i = 0; i < ticks && !stage_->quitRequested(); ++i) {
                 stage_->tick(in);
                 ++tickCount_;
@@ -342,6 +351,10 @@ void App::loop() {
 }
 
 void App::logStats() const {
+    if (stage_->inTitle()) {
+        log::info("fps {:.1f} | ticks {} | title screen", fps_, tickCount_);
+        return;
+    }
     if (!stage_->ready()) {
         log::info("fps {:.1f} | ticks {} | stage not running: {}", fps_, tickCount_, stage_->error());
         return;
@@ -412,6 +425,37 @@ void App::developerFrameHooks() {
         for (const auto& [name, count] : stage_->unported().counts()) log::info("  not ported: {} x{}", name, count);
     }
     running_ = false;
+}
+
+// --keys "30:shoot,60:down,...": presses a button once game tick N is reached, held for
+// two input samples (each runs at least one tick), then released.
+void App::parseDevKeys(const std::string& spec) {
+    std::size_t at = 0;
+    while (at < spec.size()) {
+        std::size_t end = spec.find(',', at);
+        if (end == std::string::npos) end = spec.size();
+        const std::string item = spec.substr(at, end - at);
+        const std::size_t colon = item.find(':');
+        if (colon != std::string::npos) {
+            devKeys_.push_back({static_cast<std::uint64_t>(std::atoll(item.c_str())), item.substr(colon + 1), 2});
+        }
+        at = end + 1;
+    }
+}
+
+void App::applyDevKeys(InputState& in) {
+    for (DevKey& k : devKeys_) {
+        if (tickCount_ < k.tick || k.samplesLeft <= 0) continue;
+        --k.samplesLeft;
+        if (k.key == "up") in.up = true;
+        else if (k.key == "down") in.down = true;
+        else if (k.key == "left") in.left = true;
+        else if (k.key == "right") in.right = true;
+        else if (k.key == "shoot") in.shoot = true;
+        else if (k.key == "bomb") in.bomb = true;
+        else if (k.key == "pause") in.pause = true;
+        else if (k.key == "quit") in.quit = true;
+    }
 }
 
 bool App::capturePlayfield() {

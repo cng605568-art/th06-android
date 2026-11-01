@@ -403,7 +403,7 @@ void Gui::update(World& world, const InputState& input) {
     updateSlide(spellBonus_, 280);
     if (tallyPending_) {  // the stage-clear bonus, one update after the results opcode
         tallyPending_ = false;
-        tallyTotal_ = static_cast<std::int32_t>(stageClearBonus(*world.state, stage_));
+        tallyTotal_ = static_cast<std::int32_t>(stageClearBonus(*world.state, stage_, world.state->startingLives));
         world.state->score += static_cast<std::uint32_t>(tallyTotal_);
     }
     msgStep(world, input);
@@ -740,11 +740,17 @@ void Gui::drawTally(World& world) {
     static constexpr const char* kRanks[5] = {"Easy Rank      * 0.5", "Normal Rank    * 1.0", "Hard Rank      * 1.2",
                                               "Lunatic Rank   * 1.5", "Extra Rank     * 2.0"};
     queueString(x, last ? 272.0f : 240.0f, kRanks[std::clamp(gs.difficulty, 0, 4)], 0xffff8080u);
-    queueString(x, last ? 288.0f : 256.0f, std::format("Total     = {:>8}", tallyTotal_), 0xffffffffu);
+    // The starting-lives penalty (applied in every mode, shown only in the main game).
+    float totalY = last ? 288.0f : 256.0f;
+    if (gs.difficulty != Extra && !gs.practice && (gs.startingLives == 3 || gs.startingLives == 4)) {
+        queueString(x, totalY, gs.startingLives == 3 ? "Player Penalty * 0.5" : "Player Penalty * 0.2", 0xffff8080u);
+        totalY += 16.0f;
+    }
+    queueString(x, totalY, std::format("Total     = {:>8}", tallyTotal_), 0xffffffffu);
 }
 
 void Gui::drawStrings(World& world, SpriteSink& sink) {
-    if (!ready_) {
+    if (!world.anm->fileLoaded(kAnmFileAscii)) {  // (the title draws text before any game)
         strings_.clear();
         return;
     }

@@ -81,15 +81,29 @@ public class ImportActivity extends Activity {
         status.setTypeface(Typeface.MONOSPACE);
         column.addView(status, wrap());
 
-        column.addView(label("Shot type"), wrap());
-        column.addView(choice(GameOptions.SHOT_TYPES, GameOptions.shotType(this),
+        // The game opens at its own title screen (Start, Extra, Practice, Option). The quick
+        // start skips it and goes straight into a stage chosen here.
+        CheckBox quick = new CheckBox(this);
+        quick.setText("Quick start: skip the title screen");
+        quick.setChecked(GameOptions.quickStart(this));
+        column.addView(quick, wrap());
+        LinearLayout quickOptions = new LinearLayout(this);
+        quickOptions.setOrientation(LinearLayout.VERTICAL);
+        quickOptions.addView(label("Shot type"), wrap());
+        quickOptions.addView(choice(GameOptions.SHOT_TYPES, GameOptions.shotType(this),
                 v -> GameOptions.setShotType(this, v)), wrap());
-        column.addView(label("Difficulty"), wrap());
-        column.addView(choice(GameOptions.DIFFICULTIES, GameOptions.difficulty(this),
+        quickOptions.addView(label("Difficulty"), wrap());
+        quickOptions.addView(choice(GameOptions.DIFFICULTIES, GameOptions.difficulty(this),
                 v -> GameOptions.setDifficulty(this, v)), wrap());
-        column.addView(label("Start at (Extra uses its own difficulty)"), wrap());
-        column.addView(choice(GameOptions.STAGES, GameOptions.stage(this) - 1,
+        quickOptions.addView(label("Start at (Extra uses its own difficulty)"), wrap());
+        quickOptions.addView(choice(GameOptions.STAGES, GameOptions.stage(this) - 1,
                 v -> GameOptions.setStage(this, v + 1)), wrap());
+        quickOptions.setVisibility(quick.isChecked() ? View.VISIBLE : View.GONE);
+        quick.setOnCheckedChangeListener((b, checked) -> {
+            GameOptions.setQuickStart(this, checked);
+            quickOptions.setVisibility(checked ? View.VISIBLE : View.GONE);
+        });
+        column.addView(quickOptions, wrap());
 
         column.addView(label("Mischief (high scores are not saved while any is on)"), wrap());
         int mischief = GameOptions.mischief(this);

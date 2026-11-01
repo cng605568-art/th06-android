@@ -91,10 +91,8 @@ bool ResultScreen::start(World& world, const Vfs& vfs, TextureLibrary& textures,
     run_ = run;
     for (int i = 0; i < kVms; ++i) {
         AnmVm& vm = vms_[static_cast<std::size_t>(i)];
-        vm = AnmVm{};
+        vm = AnmVm{};  // position and offset (0, 0) first: what frame 0 sets is kept
         anm.setAndExecuteScript(vm, kScriptFirst + i);
-        vm.pos = {};
-        vm.posOffset = {};
     }
     for (int i = 0; i < kTexts; ++i) {
         AnmVm& vm = texts_[static_cast<std::size_t>(i)];
@@ -364,6 +362,7 @@ void ResultScreen::draw(World& world, Gui& gui, SpriteSink& sink) {
     for (const AnmVm& v : vms_) {
         AnmVm vm = v;
         vm.pos = v.pos + v.posOffset;
+        vm.rotation.z = 0.0f;  // drawn without rotation
         world.anm->drawScreen(sink, vm);
     }
     if (scores_) drawTable(gui, sink, world);

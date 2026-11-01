@@ -25,6 +25,7 @@ struct AndroidGameOptions {
     int difficulty = 1;  // 0 Easy .. 3 Lunatic
     int stage = 1;       // 1..6, 7 = Extra
     std::uint32_t mischief = 0;  // Mischief bits (infinite lives, bombs, ...)
+    bool quickStart = false;     // skip the title screen: start the chosen stage at once
 };
 // Calls GameActivity.getGameOptions() (the launcher's choices).
 AndroidGameOptions readAndroidGameOptions();

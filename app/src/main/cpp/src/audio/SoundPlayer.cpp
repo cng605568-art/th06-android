@@ -63,6 +63,7 @@ void SoundPlayer::playSound(int idx) {
 }
 
 void SoundPlayer::flush() {
+    if (!enabled_) return;
     for (int& q : queue_) {
         if (q < 0) break;
         if (backend_) backend_->playSample(q, sampleForSound(q), gainForSound(q));

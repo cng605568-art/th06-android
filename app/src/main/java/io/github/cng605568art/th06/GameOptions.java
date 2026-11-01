@@ -4,9 +4,9 @@ import android.content.Context;
 import android.content.SharedPreferences;
 
 /**
- * Choices made in the launcher until the game's own menus are ported: shot type,
- * difficulty, starting stage and the mischief options. Read by the native engine through
- * GameActivity.
+ * Choices made in the launcher: the mischief options, and the quick start (skip the
+ * game's title screen and start a stage at once with the shot type, difficulty and stage
+ * chosen here). Read by the native engine through GameActivity.
  */
 final class GameOptions {
     static final String[] SHOT_TYPES = {"Reimu A (homing amulets)", "Reimu B (needles)",
@@ -20,6 +20,7 @@ final class GameOptions {
     private static final String KEY_DIFFICULTY = "difficulty";
     private static final String KEY_STAGE = "stage";
     private static final String KEY_MISCHIEF = "mischief";
+    private static final String KEY_QUICK_START = "quick_start";
 
     /** Mischief options (bits, same order as the engine's): not in the original game. */
     static final String[] MISCHIEF = {"Infinite lives", "Infinite bombs", "Invincible (nothing hits you)",
@@ -39,6 +40,8 @@ final class GameOptions {
     static void setShotType(Context ctx, int v) { prefs(ctx).edit().putInt(KEY_SHOT, v).apply(); }
     static void setDifficulty(Context ctx, int v) { prefs(ctx).edit().putInt(KEY_DIFFICULTY, v).apply(); }
     static void setStage(Context ctx, int v) { prefs(ctx).edit().putInt(KEY_STAGE, v).apply(); }
+    static boolean quickStart(Context ctx) { return prefs(ctx).getBoolean(KEY_QUICK_START, false); }
+    static void setQuickStart(Context ctx, boolean v) { prefs(ctx).edit().putBoolean(KEY_QUICK_START, v).apply(); }
     static int mischief(Context ctx) { return prefs(ctx).getInt(KEY_MISCHIEF, 0) & 31; }
     static void setMischief(Context ctx, int bit, boolean on) {
         int v = mischief(ctx);

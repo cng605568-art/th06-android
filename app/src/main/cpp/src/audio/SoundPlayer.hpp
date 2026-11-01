@@ -35,6 +35,10 @@ class SoundPlayer final : public SoundSink {
 
     void playSound(int soundIdx) override;  // queue (PlaySoundByIdx)
     void flush();                           // play the frame's queue (PlaySounds)
+    // The Option menu's sound-effect switch. While it is off the queue is kept (and stays
+    // full at three), so what was queued plays on the first frame after it is back on.
+    void setEnabled(bool on) { enabled_ = on; }
+    bool enabled() const { return enabled_; }
 
     static const char* sampleFile(int sampleIndex);
     static int sampleForSound(int soundIdx);
@@ -43,6 +47,7 @@ class SoundPlayer final : public SoundSink {
   private:
     SampleBackend* backend_;
     std::array<int, kQueueLength> queue_{};
+    bool enabled_ = true;
 };
 
 }  // namespace th06

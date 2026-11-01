@@ -86,6 +86,7 @@ struct GameState {
     // by the player's respawn; the player ship is not drawn while it is set.
     bool continueMenu = false;
     std::int32_t continuesUsed = 0;  // this game (3 credits on Easy to Lunatic, none on Extra)
+    bool practice = false;           // a practice run (one stage, no continues)
     std::uint32_t mischief = 0;      // Mischief bits
     bool cheat(Mischief m) const { return (mischief & m) != 0; }
     bool bossPresent = false;
