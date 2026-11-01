@@ -28,6 +28,8 @@ class SpriteBatch final : public SpriteSink {
     void draw(std::uint16_t texture, Blend blend, const SpriteInstance& sprite) override;
     void drawQuad3D(std::uint16_t texture, Blend blend, const Vertex3D* corners, const Draw3DState& state) override;
     void drawTexture(GLuint texture, Blend blend, const SpriteInstance& sprite);
+    void setClip(float x, float y, float w, float h) override;
+    void clearClip() override;
     void end();
 
     std::uint32_t takeDrawCalls();
@@ -36,6 +38,7 @@ class SpriteBatch final : public SpriteSink {
     void flush();
     void flush3D();
     void bind2D();
+    void scissor(float x, float y, float w, float h);
 
     GLuint program_ = 0;
     GLuint vao_ = 0;
@@ -49,6 +52,8 @@ class SpriteBatch final : public SpriteSink {
     const GpuTextures* textures_ = nullptr;
     std::uint32_t drawCalls_ = 0;
     float targetWidth_ = 1, targetHeight_ = 1;
+    bool clip2D_ = false;
+    float clipX_ = 0, clipY_ = 0, clipW_ = 0, clipH_ = 0;
 
     // 3D quads (the stage background).
     static constexpr std::size_t kMax3DVertices = 6 * 4096;

@@ -79,6 +79,7 @@ bool App::init(int argc, char** argv) {
         else if (a == "--screenshot" && next) devScreenshot_ = argv[++i];
         else if (a == "--demo-touch") devTouch_ = true;
         else if (a == "--demo-bomb" && next) devBombFrame_ = std::atoi(argv[++i]);
+        else if (a == "--demo-pause" && next) devPauseFrame_ = std::atoi(argv[++i]);
         else if (a == "--stage" && next) startStage_ = std::atoi(argv[++i]);
         else if (a == "--difficulty" && next) startDifficulty_ = std::atoi(argv[++i]);
         else if (a == "--shot" && next) shotType_ = std::atoi(argv[++i]);
@@ -166,6 +167,9 @@ bool App::createGpu(std::string* error) {
 }
 
 void App::releaseGpu(bool contextLost) {
+    if (stage_) stage_->setCaptureReady(false);  // the snapshot lived in a GL texture
+    if (captureFbo_ && !contextLost) glDeleteFramebuffers(1, &captureFbo_);
+    captureFbo_ = 0;
     if (contextLost) {
         gpu_.abandon();
         batch_.abandon();
@@ -223,7 +227,7 @@ void App::handleEvent(const SDL_Event& e) {
             running_ = false;
             break;
         case SDL_APP_WILLENTERBACKGROUND:
-            if (stage_) stage_->setPaused(true);
+            if (stage_) stage_->pauseNow();
             audio_.setPaused(true);
             touch_.releaseAll();
             break;
@@ -251,13 +255,11 @@ void App::handleEvent(const SDL_Event& e) {
             }
             break;
         case SDL_KEYDOWN:
-            // Android Back: first press pauses, a second press while paused quits.
+            // Android Back is the Menu button: it opens the pause menu and resumes from it
+            // (Quit is in the menu). Without a running stage it leaves.
             if (e.key.keysym.scancode == SDL_SCANCODE_AC_BACK && !e.key.repeat && stage_) {
-                if (stage_->paused()) {
-                    running_ = false;
-                } else {
-                    stage_->setPaused(true);
-                }
+                if (stage_->ready()) stage_->pressMenu();
+                else running_ = false;
             }
             break;
         case SDL_FINGERDOWN:
@@ -292,14 +294,19 @@ void App::loop() {
         const int ticks = clock_.advance(now);
         if (ticks > 0) {
             const InputState in = input_.sample();
-            for (int i = 0; i < ticks; ++i) {
+            for (int i = 0; i < ticks && !stage_->quitRequested(); ++i) {
                 stage_->tick(in);
                 ++tickCount_;
             }
         }
+        if (stage_->quitRequested()) {  // Quit in the pause menu, or game over: to the launcher
+            running_ = false;
+            break;
+        }
 
         // Rendering: once per display refresh, interpolated to the present instant.
         gpu_.sync(textures_);
+        if (stage_->takeCaptureRequest()) stage_->setCaptureReady(capturePlayfield());
         renderFrame(stage_->paused() ? 1.0f : clock_.alpha());
         developerFrameHooks();
         SDL_GL_SwapWindow(window_);
@@ -368,6 +375,7 @@ void App::developerFrameHooks() {
             SDL_PushEvent(&e);
         }
     }
+    if (devPauseFrame_ >= 0 && frameCount_ == static_cast<std::uint64_t>(devPauseFrame_)) stage_->pressMenu();
     const bool byFrames = devFrames_ > 0 && frameCount_ >= static_cast<std::uint64_t>(devFrames_);
     const bool byTicks = devTicks_ > 0 && tickCount_ >= static_cast<std::uint64_t>(devTicks_);
     if (!byFrames && !byTicks) return;
@@ -393,6 +401,44 @@ void App::developerFrameHooks() {
         for (const auto& [name, count] : stage_->unported().counts()) log::info("  not ported: {} x{}", name, count);
     }
     running_ = false;
+}
+
+bool App::capturePlayfield() {
+    const int id = stage_->captureTexture();
+    if (id < 0 || frameCount_ == 0) return false;  // no capture.anm, or nothing rendered yet
+    const auto tid = static_cast<std::uint16_t>(id);
+    const GLuint tex = gpu_.get(tid);
+    const int w = textures_.width(tid), h = textures_.height(tid);
+    if (!captureFbo_) glGenFramebuffers(1, &captureFbo_);
+    glBindFramebuffer(GL_FRAMEBUFFER, captureFbo_);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
+    const bool ok = glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+    if (ok) {
+        glViewport(0, 0, w, h);
+        glClearColor(0, 0, 0, 1);
+        glClear(GL_COLOR_BUFFER_BIT);
+        batch_.begin(static_cast<float>(w), static_cast<float>(h), &gpu_);
+        // The game target still holds the last frame, bottom-up. Drawn into the texture's
+        // framebuffer the quad's bottom edge becomes texture row 0, so it samples the
+        // playfield's top row there.
+        SpriteInstance s;
+        s.x = static_cast<float>(w) * 0.5f;
+        s.y = static_cast<float>(h) * 0.5f;
+        s.w = static_cast<float>(w);
+        s.h = static_cast<float>(h);
+        s.u0 = kGameRegionX / kVirtualWidth;
+        s.u1 = (kGameRegionX + kGameRegionWidth) / kVirtualWidth;
+        s.v0 = (kVirtualHeight - kGameRegionY - kGameRegionHeight) / kVirtualHeight;
+        s.v1 = (kVirtualHeight - kGameRegionY) / kVirtualHeight;
+        batch_.drawTexture(target_.texture(), Blend::Alpha, s);
+        batch_.end();
+    } else {
+        log::warn("Playfield capture: framebuffer incomplete");
+    }
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 0, 0);
+    RenderTarget::bindScreen();
+    gl::check("capturePlayfield");
+    return ok;
 }
 
 void App::renderFrame(float alpha) {

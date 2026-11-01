@@ -70,6 +70,11 @@ struct GameState {
     std::int32_t livesRemaining = 2;  // spare lives (the HUD's stars)
     std::int32_t bombs = 3;
     std::int32_t startingBombs = 3;
+    std::int32_t startingLives = 2;  // spare lives at the start of a game (and after a continue)
+    // Game over: the player ran out of lives and the continue menu is (about to be) up. Set
+    // by the player's respawn; the player ship is not drawn while it is set.
+    bool continueMenu = false;
+    std::int32_t continuesUsed = 0;  // this game (3 credits on Easy to Lunatic, none on Extra)
     bool bossPresent = false;
     // Boss HUD inputs written by the enemies: life-bar target (life / max life), the life
     // count from ECL, and whole seconds left on the boss timer (also the capture bonus's s).

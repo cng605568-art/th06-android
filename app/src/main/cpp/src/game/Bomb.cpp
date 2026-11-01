@@ -138,7 +138,7 @@ void Bomb::stepReimuA(World& world, Player& player, int t) {
     if (t == 0) {
         showName(world);
         duration_ = 300;
-        player.invulnerabilityTimer_ = 360;
+        player.counter_ = 360;
         partState_ = {};
         if (world.items) world.items->magnetAll();
         spawnEffect(world, EffectFlash, player.positionCenter, 1, 0xff4040ffu);
@@ -203,7 +203,7 @@ void Bomb::stepReimuB(World& world, Player& player, int t) {
         if (world.items) world.items->magnetAll();
         showName(world);
         duration_ = 140;
-        player.invulnerabilityTimer_ = 200;
+        player.counter_ = 200;
         for (int i = 0; i < 4; ++i) startVm(world, vms_[static_cast<std::size_t>(i)][0], kScriptReimuBBeam + i);
         world.playSound(kSoundPower);
         // Fixed where the bomb started: the beams do not follow the player.
@@ -232,7 +232,7 @@ void Bomb::stepMarisaA(World& world, Player& player, int t) {
         if (world.items) world.items->magnetAll();
         showName(world);
         duration_ = 250;
-        player.invulnerabilityTimer_ = 300;
+        player.counter_ = 300;
         for (int i = 0; i < kParts; ++i) {
             const auto ii = static_cast<std::size_t>(i);
             startVm(world, vms_[ii][0], kScriptMarisaAStar + i % 3);
@@ -261,7 +261,7 @@ void Bomb::stepMarisaB(World& world, Player& player, int t) {
         if (world.items) world.items->magnetAll();
         showName(world);
         duration_ = 300;
-        player.invulnerabilityTimer_ = 360;
+        player.counter_ = 360;
         for (int j = 0; j < 4; ++j) startVm(world, vms_[0][static_cast<std::size_t>(j)], kScriptMarisaBBeam + j);
         world.playSound(kSoundSpark);
         moveMultiplier_ = 0.3f;

@@ -104,6 +104,7 @@ bool AnmManager::loadAnmFromBytes(std::vector<std::uint8_t> bytes, std::uint16_t
     FileSlot& slot = files_[static_cast<std::size_t>(fileSlot)];
     slot.bytes = std::move(bytes);
     slot.loaded = true;
+    slot.texture = texture;
     const std::uint8_t* base = slot.bytes.data();
     const std::uint8_t* end = base + slot.bytes.size();
 

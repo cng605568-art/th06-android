@@ -150,6 +150,11 @@ class AnmManager {
     // does this first). VMs still running one of its scripts must be reset by the caller.
     void releaseAnm(int fileSlot);
     bool fileLoaded(int fileSlot) const;
+    // TextureLibrary id of a loaded file's texture, -1 if the slot is empty.
+    int fileTexture(int fileSlot) const {
+        if (fileSlot < 0 || fileSlot >= kMaxFiles || !files_[static_cast<std::size_t>(fileSlot)].loaded) return -1;
+        return files_[static_cast<std::size_t>(fileSlot)].texture;
+    }
     bool hasScript(int scriptIndex) const;
     const AnmLoadedSprite* sprite(int spriteIndex) const;
     const AnmLoadedSprite* sprite(const AnmVm& vm) const { return sprite(vm.activeSpriteIndex); }
@@ -182,6 +187,7 @@ class AnmManager {
     struct FileSlot {
         std::vector<std::uint8_t> bytes;
         bool loaded = false;
+        std::uint16_t texture = 0;
     };
 
     bool uvFor(const AnmVm& vm, const AnmLoadedSprite& s, float& u0, float& v0, float& u1, float& v1);

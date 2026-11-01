@@ -37,6 +37,9 @@ class App {
     void relayout();
     bool createGpu(std::string* error);
     void releaseGpu(bool contextLost);
+    // Copies the playfield of the last rendered frame into capture.anm's texture (stretched
+    // to fill it, top row first), for the menus to draw over.
+    bool capturePlayfield();
     void renderFrame(float alpha);
     void developerFrameHooks();
     void logStats() const;
@@ -56,6 +59,7 @@ class App {
     std::string devScreenshot_;
     bool devTouch_ = false;
     int devBombFrame_ = -1;  // --demo-bomb N: tap the touch BOMB button on frame N
+    int devPauseFrame_ = -1;  // --demo-pause N: presses Menu on frame N
     std::unique_ptr<TextRenderer> text_;  // platform text (null: built-in fallback); outlives stage_
     int startStage_ = 1;
     int startDifficulty_ = 1;
@@ -74,6 +78,7 @@ class App {
     GpuTextures gpu_;
     SpriteBatch batch_;
     RenderTarget target_;
+    GLuint captureFbo_ = 0;
     AudioMixer audio_;
     std::unique_ptr<SoundPlayer> sound_;
     std::unique_ptr<MusicPlayer> music_;

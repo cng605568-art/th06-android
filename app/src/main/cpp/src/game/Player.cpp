@@ -98,7 +98,7 @@ void Player::reset(World& world) {
     positionCenter = {kGameRegionWidth / 2.0f, kGameRegionHeight - 64.0f, 0.49f};
     prevPosition = positionCenter;
     state = Spawning;
-    invulnerabilityTimer_ = 0;
+    counter_ = 120;  // the first update resolves the spawn at once (no spawn-in at a stage start)
     previousSpeedX_ = 0.0f;
     bullets_ = {};
     fireTimer_ = -1;
@@ -154,33 +154,36 @@ void Player::update(World& world, const InputState& in) {
         bomb_.start(world, *this);
     }
 
-    // Death, respawn and invulnerability.
+    // Death, respawn and invulnerability (one counter: death progress, spawn progress, or
+    // invulnerability left).
     if (state == Dead) {
-        if (respawnCountdown_ != 0 && --respawnCountdown_ == 0) dropItemsOnDeath(world);
-        if (--deathTimer_ <= 0) respawn(world);
+        if (respawnCountdown_ != 0) {  // the deathbomb window
+            if (--respawnCountdown_ == 0) dropItemsOnDeath(world);
+        } else {
+            fadeOut(world);
+        }
+    } else if (state == Spawning) {
+        spawnStep();
     }
-    if (state == Spawning) {
-        state = Invulnerable;
-        invulnerabilityTimer_ = 240;
-        respawnCountdown_ = 6;
-        bomb_.resetMoveMultiplier();
-    } else if (state == Invulnerable) {
-        if (--invulnerabilityTimer_ <= 0) {
+    if (bulletGrace_ != 0) {
+        --bulletGrace_;
+        world.bullets->removeAllBullets(world, false);
+    }
+    if (state == Invulnerable) {
+        if (--counter_ <= 0) {
             state = Alive;
-            invulnerabilityTimer_ = 0;
+            counter_ = 0;
             sprite_.colorAdd = false;
             sprite_.color = 0xffffffffu;
-        } else if (invulnerabilityTimer_ % 8 < 2) {  // blink
+        } else if (counter_ % 8 < 2) {  // blink
             sprite_.colorAdd = true;
             sprite_.color = 0xff404040u;
         } else {
             sprite_.colorAdd = false;
             sprite_.color = 0xffffffffu;
         }
-    }
-    if (bulletGrace_ > 0 && state != Dead) {
-        --bulletGrace_;
-        world.bullets->removeAllBullets(world, false);
+    } else {
+        ++counter_;
     }
 
     if (state == Alive || state == Invulnerable) {
@@ -426,8 +429,7 @@ int Player::checkCollision(World& world, const Vec3f& center, const Vec3f& size)
 void Player::die(World& world) {
     state = Dead;
     if (world.enemies) world.enemies->failSpellcardCapture();
-    deathTimer_ = 30;
-    invulnerabilityTimer_ = 0;
+    counter_ = 0;
     laserTimers_ = {2, 2};  // ends both lasers
     ++world.state->deaths;
     spawnEffect(world, EffectFlash, positionCenter, 1, 0xff4040ffu);
@@ -435,6 +437,8 @@ void Player::die(World& world) {
     world.playSound(kSoundPichun);
 }
 
+// The death is committed when the deathbomb window closes: power items scatter (full-power
+// items on the last life, which also ends score extends), power and rank drop.
 void Player::dropItemsOnDeath(World& world) {
     GameState& gs = *world.state;
     gs.fullPowerChain = 0;
@@ -455,23 +459,54 @@ void Player::dropItemsOnDeath(World& world) {
     gs.decreaseSubrank(1600);
 }
 
+// After the window: the ship stretches upwards, thins and fades out (additive) where it was
+// hit; 30 frames after the hit it moves to the respawn point.
+void Player::fadeOut(World& world) {
+    const float s = static_cast<float>(counter_) / 30.0f;
+    sprite_.scaleY = 3.0f * s + 1.0f;
+    sprite_.scaleX = 1.0f - s;
+    const auto alpha = static_cast<std::int32_t>(255.0f - static_cast<float>(counter_ * 255) / 30.0f);
+    sprite_.color = (static_cast<std::uint32_t>(std::clamp(alpha, 0, 255)) << 24) | 0x00ffffffu;
+    sprite_.additive = true;
+    previousSpeedX_ = 0.0f;
+    if (counter_ >= 30) respawn(world);
+}
+
 void Player::respawn(World& world) {
     GameState& gs = *world.state;
-    if (--gs.livesRemaining < 0) {
-        // Game over: the continue screen is not ported, so play simply goes on.
-        world.unported->hit("game over / continue screen");
-        gs.livesRemaining = 2;
-        gs.extendIndex = 0;
-    }
-    gs.bombs = gs.startingBombs;
-    positionCenter = {kGameRegionWidth / 2.0f, kGameRegionHeight - 64.0f, 0.49f};
-    prevPosition = positionCenter;
-    hitboxTopLeft = positionCenter - hitboxSize;
-    hitboxBottomRight = positionCenter + hitboxSize;
     state = Spawning;
-    respawnCountdown_ = 0;  // no bombs while spawning
-    bomb_.resetMoveMultiplier();
+    positionCenter = {kGameRegionWidth / 2.0f, kGameRegionHeight - 64.0f, 0.2f};
+    prevPosition = positionCenter;  // the hitbox stays at the hit point until the spawn ends
+    counter_ = 0;
+    world.anm->setAndExecuteScript(sprite_, kScriptIdle);
+    if (gs.livesRemaining <= 0) {
+        gs.continueMenu = true;  // no spare life: game over, the continue menu opens next frame
+        return;
+    }
+    --gs.livesRemaining;
+    gs.bombs = gs.difficulty == Extra ? 3 : gs.startingBombs;
+    spawnStep();
+}
+
+// The ship grows back in at the respawn point over 30 frames (additive, from a tall thin
+// streak), clearing enemy bullets all the while; then 240 frames of blinking invulnerability.
+void Player::spawnStep() {
     bulletGrace_ = 90;
+    const float f = 1.0f - static_cast<float>(counter_) / 30.0f;
+    sprite_.scaleY = 2.0f * f + 1.0f;
+    sprite_.scaleX = 1.0f - f;
+    sprite_.additive = true;
+    bomb_.resetMoveMultiplier();
+    sprite_.color = (static_cast<std::uint32_t>((counter_ * 255) / 30 & 0xff) << 24) | 0x00ffffffu;
+    respawnCountdown_ = 0;  // no bombs while spawning
+    if (counter_ >= 30) {
+        state = Invulnerable;
+        sprite_.scaleX = sprite_.scaleY = 1.0f;
+        sprite_.color = 0xffffffffu;
+        sprite_.additive = false;
+        counter_ = 240;
+        respawnCountdown_ = 6;
+    }
 }
 
 void Player::checkLaser(World& world, const Vec3f& center, const Vec3f& size, const Vec3f& origin, float angle,
@@ -553,7 +588,7 @@ void Player::drawLow(World& world, SpriteSink& sink, float alpha, const SpriteRe
     }
     const Vec3f p = lerp(prevPosition, positionCenter, alpha);
     bomb_.draw(world, sink, white, alpha, p);
-    if (state == Dead) return;
+    if (world.state->continueMenu) return;  // no ship behind the continue menu
     sprite_.pos = {world.state->playfieldX + p.x, world.state->playfieldY + p.y, 0.49f};
     world.anm->drawScreen(sink, sprite_);
     if (orbState_ != OrbState::Hidden && (state == Alive || state == Invulnerable)) {

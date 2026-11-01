@@ -53,6 +53,7 @@ add_library(th06_core STATIC
   ${TH06_SRC}/game/EffectManager.cpp
   ${TH06_SRC}/game/Gui.cpp
   ${TH06_SRC}/game/StageBackground.cpp
+  ${TH06_SRC}/game/StageMenu.cpp
   ${TH06_SRC}/gfx/TextRenderer.cpp
   ${TH06_SRC}/game/Stage.cpp
   ${TH06_SRC}/third_party_impl.cpp)

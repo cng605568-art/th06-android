@@ -22,6 +22,7 @@
 #include "game/Player.hpp"
 #include "game/ScreenShake.hpp"
 #include "game/StageBackground.hpp"
+#include "game/StageMenu.hpp"
 #include "game/ShotData.hpp"
 #include "game/World.hpp"
 #include "gfx/AnmManager.hpp"
@@ -62,8 +63,25 @@ class Stage {
 
     void setShotType(int shotType) { state_.shotType = shotType < 0 || shotType > 3 ? 0 : shotType; }
 
-    bool paused() const { return paused_; }
-    void setPaused(bool p) { paused_ = p; }
+    // A menu (pause or continue) is up and the game is frozen.
+    bool paused() const { return menus_.frozen(); }
+    // The Menu button from outside the input state (Android Back): counts as a press on the
+    // next frame.
+    void pressMenu() { menuPress_ = true; }
+    // The app went to the background: open the pause menu (unless a menu is already up).
+    // The original simply stopped; pausing is kinder to a player coming back.
+    void pauseNow() {
+        if (ready_ && !menus_.frozen()) menus_.openPause();
+    }
+    // The player chose Quit (or gave up at game over): back to the launcher.
+    bool quitRequested() const { return quitRequested_; }
+    // The playfield snapshot behind the menus: the app copies the last rendered playfield
+    // into `captureTexture()` when asked and reports success.
+    bool takeCaptureRequest() { return menus_.takeCaptureRequest(); }
+    void setCaptureReady(bool ready) { captureReady_ = ready; }
+    // -1 when capture.anm is not loaded.
+    int captureTexture() const { return captureTexture_; }
+    const StageMenus& menus() const { return menus_; }
 
     // Diagnostics (tests, HUD, logs)
     const GameState& state() const { return state_; }
@@ -85,6 +103,8 @@ class Stage {
     void renderMessage(SpriteSink& sink);
     void renderBombName(SpriteSink& sink);
     void renderDiagnostics(SpriteSink& sink);
+    void runMenus(const MenuInput& edges);
+    void applyContinue();
 
     SoundPlayer* sound_;
     const Vfs* vfs_;
@@ -111,8 +131,13 @@ class Stage {
     int loadedCharacter_ = -1;
     World world_;
     bool ready_ = false;
-    bool paused_ = false;
-    bool previousPause_ = false;
+    StageMenus menus_;
+    InputState previousInput_;
+    bool clearInput_ = false;  // the pass after a stage transition sees no input
+    bool menuPress_ = false;
+    bool quitRequested_ = false;
+    bool captureReady_ = false;
+    int captureTexture_ = -1;
     std::string error_;
     int stageNumber_ = 1;
     int clearTimer_ = 0;

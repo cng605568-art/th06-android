@@ -26,7 +26,8 @@ Built entirely by GitHub Actions: no Android Studio, no local SDK.
 | Boss ex-instructions | All 17 stage-specific ECL routines (opcodes 121/122): Cirno's freezing bullets, the random-area shot, the pentagram that drifts towards you, Patchouli's spell selection by shot type, Sakuya's **time stop** and the green redirection of her knives, the stage 5 dagger arcs, Remilia's bat-wing trail, laser rings, dark red balls seeded on large bullets, resting bullets set moving with a curl or at random, and her **bat transformation** while you bomb (no damage, no contact, back 60 frames after the bomb), the Extra stage's rings around the centre, the large bullets that fling nearby resting bullets outwards, and Flandre's life-dependent last attack. Each scans bullets in slot order and draws random numbers in the original's order. Time stop freezes the player, bullets, items, lasers, the GUI, the background (tinted dark red) and screen shake, while enemies, effects and the score keep running and spell timers stand still. |
 | Stage backgrounds | `stageN.std` + `stgNbg.anm`: objects of animated quads placed by the instance list, the background script (camera keyframes with one key per frame, aim easing with its one-frame lag, fog fades, pause until ECL 125), the original's perspective camera (30° FOV, eye distance from the playfield height), per-pixel linear fog, depth-sorted quads in their own depth range, camera-facing sprites, the original's height-only culling, the 61-frame fade to the spell-card background during cards, and the loading-screen halt between stages. Drawn on the GPU with perspective-correct texturing. |
 | Resources | Power (0–128), bombs, lives, graze, rolling score counter, score extends (10M/20M/40M/60M), stage-clear bonus, death drops and life loss |
-| Player | Movement and clamping, 1.25 px hitbox, graze box, `player00/01.anm` scripts, death/respawn invulnerability, option orbs that slide in when focusing (with the original's mid-transition reversal) |
+| Player | Movement and clamping, 1.25 px hitbox, graze box, `player00/01.anm` scripts, option orbs that slide in when focusing (with the original's mid-transition reversal). Death as in the original: the 6-frame deathbomb window, then the ship stretches and fades out where it was hit, moves to the respawn point 31 frames after the hit, grows back in over 30 frames while enemy bullets are cleared (120 frames in all), then blinks through 239 frames of invulnerability; no spawn-in at a stage start. |
+| Menus | The in-game **pause menu** (Resume / Quit, then "really quit?" Yes / No) and the **continue menu** after the last life (Yes / No with the credits left, cursor on No and locked for half a second), both drawn from `ascii.anm` over a snapshot of the frozen playfield (`capture.anm`), with the original's input locks, highlight colours and close timings. Continuing restarts the score from the number of continues (its last digit), refills lives and bombs, keeps rank and the stage; 3 credits on Easy–Lunatic, none on Extra. Menu (Esc, gamepad Start, the touch pause button or Android Back) opens and resumes; Q quits at once on a keyboard. Music keeps playing; nothing else moves. |
 | Shots | All four shot types (Reimu A/B, Marisa A/B) at all nine power tiers: 80-slot pool, the 30-frame fire cycle (a tap fires a whole cycle), homing amulets, accelerating missiles with blast radius and decaying damage, Marisa B's beams hanging from the orbs with their period timers, one-hit normal shots with hit animations, the 70-per-frame enemy damage cap. The shot tables are read at runtime from **your** `東方紅魔郷.exe` (version 1.02h, recognised by SHA-256); without it a basic forward shot is used. |
 | Music | The 2002 game's WAV mode: the stage file's song path becomes your `bgm/th06_NN.wav`, with loop points from `th06_NN.pos` in the archives; the intro plays once, then the loop repeats gaplessly. Stage theme at stage start, boss theme from the dialogue, 4-second fade after the boss (linear in decibels to −50 dB), every request restarts its song, music keeps playing through the pause menu. Mono or other sample rates are played at the device rate. |
 | Sound | SoundIdx → wav + DirectSound volume table, 3-entry per-frame queue with de-duplication, played once per frame |
@@ -34,8 +35,9 @@ Built entirely by GitHub Actions: no Android Studio, no local SDK.
 | Controls | Touch D-pad + Shot/Bomb/Focus/Pause registered as an **SDL virtual game controller**; physical gamepads and keyboards use the same path |
 
 **Not ported yet** (shown live under *NOT PORTED YET* in the HUD whenever the game data uses
-them): the continue screen, the ending and results screens, menus, MIDI music (only the WAV
-music from the `bgm` folder plays).
+them): the results screen and high-score name entry (giving up or quitting goes straight back
+to the launcher), the ending, the title menus, MIDI music (only the WAV music from the `bgm`
+folder plays).
 
 Accuracy notes: game logic runs in the original order on the original data, but float math
 is not bit-identical to the x87 code of 2002, so long runs can drift from real replays.
@@ -87,8 +89,9 @@ refuse to run unsigned.
 3. Pick shot type, difficulty and starting stage, then **Play**. Without the 2002 archives
    the screen says what is missing.
 
-Controls: D-pad left, **SHOT / BOMB / FOCUS** right, **II** pauses. Back pauses; Back again
-quits. A Bluetooth/USB gamepad works too (the touch overlay hides itself until you touch the
+Controls: D-pad left, **SHOT / BOMB / FOCUS** right, **II** opens the pause menu (as does
+Back); choose with the D-pad and SHOT, and **Quit → Yes** returns to the launcher. Leaving the
+app also pauses. A Bluetooth/USB gamepad works too (the touch overlay hides itself until you touch the
 screen). Advanced: archives placed in `Android/data/io.github.cng605568art.th06/files/gamedata/`
 (e.g. with `adb push`) are also loaded.
 
@@ -116,6 +119,7 @@ app/src/main/cpp/
   src/game/EffectManager      512-slot particle effects, spell circles
   src/game/Gui                side panel, boss HUD, names, messages, score popups, ASCII text, dialogue
   src/game/StageBackground    STD stage backgrounds: script, camera, fog, culling, spell-card fade
+  src/game/StageMenu          pause menu and continue menu
   src/gfx/TextRenderer        Shift-JIS text into textures (Android: system font via JNI)
   src/game/Stage              loads a stage from the archives, runs one tick, draws
   src/core/ZunMath, FixedTimestep, Sha256   ZUN's RNG and angle helpers; the 60 Hz clock; SHA-256

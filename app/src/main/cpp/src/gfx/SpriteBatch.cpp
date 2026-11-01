@@ -169,6 +169,7 @@ void SpriteBatch::begin(float targetWidth, float targetHeight, const GpuTextures
     currentTexture_ = 0;
     targetWidth_ = targetWidth;
     targetHeight_ = targetHeight;
+    clip2D_ = false;
     bind2D();
 }
 
@@ -181,8 +182,41 @@ void SpriteBatch::bind2D() {
     glBindBuffer(GL_ARRAY_BUFFER, vbo_);
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);
-    glDisable(GL_SCISSOR_TEST);
+    if (clip2D_) {
+        glEnable(GL_SCISSOR_TEST);
+        scissor(clipX_, clipY_, clipW_, clipH_);
+    } else {
+        glDisable(GL_SCISSOR_TEST);
+    }
     glEnable(GL_BLEND);
+}
+
+// The target is drawn y-down in pixels; GL's scissor origin is bottom-left.
+void SpriteBatch::scissor(float x, float y, float w, float h) {
+    GLint vp[4] = {0, 0, 0, 0};
+    glGetIntegerv(GL_VIEWPORT, vp);
+    const float sx = static_cast<float>(vp[2]) / targetWidth_, sy = static_cast<float>(vp[3]) / targetHeight_;
+    glScissor(vp[0] + static_cast<GLint>(x * sx), vp[1] + static_cast<GLint>((targetHeight_ - y - h) * sy),
+              static_cast<GLsizei>(w * sx), static_cast<GLsizei>(h * sy));
+}
+
+void SpriteBatch::setClip(float x, float y, float w, float h) {
+    flush();
+    flush3D();
+    clip2D_ = true;
+    clipX_ = x;
+    clipY_ = y;
+    clipW_ = w;
+    clipH_ = h;
+    glEnable(GL_SCISSOR_TEST);
+    scissor(x, y, w, h);
+}
+
+void SpriteBatch::clearClip() {
+    flush();
+    flush3D();
+    clip2D_ = false;
+    glDisable(GL_SCISSOR_TEST);
 }
 
 void SpriteBatch::drawQuad3D(std::uint16_t texture, Blend blend, const Vertex3D* c, const Draw3DState& state) {
@@ -221,13 +255,7 @@ void SpriteBatch::flush3D() {
     glDepthMask(state3D_.depthWrite ? GL_TRUE : GL_FALSE);
     glDepthRangef(0.5f, 1.0f);
     glEnable(GL_SCISSOR_TEST);
-    // The target is drawn y-down in pixels; GL's scissor origin is bottom-left.
-    GLint vp[4] = {0, 0, 0, 0};
-    glGetIntegerv(GL_VIEWPORT, vp);
-    const float sx = static_cast<float>(vp[2]) / targetWidth_, sy = static_cast<float>(vp[3]) / targetHeight_;
-    glScissor(vp[0] + static_cast<GLint>(state3D_.clipX * sx),
-              vp[1] + static_cast<GLint>((targetHeight_ - state3D_.clipY - state3D_.clipH) * sy),
-              static_cast<GLsizei>(state3D_.clipW * sx), static_cast<GLsizei>(state3D_.clipH * sy));
+    scissor(state3D_.clipX, state3D_.clipY, state3D_.clipW, state3D_.clipH);
     glBufferData(GL_ARRAY_BUFFER, kMax3DVertices * sizeof(Vertex3D), nullptr, GL_STREAM_DRAW);
     glBufferSubData(GL_ARRAY_BUFFER, 0, static_cast<GLsizeiptr>(pending3D_.size() * sizeof(Vertex3D)), pending3D_.data());
     glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(pending3D_.size()));

@@ -40,6 +40,7 @@
 #include "game/ShotData.hpp"
 #include "game/Stage.hpp"
 #include "game/StageBackground.hpp"
+#include "game/StageMenu.hpp"
 #include "gfx/Anm.hpp"
 #include "gfx/AnmManager.hpp"
 #include "gfx/Image.hpp"
@@ -829,12 +830,51 @@ static Bytes syntheticAscii() {
         const std::uint32_t k = c - 33;
         sprites.push_back({c - 21, (k % 16) * 14.0f, 16.0f + (k / 16) * 16.0f, 14, 16});
     }
-    return buildAnmScripts(256, 256, "data/ascii.dds", sprites, {});
+    // Menu words (sprites 110..117) and their scripts 2..9: hidden until interrupt 1 shows
+    // them, interrupt 2 fades them out over 10 frames.
+    std::vector<AnmScriptBytes> scripts;
+    constexpr float kMenuY[8] = {180, 220, 244, 180, 220, 244, 180, 200};
+    for (std::uint32_t k = 0; k < 8; ++k) {
+        sprites.push_back({110 + k, (k % 4) * 64.0f, 128.0f + (k / 4) * 16.0f, 64, 16});
+        AnmCode c;
+        c.ins(0, anm_op::SetSprite, {110 + k});
+        c.ins(0, anm_op::MovePosition, {fbits(k == 7 ? 200.0f : 224.0f), fbits(kMenuY[k]), fbits(0.0f)});
+        c.ins(0, anm_op::FlagVisible, {0});
+        c.ins(1, anm_op::Halt);
+        c.ins(1, anm_op::InterruptLabel, {1});
+        c.ins(10, anm_op::Alpha, {255});
+        c.ins(10, anm_op::FlagVisible, {1});
+        c.ins(10, anm_op::Halt);
+        c.ins(10, anm_op::InterruptLabel, {2});
+        c.ins(20, anm_op::AlphaInterpLinear, {0, 10});
+        c.ins(30, anm_op::FlagVisible, {0});
+        c.ins(30, anm_op::Halt);
+        scripts.push_back({2 + k, c.bytes});
+    }
+    return buildAnmScripts(256, 256, "data/ascii.dds", sprites, scripts);
+}
+// capture.anm: a blank 512x512 texture shown over the playfield by script 0, slightly
+// darkened; interrupt 1 fades it.
+static Bytes syntheticCapture() {
+    AnmCode c;
+    c.ins(0, anm_op::SetSprite, {0});
+    c.ins(0, anm_op::AnchorTopLeft);
+    c.ins(0, anm_op::Scale, {fbits(0.75f), fbits(0.875f)});
+    c.ins(0, anm_op::Color, {0x00c0c0c0u});
+    c.ins(1, anm_op::Halt);
+    c.ins(1, anm_op::InterruptLabel, {1});
+    c.ins(10, anm_op::AlphaInterpLinear, {0, 20});
+    c.ins(30, anm_op::Halt);
+    return buildAnmScripts(512, 512, "@", {{0, 0, 0, 512, 512}}, {{0, c.bytes}});
 }
 static Bytes syntheticAsciiTexture() {
-    Image img(256, 128);
+    Image img(256, 160);
     paintBox(img, 0, 0, 128, 8, {255, 255, 255, 255});
     for (int k = 0; k < 94; ++k) paintBox(img, (k % 16) * 14 + 2, 16 + (k / 16) * 16 + 2, 10, 12, {255, 255, 255, 255});
+    for (int k = 0; k < 8; ++k) {  // menu words: a bar per item
+        const auto& col = kTestColors[static_cast<std::size_t>(k % 8)];
+        paintBox(img, (k % 4) * 64 + 2, 128 + (k / 4) * 16 + 3, 60, 10, {col[0], col[1], col[2], 255});
+    }
     return ddsFromImage(img);
 }
 // text.anm: a blank texture the engine renders into; bands for the stage name (0), song (1),
@@ -996,6 +1036,7 @@ static Bytes syntheticStageArchive() {
                       {"stg1enm2.dds", syntheticEnemyTexture()},
                       {"ecldata1.ecl", syntheticStageEcl()},
                       {"ascii.anm", syntheticAscii()},
+                      {"capture.anm", syntheticCapture()},
                       {"ascii.dds", syntheticAsciiTexture()},
                       {"text.anm", syntheticText()},
                       {"front.anm", syntheticFront()},
@@ -2134,8 +2175,14 @@ static void testScoreAndLives() {
     pl.update(tw.world, none);
     CHECK(tw.items->activeCount() == 6 && gs.power == 24 && tw.items->at(0).type == ItemPowerBig &&
           tw.items->at(0).state == ItemState::DeathScatter);
-    for (int f = 0; f < 30; ++f) pl.update(tw.world, none);
-    CHECK(pl.state != Player::Dead && gs.livesRemaining == 0 && gs.bombs == gs.startingBombs);
+    for (int f = 0; f < 24; ++f) pl.update(tw.world, none);
+    CHECK(pl.state == Player::Dead && gs.livesRemaining == 1);
+    pl.update(tw.world, none);  // 31 frames after the hit: to the respawn point, a life used
+    CHECK(pl.state == Player::Spawning && gs.livesRemaining == 0 && gs.bombs == gs.startingBombs);
+    for (int f = 0; f < 29; ++f) pl.update(tw.world, none);
+    CHECK(pl.state == Player::Spawning);
+    pl.update(tw.world, none);
+    CHECK(pl.state == Player::Invulnerable && pl.respawnCountdown() == 6);
     // Last life: five full-power items, power 0, no more extends.
     pl.state = Player::Alive;
     tw.items->reset();
@@ -2840,6 +2887,9 @@ static void testBombs() {
     tw.bullets->removeAllBullets(tw.world, false);
     pl.reset(tw.world);
     pl.update(tw.world, idle);
+    CHECK(pl.bulletGrace() == 89);  // a stage start clears bullets for 90 frames
+    for (int f = 0; f < 89; ++f) pl.update(tw.world, idle);
+    CHECK(pl.bulletGrace() == 0);
     const float x0 = pl.positionCenter.x;
     InputState pressRight = press;
     pressRight.right = true;
@@ -4015,6 +4065,416 @@ static void testExBulletScans() {
     }
 }
 
+// ---- pause and continue menus ----------------------------------------------------------
+
+namespace {
+struct ClipSink final : SpriteSink {
+    int draws = 0, clips = 0, clears = 0;
+    bool clipped = false;
+    std::vector<std::uint16_t> textures;
+    void draw(std::uint16_t texture, Blend, const SpriteInstance&) override {
+        ++draws;
+        textures.push_back(texture);
+        CHECK(clipped);
+    }
+    void setClip(float x, float y, float w, float h) override {
+        ++clips;
+        clipped = x == 32.0f && y == 16.0f && w == 384.0f && h == 448.0f;
+    }
+    void clearClip() override {
+        ++clears;
+        clipped = false;
+    }
+};
+}  // namespace
+
+static void testStageMenus() {
+    TextureLibrary lib;
+    ZunRng rng{0};
+    AnmManager anm{lib, rng};
+    std::string err;
+    const std::uint16_t tex = lib.add("ascii", 256, 256, [] { return std::optional<Image>(Image(256, 256)); });
+    const std::uint16_t capTex = lib.addDynamic("capture", 512, 512);
+    CHECK(anm.loadAnmFromBytes(syntheticAscii(), tex, kAnmFileAscii, kAnmOffsetAscii, &err));
+    CHECK(anm.loadAnmFromBytes(syntheticCapture(), capTex, kAnmFileCapture, kAnmOffsetCapture, &err));
+    using R = StageMenus::Result;
+    StageMenus m;
+    m.reset();
+    const MenuInput none, down{false, true}, up{true}, shoot{false, false, true}, menu{false, false, false, true},
+        quit{false, false, false, false, true};
+    auto passes = [&](int n, const MenuInput& in = MenuInput{}) {
+        R r = R::None;
+        for (int i = 0; i < n && r == R::None; ++i) r = m.update(anm, in);
+        return r;
+    };
+
+    // Opening: the three list sprites show, Resume is lit, a snapshot is asked for.
+    m.openPause();
+    CHECK(m.pauseActive() && m.frozen() && m.pauseState() == StageMenus::PauseOpening);
+    CHECK(m.update(anm, down) == R::None);  // ignored: the list only listens from T = 4
+    CHECK(m.pauseState() == StageMenus::PauseResume && m.pauseTimer() == 1 && m.takeCaptureRequest() && !m.takeCaptureRequest());
+    for (int i = 0; i < 3; ++i) CHECK(m.pauseSlot(i).visible);
+    for (int i = 3; i < 6; ++i) CHECK(!m.pauseSlot(i).visible);
+    CHECK(m.pauseSlot(1).color == 0xffff8080u && m.pauseSlot(1).scaleX == 1.7f);
+    CHECK((m.pauseSlot(2).color & 0x00ffffffu) == 0x808080u && m.pauseSlot(2).scaleY == 1.5f);
+    CHECK(m.pauseSlot(0).scaleX == 1.0f);  // titles are never highlighted
+    CHECK(m.pauseBackground().activeSpriteIndex == kAnmOffsetCapture + 0);
+    for (int i = 0; i < 3; ++i) m.update(anm, down);
+    CHECK(m.pauseState() == StageMenus::PauseResume && m.pauseTimer() == 4);
+    m.update(anm, down);  // the 5th pass listens
+    CHECK(m.pauseState() == StageMenus::PauseQuit && m.pauseSlot(1).color == 0xffff8080u);  // lit from the next pass
+    m.update(anm, none);
+    CHECK(m.pauseSlot(2).color == 0xffff8080u && (m.pauseSlot(1).color & 0x00ffffffu) == 0x808080u);
+    m.update(anm, up);
+    m.update(anm, up);
+    CHECK(m.pauseState() == StageMenus::PauseQuit);  // up, up: back and forth (no lock in a list)
+    // Quit asks first, on "No"; input waits 4 passes again.
+    m.update(anm, shoot);
+    CHECK(m.pauseState() == StageMenus::PauseNo && m.pauseTimer() == 1);
+    for (int i = 3; i < 6; ++i) CHECK(m.pauseSlot(i).visible);
+    m.update(anm, up);
+    CHECK(m.pauseSlot(5).color == 0xffff8080u);
+    passes(2, up);
+    CHECK(m.pauseState() == StageMenus::PauseNo);
+    m.update(anm, up);
+    CHECK(m.pauseState() == StageMenus::PauseYes);
+    // "No" goes back to the list with the cursor on Quit.
+    m.update(anm, down);
+    m.update(anm, shoot);
+    CHECK(m.pauseState() == StageMenus::PauseQuit);
+    passes(4);
+    m.update(anm, shoot);
+    passes(4);
+    m.update(anm, up);
+    m.update(anm, shoot);  // Yes
+    CHECK(m.pauseState() == StageMenus::PauseQuitting);
+    CHECK(passes(19) == R::None);
+    // Menu cancels a quit under way: back to the game after another 20 passes.
+    CHECK(m.update(anm, menu) == R::None && m.pauseState() == StageMenus::PauseClosing);
+    CHECK(passes(19) == R::None && m.pauseActive());
+    CHECK(m.update(anm, none) == R::Resume && !m.pauseActive() && m.pauseState() == StageMenus::PauseOpening);
+    for (int i = 0; i < 6; ++i) CHECK(!m.pauseSlot(i).visible);
+
+    // Resume needs 20 passes; Q quits at once without asking, even from there.
+    m.openPause();
+    m.update(anm, none);
+    passes(3);
+    m.update(anm, shoot);  // Resume
+    CHECK(m.pauseState() == StageMenus::PauseClosing);
+    passes(5);
+    m.update(anm, quit);
+    CHECK(m.pauseState() == StageMenus::PauseQuitting && passes(19) == R::None && m.update(anm, none) == R::Quit);
+    // A direction and Shoot together: the move happens, but the item lit at the start wins.
+    m.openPause();
+    passes(5);
+    m.update(anm, MenuInput{false, true, true});
+    CHECK(m.pauseState() == StageMenus::PauseClosing);
+    passes(20);
+    // Menu and Q in one pass quit.
+    m.openPause();
+    passes(5);
+    m.update(anm, MenuInput{false, false, false, true, true});
+    CHECK(m.pauseState() == StageMenus::PauseQuitting);
+    passes(20);
+
+    // Drawing: clipped to the playfield; the snapshot only once it exists.
+    m.openPause();
+    passes(12);
+    {
+        ClipSink sink;
+        m.draw(anm, sink, 3, false);
+        CHECK(sink.draws == 3 && sink.clips == 1 && sink.clears == 1);
+        ClipSink withCapture;
+        m.draw(anm, withCapture, 3, true);
+        CHECK(withCapture.draws == 4 && withCapture.textures[0] == capTex);
+    }
+    passes(5);
+    m.update(anm, menu);
+    passes(20);
+    CHECK(!m.frozen());
+    {
+        ClipSink sink;
+        m.draw(anm, sink, 3, true);
+        CHECK(sink.draws == 0 && sink.clips == 0);
+    }
+
+    // Continue: the cursor starts on No (Yes is lit on the first frame only), nothing can be
+    // chosen for 30 passes.
+    m.openContinue();
+    CHECK(m.continueActive() && m.frozen());
+    m.update(anm, shoot);
+    CHECK(m.continueState() == StageMenus::ContNo && m.continueSlot(2).color == 0xffff8080u && m.takeCaptureRequest());
+    for (int i = 0; i < 4; ++i) CHECK(m.continueSlot(i).visible);
+    m.update(anm, none);
+    CHECK(m.continueSlot(3).color == 0xffff8080u && (m.continueSlot(2).color & 0x00ffffffu) == 0x808080u);
+    CHECK(passes(28, shoot) == R::None && m.continueState() == StageMenus::ContNo && m.continueTimer() == 30);
+    {
+        ClipSink sink;
+        m.draw(anm, sink, 2, true);  // snapshot, the credit digit, four sprites
+        CHECK(sink.draws == 6);
+    }
+    m.update(anm, up);
+    CHECK(m.continueState() == StageMenus::ContYes);
+    m.update(anm, shoot);
+    CHECK(m.continueState() == StageMenus::ContClosing);
+    {
+        ClipSink sink;
+        m.draw(anm, sink, 2, true);  // the digit goes at once
+        CHECK(sink.draws == 5);
+    }
+    CHECK(passes(29) == R::None && m.update(anm, none) == R::Continue && !m.continueActive());
+    // Giving up takes 20 passes.
+    m.openContinue();
+    passes(31);
+    m.update(anm, shoot);
+    CHECK(m.continueState() == StageMenus::ContGivingUp && passes(19) == R::None && m.update(anm, none) == R::GiveUp);
+    // Menu and Q do nothing at the continue menu.
+    m.openContinue();
+    passes(5, menu);
+    passes(5, quit);
+    CHECK(m.continueActive() && m.continueState() == StageMenus::ContNo);
+    m.reset();
+    CHECK(!m.frozen() && m.continueState() == StageMenus::ContOpening);
+}
+
+static void testMenusInStage() {
+    const Bytes archive = syntheticStageArchive();
+    Vfs vfs;
+    vfs.mount(open("SYNTH_ST.DAT", archive));
+    TextureLibrary lib;
+    const UiArt ui = registerUiArt(lib);
+    RecordingBackend backend;
+    SoundPlayer sound(&backend);
+    Stage stage(lib, ui, &vfs, &sound);
+    CHECK(stage.load(1, Normal));
+    if (!stage.ready()) return;
+    GameState& gs = *stage.world().state;
+    CHECK(stage.captureTexture() >= 0 && lib.width(static_cast<std::uint16_t>(stage.captureTexture())) == 512);
+    InputState idle, esc, shot, upKey;
+    esc.pause = true;
+    shot.shoot = true;
+    upKey.up = true;
+    auto press = [&](const InputState& in) {
+        stage.tick(in);
+        stage.tick(idle);
+    };
+    // A key held through the stage start sees no input on the first pass, so it counts as a
+    // fresh press on the second.
+    stage.tick(esc);
+    CHECK(!stage.paused());
+    stage.tick(esc);
+    CHECK(stage.paused());
+    stage.tick(idle);
+    press(esc);
+    for (int i = 0; i < 20; ++i) stage.tick(idle);
+    CHECK(!stage.paused());
+    (void)stage.takeCaptureRequest();
+    for (int i = 0; i < 30; ++i) stage.tick(idle);
+    const std::uint32_t frame = gs.frame;
+    const Vec3f playerAt = stage.player().positionCenter;
+    stage.tick(esc);  // the pass that opens the pause is already frozen
+    CHECK(stage.paused() && gs.frame == frame);
+    stage.tick(idle);  // the menu's opening pass asks for the snapshot
+    CHECK(stage.takeCaptureRequest());
+    stage.setCaptureReady(true);
+    InputState right = idle;
+    right.right = true;
+    for (int i = 0; i < 10; ++i) stage.tick(right);
+    CHECK(gs.frame == frame && stage.player().positionCenter.x == playerAt.x);
+    {
+        RecordingSink sink;
+        stage.render(sink, 1.0f, HudInfo{60.0f, 1});
+        int menuWords = 0, snapshot = 0;
+        for (const auto& it : sink.items) {
+            menuWords += lib.name(it.texture).starts_with("data/ascii") && it.s.w >= 64.0f;
+            snapshot += it.texture == stage.captureTexture();
+        }
+        CHECK(menuWords >= 3 && snapshot == 1);
+    }
+    // Menu again resumes; the world moves on the 20th pass after it.
+    press(esc);  // the choice pass and one more
+    for (int i = 0; i < 18; ++i) stage.tick(idle);
+    CHECK(stage.paused() && gs.frame == frame);
+    stage.tick(idle);
+    CHECK(!stage.paused() && gs.frame == frame + 1);
+
+    // Quit -> Yes: the stage asks to go back to the title.
+    press(esc);
+    for (int i = 0; i < 4; ++i) stage.tick(idle);
+    InputState downKey;
+    downKey.down = true;
+    press(downKey);
+    press(shot);
+    for (int i = 0; i < 4; ++i) stage.tick(idle);
+    press(upKey);
+    press(shot);
+    for (int i = 0; i < 18 && !stage.quitRequested(); ++i) stage.tick(idle);
+    CHECK(!stage.quitRequested());
+    stage.tick(idle);
+    CHECK(stage.quitRequested());
+
+    // Game over: the last life lost opens the continue menu; Yes restarts the score from the
+    // number of continues and refills lives and bombs.
+    for (const bool continuing : {true, false}) {
+        Stage st(lib, ui, &vfs, &sound);
+        CHECK(st.load(1, Normal));
+        GameState& g = *st.world().state;
+        for (int i = 0; i < 5; ++i) st.tick(idle);
+        g.livesRemaining = 0;
+        g.bombs = 0;
+        g.score = g.displayedScore = 123456;
+        Player& p = st.player();
+        p.state = Player::Alive;  // skip the start-of-stage invulnerability
+        p.checkCollision(st.world(), p.positionCenter, {4.0f, 4.0f, 4.0f});
+        CHECK(p.state == Player::Dead);
+        int ticks = 0;
+        while (!g.continueMenu && ticks < 100) {
+            st.tick(idle);
+            ++ticks;
+        }
+        CHECK(g.continueMenu && ticks == 31 && g.livesRemaining == 0 && !st.paused());  // 31 frames after the hit
+        const std::uint32_t at = g.frame;
+        st.tick(idle);
+        CHECK(st.paused() && st.menus().continueActive() && g.frame == at);
+        for (int i = 0; i < 29; ++i) st.tick(i % 2 ? idle : shot);  // locked for 30 passes
+        CHECK(st.paused() && !st.quitRequested() && st.menus().continueState() == StageMenus::ContNo);
+        if (continuing) {
+            st.tick(upKey);
+            st.tick(shot);
+            for (int i = 0; i < 29; ++i) st.tick(idle);
+            CHECK(st.paused());
+            st.tick(idle);
+            CHECK(!st.paused() && !g.continueMenu && g.frame == at + 1);
+            CHECK(g.score == 1 && g.displayedScore == 1 && g.livesRemaining == 2 && g.bombs == 3 && g.continuesUsed == 1 &&
+                  g.power == 0 && g.extendIndex == 0);
+        } else {
+            st.tick(idle);
+            st.tick(shot);  // No
+            for (int i = 0; i < 19; ++i) st.tick(idle);
+            CHECK(!st.quitRequested());
+            st.tick(idle);
+            CHECK(st.quitRequested() && !g.continueMenu);
+        }
+    }
+    // Out of credits (or on Extra): game over without the menu.
+    {
+        Stage st(lib, ui, &vfs, &sound);
+        CHECK(st.load(1, Normal));
+        GameState& g = *st.world().state;
+        for (int i = 0; i < 5; ++i) st.tick(idle);
+        g.livesRemaining = 0;
+        g.bombs = 0;
+        g.continuesUsed = 3;
+        st.player().state = Player::Alive;
+        st.player().checkCollision(st.world(), st.player().positionCenter, {4.0f, 4.0f, 4.0f});
+        for (int i = 0; i < 40 && !st.quitRequested(); ++i) st.tick(idle);
+        CHECK(st.quitRequested() && !st.menus().continueActive());
+    }
+}
+
+// ---- death and respawn ------------------------------------------------------------------
+
+static void testDeathSequence() {
+    TestWorld tw;
+    CHECK(tw.ok);
+    if (!tw.ok) return;
+    Player& pl = tw.player;
+    GameState& gs = tw.state;
+    const InputState none;
+    // Stage start: the spawn resolves on the first update (no spawn-in), 90 frames of bullet
+    // clearing, 239 frames of invulnerability.
+    pl.update(tw.world, none);
+    CHECK(pl.state == Player::Invulnerable && pl.counter() == 239 && pl.respawnCountdown() == 6 && pl.bulletGrace() == 89);
+    CHECK(pl.sprite().scaleX == 1.0f && pl.sprite().scaleY == 1.0f && !pl.sprite().additive && pl.sprite().color == 0xffffffffu);
+    for (int f = 0; f < 238; ++f) pl.update(tw.world, none);
+    CHECK(pl.state == Player::Invulnerable && pl.counter() == 1 && pl.bulletGrace() == 0);
+    pl.update(tw.world, none);
+    CHECK(pl.state == Player::Alive);
+
+    InputState left;
+    left.left = true;
+    for (int f = 0; f < 10; ++f) pl.update(tw.world, left);
+    gs.livesRemaining = 2;
+    gs.power = 64;
+    const Vec3f hit = pl.positionCenter;
+    const Vec3f hitboxAtHit = pl.hitboxCorner();
+    CHECK(hit.x < 192.0f);
+    pl.checkCollision(tw.world, hit, {4.0f, 4.0f, 0.0f});  // pass H
+    CHECK(pl.state == Player::Dead && pl.counter() == 0);
+    {
+        RecordingSink sink;
+        pl.drawLow(tw.world, sink, 1.0f, SpriteRegion{});
+        CHECK(!sink.items.empty());  // the ship is still drawn while dead
+    }
+    for (int m = 1; m <= 6; ++m) pl.update(tw.world, none);  // the deathbomb window
+    CHECK(pl.respawnCountdown() == 0 && gs.power == 48 && gs.livesRemaining == 2 && tw.items->activeCount() == 6);
+    CHECK(pl.sprite().scaleX == 1.0f && !pl.sprite().additive);  // untouched until the fade
+    bool fadeOk = true;
+    for (int m = 7; m <= 30; ++m) {
+        pl.update(tw.world, none);
+        const int k = m - 1;
+        const float sk = static_cast<float>(k) / 30.0f;
+        const auto alpha = static_cast<std::uint32_t>(255.0f - static_cast<float>(k * 255) / 30.0f);
+        fadeOk = fadeOk && pl.sprite().scaleX == 1.0f - sk && pl.sprite().scaleY == 3.0f * sk + 1.0f &&
+                 pl.sprite().color >> 24 == alpha && pl.sprite().additive && pl.positionCenter.x == hit.x;
+        fadeOk = fadeOk && alpha == static_cast<std::uint32_t>(std::floor(255.0 - 8.5 * k));
+    }
+    CHECK(fadeOk && pl.state == Player::Dead && pl.counter() == 30);
+    CHECK((pl.sprite().color >> 24) == 8);  // k = 29
+    pl.update(tw.world, none);  // H+31: to the respawn point, a life used, the spawn begins
+    CHECK(pl.state == Player::Spawning && gs.livesRemaining == 1 && pl.counter() == 1);
+    CHECK(pl.positionCenter.x == 192.0f && pl.positionCenter.y == 384.0f && pl.positionCenter.z == 0.2f);
+    CHECK(pl.sprite().scaleX == 0.0f && pl.sprite().scaleY == 3.0f && (pl.sprite().color >> 24) == 0 && pl.sprite().additive);
+    CHECK(pl.bulletGrace() == 89 && pl.hitboxCorner().x == hitboxAtHit.x);  // the hitbox stays at the hit point
+    bool spawnOk = true;
+    for (int m = 32; m <= 60; ++m) {
+        pl.update(tw.world, none);
+        const int j = m - 31;
+        const float f = 1.0f - static_cast<float>(j) / 30.0f;
+        spawnOk = spawnOk && pl.state == Player::Spawning && pl.sprite().scaleY == 2.0f * f + 1.0f &&
+                  pl.sprite().scaleX == 1.0f - f && (pl.sprite().color >> 24) == static_cast<std::uint32_t>(j * 255 / 30) &&
+                  pl.respawnCountdown() == 0 && pl.bulletGrace() == 89;
+    }
+    CHECK(spawnOk && (pl.sprite().color >> 24) == 246);
+    pl.update(tw.world, none);  // H+61: invulnerable, and moving again
+    CHECK(pl.state == Player::Invulnerable && pl.counter() == 239 && pl.respawnCountdown() == 6);
+    CHECK(!pl.sprite().additive && pl.sprite().scaleX == 1.0f && pl.hitboxCorner().x != hitboxAtHit.x);
+    for (int m = 62; m <= 67; ++m) pl.update(tw.world, none);
+    CHECK(pl.counter() == 233 && pl.sprite().colorAdd && pl.sprite().color == 0xff404040u);  // blink
+    pl.update(tw.world, none);
+    CHECK(pl.sprite().colorAdd);
+    pl.update(tw.world, none);
+    CHECK(!pl.sprite().colorAdd && pl.sprite().color == 0xffffffffu);
+    for (int m = 70; m <= 149; ++m) pl.update(tw.world, none);
+    CHECK(pl.bulletGrace() == 1);
+    pl.update(tw.world, none);  // H+150: the 120th and last clear
+    CHECK(pl.bulletGrace() == 0);
+    for (int m = 151; m <= 299; ++m) pl.update(tw.world, none);
+    CHECK(pl.state == Player::Invulnerable && pl.counter() == 1);
+    pl.update(tw.world, none);
+    CHECK(pl.state == Player::Alive);  // H+300
+
+    // The last life: the continue menu's flag instead of a life, no spawn step that frame;
+    // after a continue the spawn takes the remaining 30 frames.
+    gs.livesRemaining = 0;
+    pl.checkCollision(tw.world, pl.positionCenter, {4.0f, 4.0f, 0.0f});
+    for (int m = 1; m <= 30; ++m) pl.update(tw.world, none);
+    CHECK(!gs.continueMenu && pl.state == Player::Dead);
+    pl.update(tw.world, none);
+    CHECK(gs.continueMenu && pl.state == Player::Spawning && pl.counter() == 1 && gs.livesRemaining == 0 && pl.bulletGrace() == 0);
+    CHECK(pl.sprite().scaleX == 1.0f && !pl.sprite().additive);
+    {
+        RecordingSink sink;
+        pl.drawLow(tw.world, sink, 1.0f, SpriteRegion{});
+        CHECK(sink.items.empty());  // no ship behind the continue menu
+    }
+    gs.continueMenu = false;  // "Yes"
+    for (int f = 0; f < 29; ++f) pl.update(tw.world, none);
+    CHECK(pl.state == Player::Spawning);
+    pl.update(tw.world, none);
+    CHECK(pl.state == Player::Invulnerable && pl.counter() == 239);
+}
+
 int main() {
     struct Test {
         const char* name;
@@ -4056,6 +4516,9 @@ int main() {
         {"ex-instructions: time stop and its freezes, green redirect", testExTimeStop},
         {"ex-instructions: pentagram, dagger arcs, rings, Flandre", testExPatterns},
         {"ex-instructions: bullet scans, bat transformation", testExBulletScans},
+        {"death: fade-out, respawn, spawn-in, grace, blink", testDeathSequence},
+        {"menus: pause and continue state machines, drawing", testStageMenus},
+        {"menus in a stage: freeze, resume, quit, continue", testMenusInStage},
     };
     for (const Test& t : tests) {
         const int before = g_failures;

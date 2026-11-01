@@ -9,9 +9,12 @@
 // The bullet lists come from the player's own game executable (game/ShotData). Without it
 // a single basic forward shot is used. Bombs (game/Bomb) run first in every update.
 //
-// Death: a hit makes the player DEAD; the respawn countdown (6 after a respawn, 8 at stage
-// start) then runs down one per frame, and a bomb pressed while it is non-zero (the
-// deathbomb window) cancels the death. When it reaches 0 the death is committed.
+// Death: a hit makes the player DEAD; the respawn countdown (normally 6) then runs down one
+// per frame, and a bomb pressed while it is non-zero (the deathbomb window) cancels the
+// death. When it reaches 0 the death is committed (items, power, rank). The ship then
+// stretches and fades out where it was hit; 31 frames after the hit it moves to the respawn
+// point (a life is used, or the continue menu opens on the last one) and grows back in over
+// 30 frames while enemy bullets are cleared, then blinks for 239 frames of invulnerability.
 
 #include <array>
 #include <cstdint>
@@ -93,7 +96,11 @@ class Player {
     Bomb& bomb() { return bomb_; }
     const Bomb& bomb() const { return bomb_; }
     int respawnCountdown() const { return respawnCountdown_; }
-    int invulnerabilityTimer() const { return invulnerabilityTimer_; }
+    int invulnerabilityTimer() const { return state == Invulnerable ? counter_ : 0; }
+    int counter() const { return counter_; }
+    int bulletGrace() const { return bulletGrace_; }
+    const AnmVm& sprite() const { return sprite_; }
+    const Vec3f& hitboxCorner() const { return hitboxTopLeft; }  // top-left of the stored hitbox
 
     Vec3f positionCenter;
     Vec3f prevPosition;
@@ -104,6 +111,8 @@ class Player {
     friend class Bomb;
 
     void die(World& world);
+    void fadeOut(World& world);
+    void spawnStep();
     void dropItemsOnDeath(World& world);
     void respawn(World& world);
     void move(World& world, const InputState& in);
@@ -123,8 +132,9 @@ class Player {
     Vec3f hitboxSize{1.25f, 1.25f, 5.0f};
     Vec3f hitboxTopLeft, hitboxBottomRight;
     float previousSpeedX_ = 0.0f;
-    std::int32_t invulnerabilityTimer_ = 0;
-    std::int32_t deathTimer_ = 0;
+    // Death progress (Dead, counts up), spawn progress (Spawning, counts up) or
+    // invulnerability left (Invulnerable, counts down); counts up while Alive too.
+    std::int32_t counter_ = 0;
     std::int32_t respawnCountdown_ = 8;  // deathbomb window; 0 while spawning
     bool previousBombInput_ = false;
     Bomb bomb_;

@@ -140,6 +140,16 @@ bool Stage::load(int stageNumber, int difficulty) {
         music_->play(gui_.songPath(0));
     }
     if (!shots_.loaded) unported_.hit("shot types (needs 東方紅魔郷.exe 1.02h in the game folder)");
+    // The menus (reset at every stage load) and the playfield snapshot they draw over.
+    menus_.reset();
+    state_.continueMenu = false;
+    clearInput_ = true;
+    if (!anm_.fileLoaded(kAnmFileCapture) &&
+        !anm_.loadAnm(*vfs_, kAnmFileCapture, "data/capture.anm", kAnmOffsetCapture, &err)) {
+        log::warn("capture.anm not loaded ({}): the menus show the live playfield", err);
+    }
+    captureTexture_ = anm_.fileTexture(kAnmFileCapture);
+    captureReady_ = false;
     enemies_->startStage(world_);
     clearTimer_ = 0;
     ready_ = true;
@@ -148,13 +158,28 @@ bool Stage::load(int stageNumber, int difficulty) {
     return true;
 }
 
-void Stage::tick(const InputState& in) {
-    if (in.pause && !previousPause_) paused_ = !paused_;
-    previousPause_ = in.pause;
-    if (music_ && ready_) music_->tick();  // fades run on through the pause menu
-    if (!ready_ || paused_) return;
+void Stage::tick(const InputState& raw) {
+    // Supervisor: input for this pass (nothing on the pass after a stage transition, so a
+    // key held through it counts as a fresh press afterwards) and the music fades, which
+    // run on through the menus.
+    InputState in = clearInput_ ? InputState{} : raw;
+    clearInput_ = false;
+    const MenuInput edges{in.up && !previousInput_.up, in.down && !previousInput_.down,
+                          in.shoot && !previousInput_.shoot, (in.pause && !previousInput_.pause) || menuPress_,
+                          in.quit && !previousInput_.quit};
+    previousInput_ = in;
+    menuPress_ = false;
+    if (music_ && ready_) music_->tick();
+    if (!ready_ || quitRequested_) return;
 
-    gui_.updatePopups();
+    // The menu manager: the menus run instead of the score popups.
+    if (menus_.frozen() || state_.continueMenu) runMenus(edges);
+    else gui_.updatePopups();
+    if (quitRequested_) return;
+    // The game manager: the pause check, then the freeze.
+    if (!menus_.frozen() && !state_.continueMenu && edges.menu) menus_.openPause();
+    if (menus_.frozen()) return;
+
     ++state_.frame;
     rollScore(world_);
     background_.update(world_);
@@ -184,6 +209,46 @@ void Stage::tick(const InputState& in) {
     }
 }
 
+void Stage::runMenus(const MenuInput& edges) {
+    // The player ran out of lives on the previous pass: the continue menu opens now, unless
+    // there is nothing to continue with (Extra, or all three credits used).
+    auto gameOver = [&] {
+        state_.continueMenu = false;
+        state_.displayedScore = state_.score;
+        unported_.hit("results screen and high-score name entry");
+        quitRequested_ = true;  // to the title (the launcher)
+    };
+    if (state_.continueMenu && !menus_.continueActive()) {
+        if (state_.continuesUsed >= 3 || state_.difficulty == Extra) {
+            gameOver();
+            return;
+        }
+        menus_.openContinue();
+    }
+    switch (menus_.update(anm_, edges)) {
+        case StageMenus::Result::Quit: quitRequested_ = true; break;
+        case StageMenus::Result::Continue: applyContinue(); break;
+        case StageMenus::Result::GiveUp: gameOver(); break;
+        default: break;
+    }
+}
+
+// "Yes" at the continue menu: a fresh set of lives and bombs, the score restarting from the
+// number of continues used, and the respawn already under way carries on.
+void Stage::applyContinue() {
+    GameState& gs = state_;
+    gs.continueMenu = false;
+    ++gs.continuesUsed;
+    gs.score = gs.displayedScore = static_cast<std::uint32_t>(gs.continuesUsed);
+    gs.scoreStep = 0;
+    gs.livesRemaining = gs.startingLives;
+    gs.bombs = gs.startingBombs;
+    gs.power = 0;
+    gs.grazes = 0;
+    gs.stagePointItems = 0;
+    gs.extendIndex = 0;
+}
+
 void Stage::render(SpriteSink& s, float alpha, const HudInfo& hud) {
     anm_.beginFrame();
     // The playfield is cleared to the fog colour (the background is drawn into it).
@@ -203,10 +268,7 @@ void Stage::render(SpriteSink& s, float alpha, const HudInfo& hud) {
         gui_.draw(world_, s, ui_.white, hud.fps);
         gui_.drawStrings(world_, s);
         renderDiagnostics(s);
-        if (paused_) {
-            const std::string_view t = "PAUSED";
-            drawText(s, ui_, kGameRegionX + (kGameRegionWidth - textWidth(t, 3.0f)) * 0.5f, 220, t, 3.0f, rgba(255, 255, 255));
-        }
+        menus_.draw(anm_, s, 3 - state_.continuesUsed, captureReady_);
         return;
     }
     // Without the game's GUI files: the port's own frame and diagnostic HUD.
@@ -219,8 +281,8 @@ void Stage::render(SpriteSink& s, float alpha, const HudInfo& hud) {
     renderHud(s, hud);
     if (!ready_) {
         renderMessage(s);
-    } else if (paused_) {
-        const std::string_view t = "PAUSED";
+    } else if (menus_.frozen()) {  // without the game's GUI files there are no menu sprites
+        const std::string_view t = state_.continueMenu ? "CONTINUE? SHOT = YES" : "PAUSED";
         drawText(s, ui_, kGameRegionX + (kGameRegionWidth - textWidth(t, 3.0f)) * 0.5f, 220, t, 3.0f, rgba(255, 255, 255));
     }
 }

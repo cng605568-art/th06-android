@@ -14,6 +14,7 @@ struct InputState {
     bool bomb = false;
     bool pause = false;
     bool skip = false;  // dialogue fast-forward (Ctrl on a keyboard)
+    bool quit = false;  // Q: quits from the pause menu without asking (keyboard only)
 };
 
 }  // namespace th06
