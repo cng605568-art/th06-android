@@ -13,8 +13,12 @@ GLuint upload(int w, int h, const void* rgba, TextureFilter filter) {
     const GLint f = filter == TextureFilter::Linear ? GL_LINEAR : GL_NEAREST;
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, f);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, f);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    // Game art wraps, as Direct3D's default texture addressing did: scrolling ANM sprites
+    // (spell-card backgrounds, laser beams) push their UVs past 1 and must tile, not smear
+    // the edge texels. The port's own smoothly scaled UI art keeps its edges.
+    const GLint wrap = filter == TextureFilter::Linear ? GL_CLAMP_TO_EDGE : GL_REPEAT;
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
     return tex;
@@ -37,6 +41,19 @@ void GpuTextures::sync(const TextureLibrary& library) {
                        image->width, image->height, maxSize);
         }
         textures_.push_back(tex);
+        versions_.push_back(library.version(id));
+    }
+    // Textures the game draws into (rendered text) are sent again when they change.
+    for (std::size_t id = 0; id < textures_.size(); ++id) {
+        const auto tid = static_cast<std::uint16_t>(id);
+        if (versions_[id] == library.version(tid) || !textures_[id]) continue;
+        versions_[id] = library.version(tid);
+        if (auto image = library.build(tid)) {
+            glBindTexture(GL_TEXTURE_2D, textures_[id]);
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, image->width, image->height, GL_RGBA, GL_UNSIGNED_BYTE,
+                            image->rgba.data());
+        }
     }
     gl::check("GpuTextures::sync");
 }
@@ -64,6 +81,7 @@ void GpuTextures::destroy() {
 
 void GpuTextures::abandon() {
     textures_.clear();
+    versions_.clear();
     placeholder_ = 0;
 }
 

@@ -7,15 +7,20 @@ import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.Gravity;
+import android.view.View;
 import android.view.ViewGroup;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.Spinner;
 import android.widget.TextView;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.function.IntConsumer;
 
 /**
  * Launcher screen. The player picks the folder that holds their own copy of the game
@@ -75,6 +80,16 @@ public class ImportActivity extends Activity {
         status.setPadding(0, dp(12), 0, dp(12));
         status.setTypeface(Typeface.MONOSPACE);
         column.addView(status, wrap());
+
+        column.addView(label("Shot type"), wrap());
+        column.addView(choice(GameOptions.SHOT_TYPES, GameOptions.shotType(this),
+                v -> GameOptions.setShotType(this, v)), wrap());
+        column.addView(label("Difficulty"), wrap());
+        column.addView(choice(GameOptions.DIFFICULTIES, GameOptions.difficulty(this),
+                v -> GameOptions.setDifficulty(this, v)), wrap());
+        column.addView(label("Start at (Extra uses its own difficulty)"), wrap());
+        column.addView(choice(GameOptions.STAGES, GameOptions.stage(this) - 1,
+                v -> GameOptions.setStage(this, v + 1)), wrap());
 
         playButton = new Button(this);
         playButton.setOnClickListener(v -> startActivity(new Intent(this, GameActivity.class)));
@@ -158,14 +173,33 @@ public class ImportActivity extends Activity {
         List<DataSources.Entry> entries = DataSources.load(this);
         StringBuilder sb = new StringBuilder(status.getText());
         if (entries.isEmpty()) {
-            sb.append("No game data selected yet.");
-            playButton.setText("Start demo (no game data)");
+            sb.append("No game data selected yet. Choose the folder of the 2002 game"
+                    + " (\u7d05\u9b54\u90f7CM.DAT, \u7d05\u9b54\u90f7ST.DAT ... or KOUMAKYO_*.dat).");
+            playButton.setText("Play (no game data selected)");
         } else {
-            sb.append(String.format(Locale.ROOT, "%d archive(s) in use:%n", entries.size()));
+            boolean classic = false;
+            int tracks = 0;
+            long musicBytes = 0;
+            sb.append(String.format(Locale.ROOT, "%d file(s) in use:%n", entries.size()));
             for (DataSources.Entry e : entries) {
-                String kind = DataSources.FORMAT_PBG3.equals(e.format) ? "Classic" : "New Classic";
+                if (DataSources.FORMAT_WAV.equals(e.format)) {
+                    ++tracks;
+                    musicBytes += e.size;
+                    continue;
+                }
+                boolean isClassic = DataSources.FORMAT_PBG3.equals(e.format);
+                classic |= isClassic;
+                String kind = isClassic ? "Classic"
+                        : DataSources.FORMAT_EXE.equals(e.format) ? "Program" : "New Classic";
                 sb.append(String.format(Locale.ROOT, "  %-18s %-11s %6.1f MB%n",
                         e.name, kind, e.size / 1048576.0));
+            }
+            sb.append(tracks > 0
+                    ? String.format(Locale.ROOT, "  Music: %d tracks from bgm/ (%.0f MB)%n", tracks, musicBytes / 1048576.0)
+                    : String.format(Locale.ROOT, "  Music: none (copy the game's bgm folder too for music)%n"));
+            if (!classic) {
+                sb.append(String.format(Locale.ROOT, "%nThe stage engine runs the 2002 data files;"
+                        + " New Classic archives alone cannot start a stage yet.%n"));
             }
             playButton.setText("Play");
         }
@@ -174,6 +208,33 @@ public class ImportActivity extends Activity {
 
     private int dp(int v) {
         return Math.round(v * getResources().getDisplayMetrics().density);
+    }
+
+    private TextView label(String text) {
+        TextView t = new TextView(this);
+        t.setText(text);
+        t.setPadding(0, dp(10), 0, 0);
+        t.setTypeface(Typeface.DEFAULT_BOLD);
+        return t;
+    }
+
+    private Spinner choice(String[] items, int selected, IntConsumer onSelect) {
+        Spinner spinner = new Spinner(this);
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_item, items);
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        spinner.setAdapter(adapter);
+        spinner.setSelection(selected);
+        spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                onSelect.accept(position);
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {}
+        });
+        return spinner;
     }
 
     private static LinearLayout.LayoutParams wrap() {
