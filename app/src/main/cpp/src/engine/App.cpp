@@ -80,6 +80,7 @@ bool App::init(int argc, char** argv) {
         else if (a == "--demo-touch") devTouch_ = true;
         else if (a == "--demo-bomb" && next) devBombFrame_ = std::atoi(argv[++i]);
         else if (a == "--demo-pause" && next) devPauseFrame_ = std::atoi(argv[++i]);
+        else if (a == "--demo-gameover" && next) devGameOverFrame_ = std::atoi(argv[++i]);
         else if (a == "--stage" && next) startStage_ = std::atoi(argv[++i]);
         else if (a == "--difficulty" && next) startDifficulty_ = std::atoi(argv[++i]);
         else if (a == "--shot" && next) shotType_ = std::atoi(argv[++i]);
@@ -142,6 +143,10 @@ bool App::init(int argc, char** argv) {
     }
 #endif
     stage_->setShotType(shotType_);
+    if (char* pref = SDL_GetPrefPath("th06", "th06-android")) {  // app storage on Android
+        stage_->setScorePath(std::string(pref) + "score.dat");
+        SDL_free(pref);
+    }
     if (!stage_->load(startStage_, startDifficulty_)) log::warn("Stage not started: {}", stage_->error());
 
     if (!createGpu(&err)) {
@@ -376,6 +381,7 @@ void App::developerFrameHooks() {
         }
     }
     if (devPauseFrame_ >= 0 && frameCount_ == static_cast<std::uint64_t>(devPauseFrame_)) stage_->pressMenu();
+    if (devGameOverFrame_ >= 0 && frameCount_ == static_cast<std::uint64_t>(devGameOverFrame_)) stage_->endGameForTesting();
     const bool byFrames = devFrames_ > 0 && frameCount_ >= static_cast<std::uint64_t>(devFrames_);
     const bool byTicks = devTicks_ > 0 && tickCount_ >= static_cast<std::uint64_t>(devTicks_);
     if (!byFrames && !byTicks) return;

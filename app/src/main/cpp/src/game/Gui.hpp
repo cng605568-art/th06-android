@@ -117,6 +117,12 @@ class Gui {
         stageEndRequested_ = false;
         return r;
     }
+    // Set by the stage-end opcode of the last stage (6, Easy's 5, Extra): the game is cleared.
+    bool takeGameClearRequest() {
+        const bool r = gameClearRequested_;
+        gameClearRequested_ = false;
+        return r;
+    }
     bool tallyShown() const { return tallyOn_; }
     // The loading screen has stopped on its last frame: the stage background is not drawn.
     bool loadingHalted() const { return loadingActive_ && loading_.visible && loading_.stopped; }
@@ -142,6 +148,7 @@ class Gui {
     const AnmVm& bombName() const { return bombName_; }
     const AnmVm& spellName() const { return spellName_; }
     std::uint32_t hiScore() const { return hiScore_; }
+    void setHiScore(std::uint32_t v) { hiScore_ = v; }  // from score.dat at the start of a game
     // Renders text into the element's texture band (exposed for tests).
     bool renderText(World& world, AnmVm& element, std::span<const std::uint8_t> sjis, int fontSize,
                     std::uint32_t rgb, Align align);
@@ -205,6 +212,7 @@ class Gui {
     bool tallyOn_ = false, tallyPending_ = false;
     std::int32_t tallyTotal_ = 0;
     bool stageEndRequested_ = false;
+    bool gameClearRequested_ = false;
 };
 
 }  // namespace th06

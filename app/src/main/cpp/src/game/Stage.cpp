@@ -1,6 +1,7 @@
 #include "game/Stage.hpp"
 
 #include <algorithm>
+#include <cstdio>
 #include <format>
 #include <span>
 
@@ -38,7 +39,8 @@ Stage::Stage(TextureLibrary& textures, const UiArt& ui, const Vfs* vfs, SoundPla
       enemies_(std::make_unique<EnemyManager>()),
       items_(std::make_unique<ItemManager>()),
       player_(std::make_unique<Player>()),
-      gui_(textures, text ? text : &fallbackText_) {
+      gui_(textures, text ? text : &fallbackText_),
+      textures_(textures) {
     world_.anm = &anm_;
     world_.bullets = bullets_.get();
     world_.enemies = enemies_.get();
@@ -52,6 +54,7 @@ Stage::Stage(TextureLibrary& textures, const UiArt& ui, const Vfs* vfs, SoundPla
     world_.effects = &effects_;
     world_.gui = &gui_;
     world_.background = &background_;
+    world_.scores = &scores_;
 }
 
 bool Stage::load(int stageNumber, int difficulty) {
@@ -135,6 +138,9 @@ bool Stage::load(int stageNumber, int difficulty) {
         guiLoadedOnce_ = true;
     }
     gui_.startStage(world_, *vfs_, stageNumber_, newRun);
+    if (runStartStage_ == 0) startRun();
+    gui_.setHiScore(std::max(gui_.hiScore(), state_.displayedScore));
+    if (!practiceRun_) scores_.stageEntered(state_.shotType, state_.difficulty, stageNumber_, state_.continuesUsed > 0);
     if (music_) {  // the stage theme, from its beginning
         music_->setUnported(&unported_);
         music_->play(gui_.songPath(0));
@@ -171,11 +177,20 @@ void Stage::tick(const InputState& raw) {
     menuPress_ = false;
     if (music_ && ready_) music_->tick();
     if (!ready_ || quitRequested_) return;
+    if (inResults_) {
+        if (results_.update(world_, gui_, in)) {
+            saveScores();
+            quitRequested_ = true;  // to the title (the launcher)
+        }
+        if (sound_) sound_->flush();
+        return;
+    }
 
     // The menu manager: the menus run instead of the score popups.
     if (menus_.frozen() || state_.continueMenu) runMenus(edges);
     else gui_.updatePopups();
-    if (quitRequested_) return;
+    // Game over: the stage is gone (the result screen has taken the enemy art's slots).
+    if (quitRequested_ || inResults_) return;
     // The game manager: the pause check, then the freeze.
     if (!menus_.frozen() && !state_.continueMenu && edges.menu) menus_.openPause();
     if (menus_.frozen()) return;
@@ -199,6 +214,13 @@ void Stage::tick(const InputState& raw) {
     // is gone.
     if (gui_.ready() && gui_.hasDialogue()) {
         if (gui_.takeStageEndRequest() && stageNumber_ < 7) load(stageNumber_ + 1, state_.difficulty);
+        else if (gui_.takeGameClearRequest()) {  // the last stage's end: the ending, then the results
+            if (state_.difficulty != Extra && !practiceRun_) {
+                scores_.gameCleared(state_.shotType, state_.difficulty, state_.continuesUsed > 0);
+                unported_.hit("ending and staff roll");
+            }
+            gameOver(true);
+        }
     } else if (enemies_->timelineFinished() && enemies_->activeCount() == 0) {
         if (++clearTimer_ >= kClearDelay && stageNumber_ < 6) {
             state_.score += stageClearBonus(state_, stageNumber_);
@@ -212,15 +234,9 @@ void Stage::tick(const InputState& raw) {
 void Stage::runMenus(const MenuInput& edges) {
     // The player ran out of lives on the previous pass: the continue menu opens now, unless
     // there is nothing to continue with (Extra, or all three credits used).
-    auto gameOver = [&] {
-        state_.continueMenu = false;
-        state_.displayedScore = state_.score;
-        unported_.hit("results screen and high-score name entry");
-        quitRequested_ = true;  // to the title (the launcher)
-    };
     if (state_.continueMenu && !menus_.continueActive()) {
         if (state_.continuesUsed >= 3 || state_.difficulty == Extra) {
-            gameOver();
+            gameOver(false);
             return;
         }
         menus_.openContinue();
@@ -228,8 +244,79 @@ void Stage::runMenus(const MenuInput& edges) {
     switch (menus_.update(anm_, edges)) {
         case StageMenus::Result::Quit: quitRequested_ = true; break;
         case StageMenus::Result::Continue: applyContinue(); break;
-        case StageMenus::Result::GiveUp: gameOver(); break;
+        case StageMenus::Result::GiveUp: gameOver(false); break;
         default: break;
+    }
+}
+
+// The first stage of a game: score.dat (the port's own, else the player's PC file), the
+// HUD's hi-score, and whether this is a full game (stage 1 or Extra) or a practice run.
+void Stage::startRun() {
+    runStartStage_ = stageNumber_;
+    practiceRun_ = !(stageNumber_ == 1 || stageNumber_ == 7);
+    bool loaded = false;
+    if (!scorePath_.empty()) {
+        if (std::FILE* f = std::fopen(scorePath_.c_str(), "rb")) {
+            std::vector<std::uint8_t> bytes;
+            std::uint8_t buf[4096];
+            for (std::size_t n; (n = std::fread(buf, 1, sizeof buf, f)) > 0;) bytes.insert(bytes.end(), buf, buf + n);
+            std::fclose(f);
+            loaded = scores_.load(bytes);
+            if (!loaded) log::warn("{} is not a valid score file; starting with empty tables", scorePath_);
+        }
+    }
+    if (!loaded && vfs_) {
+        if (const auto pc = vfs_->looseFile("score.dat"); !pc.empty()) {
+            loaded = scores_.load(pc);
+            log::info("High scores from the game folder's score.dat: {}", loaded ? "read" : "not valid");
+        }
+    }
+    const std::uint32_t hi = practiceRun_ ? scores_.practice(state_.shotType, std::clamp(stageNumber_ - 1, 0, 5), std::min(state_.difficulty, 3))
+                                          : scores_.hiScore(state_.difficulty, state_.shotType);
+    gui_.setHiScore(hi);
+}
+
+// The game ended: a full game goes to the result screen (name entry, statistics), a
+// practice run straight back to the title (the launcher).
+void Stage::gameOver(bool cleared) {
+    state_.continueMenu = false;
+    state_.displayedScore = state_.score;
+    if (practiceRun_) {
+        quitRequested_ = true;
+        return;
+    }
+    if (music_) music_->stop();
+    ResultScreen::Run run;
+    run.difficulty = state_.difficulty;
+    run.shotType = state_.shotType;
+    run.stage = stageNumber_;
+    run.cleared = cleared;
+    run.score = state_.displayedScore;
+    run.continues = state_.continuesUsed;
+    run.deaths = state_.deaths;
+    run.bombs = state_.bombsUsed;
+    run.spellsCaptured = state_.spellsCaptured;
+    run.completion = state_.completion;
+    if (!vfs_ || !results_.start(world_, *vfs_, textures_, gui_, scores_, run)) {
+        unported_.hit("results screen (result files missing)");
+        saveScores();
+        quitRequested_ = true;
+        return;
+    }
+    inResults_ = true;
+    clearInput_ = true;
+}
+
+void Stage::saveScores() {
+    if (scorePath_.empty() || practiceRun_) return;
+    const std::vector<std::uint8_t> bytes = scores_.save(rng_);
+    if (std::FILE* f = std::fopen(scorePath_.c_str(), "wb")) {
+        const bool ok = std::fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size();
+        std::fclose(f);
+        if (ok) log::info("Scores saved to {}", scorePath_);
+        else log::warn("Could not write {}", scorePath_);
+    } else {
+        log::warn("Could not open {} for writing", scorePath_);
     }
 }
 
@@ -251,6 +338,11 @@ void Stage::applyContinue() {
 
 void Stage::render(SpriteSink& s, float alpha, const HudInfo& hud) {
     anm_.beginFrame();
+    if (inResults_) {
+        results_.draw(world_, gui_, s);
+        gui_.drawStrings(world_, s);
+        return;
+    }
     // The playfield is cleared to the fog colour (the background is drawn into it).
     const std::uint32_t clear = background_.loaded() ? argbToRgbaBytes(background_.fogColor() | 0xff000000u) : rgba(8, 6, 20);
     s.fillRect(ui_.white, kGameRegionX, kGameRegionY, kGameRegionWidth, kGameRegionHeight, clear);

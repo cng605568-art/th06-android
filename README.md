@@ -27,6 +27,7 @@ Built entirely by GitHub Actions: no Android Studio, no local SDK.
 | Stage backgrounds | `stageN.std` + `stgNbg.anm`: objects of animated quads placed by the instance list, the background script (camera keyframes with one key per frame, aim easing with its one-frame lag, fog fades, pause until ECL 125), the original's perspective camera (30° FOV, eye distance from the playfield height), per-pixel linear fog, depth-sorted quads in their own depth range, camera-facing sprites, the original's height-only culling, the 61-frame fade to the spell-card background during cards, and the loading-screen halt between stages. Drawn on the GPU with perspective-correct texturing. |
 | Resources | Power (0–128), bombs, lives, graze, rolling score counter, score extends (10M/20M/40M/60M), stage-clear bonus, death drops and life loss |
 | Player | Movement and clamping, 1.25 px hitbox, graze box, `player00/01.anm` scripts, option orbs that slide in when focusing (with the original's mid-transition reversal). Death as in the original: the 6-frame deathbomb window, then the ship stretches and fades out where it was hit, moves to the respawn point 31 frames after the hit, grows back in over 30 frames while enemy bullets are cleared (120 frames in all), then blinks through 239 frames of invulnerability; no spawn-in at a stage start. |
+| Results and high scores | `score.dat` in the original format (obfuscation, checksum, the high-score tables per difficulty and shot type, clear progress, spell-card history, practice bests). Your PC `score.dat` in the game folder is read until the port has saved its own (in the app's storage). The HUD's hi-score starts from the table. After a game (game over, giving up, or clearing the last stage) the **result screen** from `result00..03.anm` over `result.jpg`: name entry for a top-10 score on the original 6 × 16 key grid (auto-repeat, END, SP, backspace) with both shot types' tables, then the statistics page (score, difficulty, completion rate, continues, misses, bombs, spell cards captured, slowdown), then the scores are saved. Spell-card attempts and captures are recorded. A game started from stage 2–6 counts as practice: nothing is saved. |
 | Menus | The in-game **pause menu** (Resume / Quit, then "really quit?" Yes / No) and the **continue menu** after the last life (Yes / No with the credits left, cursor on No and locked for half a second), both drawn from `ascii.anm` over a snapshot of the frozen playfield (`capture.anm`), with the original's input locks, highlight colours and close timings. Continuing restarts the score from the number of continues (its last digit), refills lives and bombs, keeps rank and the stage; 3 credits on Easy–Lunatic, none on Extra. Menu (Esc, gamepad Start, the touch pause button or Android Back) opens and resumes; Q quits at once on a keyboard. Music keeps playing; nothing else moves. |
 | Shots | All four shot types (Reimu A/B, Marisa A/B) at all nine power tiers: 80-slot pool, the 30-frame fire cycle (a tap fires a whole cycle), homing amulets, accelerating missiles with blast radius and decaying damage, Marisa B's beams hanging from the orbs with their period timers, one-hit normal shots with hit animations, the 70-per-frame enemy damage cap. The shot tables are read at runtime from **your** `東方紅魔郷.exe` (version 1.02h, recognised by SHA-256); without it a basic forward shot is used. |
 | Music | The 2002 game's WAV mode: the stage file's song path becomes your `bgm/th06_NN.wav`, with loop points from `th06_NN.pos` in the archives; the intro plays once, then the loop repeats gaplessly. Stage theme at stage start, boss theme from the dialogue, 4-second fade after the boss (linear in decibels to −50 dB), every request restarts its song, music keeps playing through the pause menu. Mono or other sample rates are played at the device rate. |
@@ -35,9 +36,10 @@ Built entirely by GitHub Actions: no Android Studio, no local SDK.
 | Controls | Touch D-pad + Shot/Bomb/Focus/Pause registered as an **SDL virtual game controller**; physical gamepads and keyboards use the same path |
 
 **Not ported yet** (shown live under *NOT PORTED YET* in the HUD whenever the game data uses
-them): the results screen and high-score name entry (giving up or quitting goes straight back
-to the launcher), the ending, the title menus, MIDI music (only the WAV music from the `bgm`
-folder plays).
+them): the ending and staff roll (a clear goes straight to the result screen), replays (the
+result screen skips the save-replay prompt), the title menus (quitting and the end of the
+result screen go back to the launcher), MIDI music (only the WAV music from the `bgm` folder
+plays).
 
 Accuracy notes: game logic runs in the original order on the original data, but float math
 is not bit-identical to the x87 code of 2002, so long runs can drift from real replays.
@@ -120,6 +122,7 @@ app/src/main/cpp/
   src/game/Gui                side panel, boss HUD, names, messages, score popups, ASCII text, dialogue
   src/game/StageBackground    STD stage backgrounds: script, camera, fog, culling, spell-card fade
   src/game/StageMenu          pause menu and continue menu
+  src/game/ScoreFile, ResultScreen   score.dat; the result screen (name entry, statistics)
   src/gfx/TextRenderer        Shift-JIS text into textures (Android: system font via JNI)
   src/game/Stage              loads a stage from the archives, runs one tick, draws
   src/core/ZunMath, FixedTimestep, Sha256   ZUN's RNG and angle helpers; the 60 Hz clock; SHA-256

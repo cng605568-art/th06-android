@@ -41,6 +41,8 @@
 #include "game/Stage.hpp"
 #include "game/StageBackground.hpp"
 #include "game/StageMenu.hpp"
+#include "game/ScoreFile.hpp"
+#include "game/ResultScreen.hpp"
 #include "gfx/Anm.hpp"
 #include "gfx/AnmManager.hpp"
 #include "gfx/Image.hpp"
@@ -855,6 +857,80 @@ static Bytes syntheticAscii() {
 }
 // capture.anm: a blank 512x512 texture shown over the playfield by script 0, slightly
 // darkened; interrupt 1 fades it.
+// The result screen: result00..03.anm (38 animations; 14 anchors the score table and slides
+// in on interrupts 3..7, 37 is the statistics page) over a BMP stand-in for result.jpg.
+static Bytes syntheticResultAnm(int file) {
+    static constexpr int kCounts[4] = {8, 7, 22, 1};
+    std::vector<AnmScriptBytes> scripts;
+    for (int k = 0; k < kCounts[file]; ++k) {
+        const int v = (file == 0 ? 0 : file == 1 ? 8 : file == 2 ? 15 : 37) + k;
+        AnmCode c;
+        c.ins(0, anm_op::SetSprite, {v == 37 ? 3u : 0u});
+        if (v == 14) {
+            c.ins(0, anm_op::MovePosition, {fbits(800.0f), fbits(48.0f), fbits(0.0f)});
+            c.ins(1, anm_op::Halt);
+            for (std::uint32_t l = 3; l <= 7; ++l) c.ins(1, anm_op::InterruptLabel, {l});
+            c.ins(2, anm_op::MovePosition, {fbits(40.0f), fbits(48.0f), fbits(0.0f)});
+            c.ins(2, anm_op::Halt);
+            c.ins(2, anm_op::InterruptLabel, {2});
+            c.ins(3, anm_op::MovePosition, {fbits(800.0f), fbits(48.0f), fbits(0.0f)});
+            c.ins(3, anm_op::Halt);
+        } else if (v == 37) {
+            c.ins(0, anm_op::MovePosition, {fbits(96.0f), fbits(120.0f), fbits(0.0f)});
+            c.ins(0, anm_op::Alpha, {0});
+            c.ins(1, anm_op::Halt);
+            c.ins(1, anm_op::InterruptLabel, {16});
+            c.ins(2, anm_op::Alpha, {255});
+            c.ins(2, anm_op::Halt);
+            c.ins(2, anm_op::InterruptLabel, {2});
+            c.ins(3, anm_op::AlphaInterpLinear, {0, 20});
+            c.ins(23, anm_op::Halt);
+        } else {
+            c.ins(0, anm_op::MovePosition, {fbits(16.0f + 16.0f * static_cast<float>(v % 38)), fbits(8.0f), fbits(0.0f)});
+            c.ins(1, anm_op::Halt);
+        }
+        scripts.push_back({static_cast<std::uint32_t>(k), c.bytes});
+    }
+    return buildAnmScripts(256, 256, "data/front.dds", {{0, 32, 0, 16, 16}, {3, 64, 0, 64, 16}}, scripts);
+}
+static Bytes bmpFromImage(const Image& img) {
+    Bytes b;
+    const std::uint32_t rowBytes = static_cast<std::uint32_t>(img.width) * 4;
+    const std::uint32_t pixels = rowBytes * static_cast<std::uint32_t>(img.height);
+    b.push_back('B');
+    b.push_back('M');
+    putLe<std::uint32_t>(b, 54 + pixels);
+    putLe<std::uint32_t>(b, 0);
+    putLe<std::uint32_t>(b, 54);
+    putLe<std::uint32_t>(b, 40);
+    putLe<std::int32_t>(b, img.width);
+    putLe<std::int32_t>(b, img.height);  // bottom-up
+    putLe<std::uint16_t>(b, 1);
+    putLe<std::uint16_t>(b, 32);
+    for (int i = 0; i < 6; ++i) putLe<std::uint32_t>(b, 0);
+    for (int y = img.height - 1; y >= 0; --y) {
+        for (int x = 0; x < img.width; ++x) {
+            const std::uint8_t* p = img.pixel(x, y);
+            b.push_back(p[2]);
+            b.push_back(p[1]);
+            b.push_back(p[0]);
+            b.push_back(p[3]);
+        }
+    }
+    return b;
+}
+static Bytes syntheticResultBackground() {
+    Image img(640, 480);
+    for (int y = 0; y < 480; ++y)
+        for (int x = 0; x < 640; ++x) {
+            std::uint8_t* p = img.pixel(x, y);
+            p[0] = static_cast<std::uint8_t>(30 + y / 8);
+            p[1] = 20;
+            p[2] = static_cast<std::uint8_t>(60 + x / 16);
+            p[3] = 255;
+        }
+    return bmpFromImage(img);
+}
 static Bytes syntheticCapture() {
     AnmCode c;
     c.ins(0, anm_op::SetSprite, {0});
@@ -880,7 +956,8 @@ static Bytes syntheticAsciiTexture() {
 // text.anm: a blank texture the engine renders into; bands for the stage name (0), song (1),
 // bomb name (6) and spell name (7). Names stay until interrupt 1, then leave.
 static Bytes syntheticText() {
-    const std::vector<AnmSprite> sprites = {{0, 0, 0, 256, 16}, {1, 0, 16, 256, 16}, {6, 0, 96, 256, 16}, {7, 0, 112, 256, 16}};
+    const std::vector<AnmSprite> sprites = {{0, 0, 0, 256, 16}, {1, 0, 16, 256, 16}, {6, 0, 96, 256, 16}, {7, 0, 112, 256, 16},
+                                            {8, 0, 32, 256, 16}, {9, 0, 48, 256, 16}};  // 8, 9: result screen names
     std::vector<AnmScriptBytes> scripts;
     for (std::uint32_t k : {0u, 1u}) {
         AnmCode c;
@@ -1037,6 +1114,11 @@ static Bytes syntheticStageArchive() {
                       {"ecldata1.ecl", syntheticStageEcl()},
                       {"ascii.anm", syntheticAscii()},
                       {"capture.anm", syntheticCapture()},
+                      {"result00.anm", syntheticResultAnm(0)},
+                      {"result01.anm", syntheticResultAnm(1)},
+                      {"result02.anm", syntheticResultAnm(2)},
+                      {"result03.anm", syntheticResultAnm(3)},
+                      {"result.jpg", syntheticResultBackground()},
                       {"ascii.dds", syntheticAsciiTexture()},
                       {"text.anm", syntheticText()},
                       {"front.anm", syntheticFront()},
@@ -4351,9 +4433,9 @@ static void testMenusInStage() {
             st.tick(idle);
             st.tick(shot);  // No
             for (int i = 0; i < 19; ++i) st.tick(idle);
-            CHECK(!st.quitRequested());
+            CHECK(!st.inResults());
             st.tick(idle);
-            CHECK(st.quitRequested() && !g.continueMenu);
+            CHECK(st.inResults() && !st.quitRequested() && !g.continueMenu);  // on to the result screen
         }
     }
     // Out of credits (or on Extra): game over without the menu.
@@ -4367,8 +4449,8 @@ static void testMenusInStage() {
         g.continuesUsed = 3;
         st.player().state = Player::Alive;
         st.player().checkCollision(st.world(), st.player().positionCenter, {4.0f, 4.0f, 4.0f});
-        for (int i = 0; i < 40 && !st.quitRequested(); ++i) st.tick(idle);
-        CHECK(st.quitRequested() && !st.menus().continueActive());
+        for (int i = 0; i < 40 && !st.inResults(); ++i) st.tick(idle);
+        CHECK(st.inResults() && !st.menus().continueActive());
     }
 }
 
@@ -4475,6 +4557,221 @@ static void testDeathSequence() {
     CHECK(pl.state == Player::Invulnerable && pl.counter() == 239);
 }
 
+// ---- score.dat and the result screen ----------------------------------------------------
+
+static void testScoreFile() {
+    ScoreFile f;
+    // Empty: ten placeholders per table, the hi-score floor, defaults elsewhere.
+    CHECK(f.table(Normal, 0).size() == 10 && f.table(Normal, 0)[0].score == 1'000'000 && f.table(Extra, 3)[9].score == 100'000);
+    CHECK(std::string(f.table(Hard, 2)[3].name.begin(), f.table(Hard, 2)[3].name.end()) == "Nanashi " && f.table(Hard, 2)[3].placeholder);
+    CHECK(f.hiScore(Normal, 0) == 1'000'000 && f.clear(1).cleared[2] == 1 && f.practice(0, 0, 0) == 0);
+    CHECK(!f.load({}) && !f.loadedFromFile());
+    // Insertion: a new score goes above an equal one.
+    ScoreFile::Entry e;
+    e.score = 900'000;
+    std::memcpy(e.name.data(), "TIE     ", 8);
+    CHECK(ScoreFile::insert(f.table(Normal, 0), e) == 1);
+    e.score = 5'000'000;
+    std::memcpy(e.name.data(), "ALICE   ", 8);
+    e.stage = 4;
+    CHECK(ScoreFile::insert(f.table(Normal, 0), e) == 0);
+    e.score = 50'000;  // below the table
+    CHECK(ScoreFile::insert(f.table(Lunatic, 3), e) == 10);
+    CHECK(f.hiScore(Normal, 0) == 5'000'000 && f.hiScore(Normal, 1) == 1'000'000);
+    // Clear progress, practice, spells.
+    f.stageEntered(1, Hard, 4, false);
+    f.stageEntered(1, Hard, 6, true);
+    CHECK(f.clear(1).noContinue[Hard] == 3 && f.clear(1).cleared[Hard] == 5);
+    f.gameCleared(1, Hard, true);
+    CHECK(f.clear(1).cleared[Hard] == 99 && f.clear(1).noContinue[Hard] == 3);
+    f.stageEntered(1, Hard, 2, false);
+    CHECK(f.clear(1).cleared[Hard] == 99);
+    f.practice(2, 3, Lunatic) = 1'234'560;
+    const std::uint8_t spell[] = {0x96, 0xe9, 0x95, 0x84, 0x81, 0x75, 'X', 0x81, 0x76};
+    f.spellDeclared(5, spell, 200'000);
+    f.spellDeclared(5, spell, 200'000);
+    f.spellCaptured(5, 2);
+    f.spellCaptured(5, 3);
+    CHECK(f.spell(5).attempts == 2 && f.spell(5).captures == 2 && f.spell(5).capturedBy[0] == 3 && f.spell(5).capturedBy[1] == 2);
+    const std::uint8_t other[] = {'Y'};
+    f.spellDeclared(6, other, 1);
+    // Round trip through the file format; saving draws two random numbers.
+    ZunRng rng(1234);
+    const std::uint32_t gens = rng.generations();
+    const std::vector<std::uint8_t> bytes = f.save(rng);
+    CHECK(rng.generations() == gens + 2);
+    CHECK(bytes.size() == 20 + 12 + 2 * 28 + 4 * 24 + 2 * 64 + 20);
+    auto plain = ScoreFile::decode(bytes);
+    CHECK(plain && std::memcmp(plain->data() + 0x14, "TH6K", 4) == 0 && (*plain)[0x08] == 0x14);
+    ScoreFile g;
+    CHECK(g.load(bytes) && g.loadedFromFile());
+    CHECK(g.table(Normal, 0)[0].score == 5'000'000 && !g.table(Normal, 0)[0].placeholder && g.table(Normal, 0)[0].stage == 4);
+    CHECK(std::string(g.table(Normal, 0)[0].name.begin(), g.table(Normal, 0)[0].name.end()) == "ALICE   ");
+    CHECK(g.table(Normal, 0)[2].score == 900'000 && std::memcmp(g.table(Normal, 0)[2].name.data(), "TIE", 3) == 0);  // ties above the default
+    CHECK(g.table(Normal, 0).size() == 12 && g.table(Lunatic, 3).size() == 10);  // the 50,000 entry was not saved
+    CHECK(g.clear(1).cleared[Hard] == 99 && g.clear(1).noContinue[Hard] == 3 && g.practice(2, 3, Lunatic) == 1'234'560);
+    CHECK(g.spell(5).attempts == 2 && g.spell(5).captures == 2 && g.spell(5).name[6] == 'X' && g.spell(6).present &&
+          !g.spell(7).present);
+    // Corruption: a flipped byte fails the checksum; the tables are empty again.
+    std::vector<std::uint8_t> bad = bytes;
+    bad[40] ^= 0x55;
+    CHECK(!g.load(bad) && g.hiScore(Normal, 0) == 1'000'000 && g.clear(1).cleared[Hard] == 1);
+    // Hand-built file: no TH6K marker → empty; a zero-length chunk ends the walk.
+    auto build = [](std::vector<std::uint8_t> body, bool marker) {
+        std::vector<std::uint8_t> b(20, 0);
+        if (marker) {
+            const char th6k[12] = {'T', 'H', '6', 'K', 12, 0, 12, 0, 0x10, 0, 0, 0};
+            b.insert(b.end(), th6k, th6k + 12);
+        }
+        b.insert(b.end(), body.begin(), body.end());
+        b[4] = 0x10;
+        b[8] = 0x14;
+        const auto n = static_cast<std::uint32_t>(b.size());
+        std::memcpy(b.data() + 0x10, &n, 4);
+        b[1] = 0x5a;
+        ScoreFile::encode(b);
+        return b;
+    };
+    std::vector<std::uint8_t> pscr = {'P', 'S', 'C', 'R', 0x14, 0, 0x14, 0, 0x10, 0, 0, 0, 0x40, 0x42, 0x0f, 0, 1, 4, 2, 0};  // Extra practice: skipped
+    std::vector<std::uint8_t> pscr2 = {'P', 'S', 'C', 'R', 0x14, 0, 0x14, 0, 0x10, 0, 0, 0, 0x40, 0x42, 0x0f, 0, 1, 2, 2, 0};
+    std::vector<std::uint8_t> body = pscr;
+    body.insert(body.end(), pscr2.begin(), pscr2.end());
+    CHECK(g.load(build(body, true)) && g.practice(1, 2, Hard) == 1'000'000 && g.practice(1, 2, 0) == 0);
+    CHECK(!g.load(build(body, false)));
+    std::vector<std::uint8_t> zero = {'H', 'S', 'C', 'R', 0, 0, 0, 0, 0x10, 0, 0, 0};
+    zero.insert(zero.end(), pscr2.begin(), pscr2.end());
+    CHECK(g.load(build(zero, true)) && g.practice(1, 2, Hard) == 0);  // the walk stopped at the empty chunk
+}
+
+static void testResultScreen() {
+    const Bytes archive = syntheticStageArchive();
+    Vfs vfs;
+    vfs.mount(open("SYNTH_ST.DAT", archive));
+    TextureLibrary lib;
+    const UiArt ui = registerUiArt(lib);
+    RecordingBackend backend;
+    SoundPlayer sound(&backend);
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "th06_score_test";
+    std::filesystem::create_directories(dir);
+    const std::string path = (dir / "score.dat").string();
+    std::filesystem::remove(path);
+    InputState idle, shot, esc, right;
+    shot.shoot = true;
+    esc.pause = true;
+    right.right = true;
+    auto loseLastLife = [&](Stage& st) {
+        GameState& g = *st.world().state;
+        for (int i = 0; i < 5; ++i) st.tick(idle);
+        g.livesRemaining = 0;
+        g.bombs = 0;
+        g.continuesUsed = 3;  // no credits: straight to the results
+        st.player().state = Player::Alive;
+        st.player().checkCollision(st.world(), st.player().positionCenter, {4.0f, 4.0f, 4.0f});
+        for (int i = 0; i < 40 && !st.inResults() && !st.quitRequested(); ++i) st.tick(idle);
+    };
+    {
+        Stage st(lib, ui, &vfs, &sound);
+        st.setScorePath(path);
+        CHECK(st.load(1, Normal) && !st.practiceRun());
+        CHECK(st.gui().hiScore() == 1'000'000);  // nothing saved yet: the top placeholder
+        GameState& g = *st.world().state;
+        g.score = g.displayedScore = 2'345'670;
+        g.completion = 44'750;
+        loseLastLife(st);
+        CHECK(st.inResults() && !st.quitRequested());
+        const ResultScreen& rs = st.results();
+        st.tick(idle);  // setup: the new entry tops the Normal / Reimu table
+        CHECK(rs.state() == ResultScreen::State::NameEntry && rs.rank() == 0);
+        for (int i = 0; i < 29; ++i) st.tick(shot), st.tick(idle), ++i;  // ignored for 30 frames
+        CHECK(rs.nameCursor() == 0);
+        for (int i = rs.timer(); i < 32; ++i) st.tick(idle);
+        st.tick(shot);  // 'A'
+        st.tick(idle);
+        st.tick(right);  // 'B'
+        st.tick(idle);
+        st.tick(shot);
+        st.tick(idle);
+        CHECK(rs.nameCursor() == 2 && rs.name() == "AB      " && rs.keyCursor() == 1);
+        // Holding a direction repeats 33 frames after the press, then every 8.
+        st.tick(right);
+        CHECK(rs.keyCursor() == 2);
+        for (int i = 0; i < 32; ++i) st.tick(right);
+        CHECK(rs.keyCursor() == 2);
+        st.tick(right);
+        CHECK(rs.keyCursor() == 3);
+        for (int i = 0; i < 8; ++i) st.tick(right);
+        CHECK(rs.keyCursor() == 4);
+        {
+            RecordingSink sink;
+            st.results().draw(st.world(), st.gui(), sink);
+            bool background = false;
+            for (const auto& it : sink.items) background = background || (it.s.w == 640.0f && it.s.h == 480.0f);
+            int grid = 0, rows = 0;
+            for (const auto& q : st.gui().strings()) {
+                grid += q.text.size() == 1;
+                rows += q.text.find("Nanashi") != std::string::npos || q.text.find("AB  ") != std::string::npos;
+            }
+            CHECK(background && grid == 90 && rows == 20);
+            st.gui().drawStrings(st.world(), sink);
+        }
+        st.tick(idle);
+        st.tick(esc);  // done: on to the statistics
+        CHECK(rs.state() == ResultScreen::State::Statistics && rs.name() == "AB      ");
+        for (int i = 0; i < 80; ++i) st.tick(i % 2 ? idle : shot);  // not before 90 frames
+        CHECK(rs.state() == ResultScreen::State::Statistics);
+        {
+            RecordingSink sink;
+            st.results().draw(st.world(), st.gui(), sink);
+            bool score = false, completion = false;
+            for (const auto& q : st.gui().strings()) {
+                score = score || q.text == "  2345670";
+                completion = completion || q.text.starts_with("    50.0");  // 44,750 + the frames played
+            }
+            CHECK(score && completion);
+            st.gui().drawStrings(st.world(), sink);
+        }
+        for (int i = 0; i < 12; ++i) st.tick(idle);
+        st.tick(shot);
+        CHECK(rs.state() == ResultScreen::State::StatisticsFade);
+        for (int i = 0; i < 30; ++i) st.tick(idle);
+        CHECK(rs.state() == ResultScreen::State::Exiting && !st.quitRequested());
+        for (int i = 0; i < 60 && !st.quitRequested(); ++i) st.tick(idle);
+        CHECK(st.quitRequested() && std::filesystem::exists(path));
+    }
+    // The saved file: the named entry, and the HUD's hi-score of the next game.
+    {
+        std::ifstream in(path, std::ios::binary);
+        const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        ScoreFile f;
+        CHECK(f.load(bytes) && f.table(Normal, 0)[0].score == 2'345'670 && f.table(Normal, 0)[0].stage == 1);
+        CHECK(std::string(f.table(Normal, 0)[0].name.begin(), f.table(Normal, 0)[0].name.end()) == "AB      ");
+        Stage st(lib, ui, &vfs, &sound);
+        st.setScorePath(path);
+        CHECK(st.load(1, Normal) && st.gui().hiScore() == 2'345'670);
+        // Below the top 10: no name entry, nothing new saved.
+        st.world().state->score = st.world().state->displayedScore = 50'000;
+        loseLastLife(st);
+        st.tick(idle);
+        CHECK(st.inResults() && st.results().rank() >= 10 && st.results().state() == ResultScreen::State::Statistics);
+    }
+    // Practice (a game started at stage 3): no results, nothing written.
+    {
+        std::filesystem::remove(path);
+        Stage st(lib, ui, &vfs, &sound);
+        st.setScorePath(path);
+        if (st.load(3, Normal)) {
+            CHECK(st.practiceRun() && st.gui().hiScore() == 0);
+            loseLastLife(st);
+            CHECK(st.quitRequested() && !st.inResults() && !std::filesystem::exists(path));
+        }
+    }
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+    CHECK(ResultScreen::completionText(ResultScreen::Run{Easy, 0, 5, true, 0, 0, 0, 0, 0, 89'500}) == "    100.00%");
+    CHECK(ResultScreen::completionText(ResultScreen::Run{Hard, 0, 6, true, 0, 0, 0, 0, 0, 1}) == "      100%");
+    CHECK(ResultScreen::completionText(ResultScreen::Run{Extra, 0, 7, false, 0, 0, 0, 0, 0, 19'800}) == "    50.00%");
+}
+
 int main() {
     struct Test {
         const char* name;
@@ -4519,6 +4816,8 @@ int main() {
         {"death: fade-out, respawn, spawn-in, grace, blink", testDeathSequence},
         {"menus: pause and continue state machines, drawing", testStageMenus},
         {"menus in a stage: freeze, resume, quit, continue", testMenusInStage},
+        {"score.dat: format, tables, clears, practice, spells", testScoreFile},
+        {"result screen: name entry, statistics, saving", testResultScreen},
     };
     for (const Test& t : tests) {
         const int before = g_failures;

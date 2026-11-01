@@ -214,6 +214,7 @@ class EnemyManager {
     std::int32_t timelineTime_ = 0;
     std::int32_t prevTimelineTime_ = -1;
     bool timelineFinished_ = false;
+    bool bossWaiting_ = false;  // the timeline is held until a boss is gone
     SpellcardInfo spellcard_;
     std::uint64_t instructionsExecuted_ = 0;
     std::uint16_t randomItemSpawnIndex_ = 0;  // every third random drop yields an item

@@ -27,7 +27,7 @@ std::unique_ptr<Vfs> mountGameData(int argc, char** argv) {
         }
         std::string err;
         auto file = MappedFile::adoptFd(fd, &err);
-        if (src.format == "WAV") {  // music, a loose file ("bgm/th06_NN.wav")
+        if (src.format == "WAV" || src.format == "SCORE") {  // music ("bgm/th06_NN.wav") and score.dat: loose files
             if (file) vfs->addLooseFile(src.name, std::move(file));
             continue;
         }

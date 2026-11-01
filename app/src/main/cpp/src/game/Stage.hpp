@@ -23,6 +23,8 @@
 #include "game/ScreenShake.hpp"
 #include "game/StageBackground.hpp"
 #include "game/StageMenu.hpp"
+#include "game/ResultScreen.hpp"
+#include "game/ScoreFile.hpp"
 #include "game/ShotData.hpp"
 #include "game/World.hpp"
 #include "gfx/AnmManager.hpp"
@@ -82,6 +84,20 @@ class Stage {
     // -1 when capture.anm is not loaded.
     int captureTexture() const { return captureTexture_; }
     const StageMenus& menus() const { return menus_; }
+    // Where score.dat is kept (the app's own storage). Read at the start of a game (the
+    // player's PC score.dat in the game folder is used if the port has none yet) and
+    // written when the result screen closes. Empty: scores are not saved.
+    void setScorePath(std::string path) { scorePath_ = std::move(path); }
+    const ScoreFile& scores() const { return scores_; }
+    bool inResults() const { return inResults_; }
+    const ResultScreen& results() const { return results_; }
+    ResultScreen& results() { return results_; }
+    // A game started at stage 2..6 is a practice run: nothing is saved.
+    bool practiceRun() const { return practiceRun_; }
+    // Developer hook (desktop --demo-gameover): the game ends now, as after giving up.
+    void endGameForTesting() {
+        if (ready_ && !inResults_) gameOver(false);
+    }
 
     // Diagnostics (tests, HUD, logs)
     const GameState& state() const { return state_; }
@@ -105,6 +121,9 @@ class Stage {
     void renderDiagnostics(SpriteSink& sink);
     void runMenus(const MenuInput& edges);
     void applyContinue();
+    void startRun();
+    void gameOver(bool cleared);
+    void saveScores();
 
     SoundPlayer* sound_;
     const Vfs* vfs_;
@@ -138,6 +157,13 @@ class Stage {
     bool quitRequested_ = false;
     bool captureReady_ = false;
     int captureTexture_ = -1;
+    ScoreFile scores_;
+    std::string scorePath_;
+    int runStartStage_ = 0;  // 0 until the first stage of the game is loaded
+    bool practiceRun_ = false;
+    ResultScreen results_;
+    bool inResults_ = false;
+    TextureLibrary& textures_;
     std::string error_;
     int stageNumber_ = 1;
     int clearTimer_ = 0;

@@ -91,6 +91,11 @@ std::size_t Vfs::mountDirectory(const std::string& dir, bool preferNewClassic) {
                 continue;
             }
             if (ext != ".dat" || item.file_size(ec) < 8) continue;  // magic decides, not size
+            if (base == fs::path(dir) && loosePath(item.path().filename().string()) == "score.dat") {
+                std::string err;  // the PC game's high scores (read until the port has its own)
+                if (auto f = MappedFile::open(item.path().string(), &err)) addLooseFile("score.dat", std::move(f));
+                continue;
+            }
             std::string err;
             auto file = MappedFile::open(item.path().string(), &err);
             if (!file || file->bytes().size() < 4) continue;

@@ -219,7 +219,7 @@ void Gui::startStage(World& world, const Vfs& vfs, int stage, bool firstStage) {
         }
     }
     tallyOn_ = tallyPending_ = false;
-    stageEndRequested_ = false;
+    stageEndRequested_ = gameClearRequested_ = false;
     anm.setAndExecuteScript(stageName_, kScriptStageName);
     renderText(world, stageName_, title, 15, kStageNameRgb, Align::Centre);
     anm.setAndExecuteScript(songName_, kScriptSongName);
@@ -683,7 +683,7 @@ void Gui::msgStep(World& world, const InputState& input) {
             case 11:  // stage end
                 gs.displayedScore = gs.score;
                 if (stage_ <= 4 || (stage_ == 5 && gs.difficulty != Easy)) stageEndRequested_ = true;
-                else world.unported->hit("ending and results screens");
+                else gameClearRequested_ = true;  // stage 6, Easy's stage 5, or the Extra stage
                 msg_.halted = true;
                 advanceTimer = false;
                 stop = true;

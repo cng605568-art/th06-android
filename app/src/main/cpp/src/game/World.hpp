@@ -23,6 +23,7 @@ class MusicPlayer;
 class ItemManager;
 class Player;
 class ScreenShake;
+class ScoreFile;
 struct ShotData;
 
 // Playfield of the original: 384x448 at screen (32, 16) inside 640x480.
@@ -88,6 +89,11 @@ struct GameState {
     std::int8_t timeStop = 0;
     std::uint32_t bombsUsed = 0;
     std::uint32_t deaths = 0;
+    std::uint32_t spellsCaptured = 0;  // this game
+    // Completion counter of the results screen: +1 per frame of play outside dialogue and
+    // boss waits, +1800 per boss life (ECL "set boss life count"). 89,500 = 100 %
+    // (39,600 on Extra).
+    std::int64_t completion = 0;
 
     // Where the playfield is on screen and how big it is. Screen shake moves the origin and
     // shrinks the size; the on-screen tests use the shrunken size for the right/bottom edges.
@@ -182,6 +188,7 @@ struct World {
     Gui* gui = nullptr;
     StageBackground* background = nullptr;
     MusicPlayer* music = nullptr;
+    ScoreFile* scores = nullptr;  // score.dat records (spell history); null in tests
 
     void playSound(int idx) const {
         if (sound && idx >= 0) sound->playSound(idx);

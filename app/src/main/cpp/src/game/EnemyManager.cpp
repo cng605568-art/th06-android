@@ -10,6 +10,7 @@
 #include "game/Gui.hpp"
 #include "game/StageBackground.hpp"
 #include "game/ItemManager.hpp"
+#include "game/ScoreFile.hpp"
 #include "game/Player.hpp"
 
 namespace th06 {
@@ -1140,6 +1141,7 @@ restart_sub_changed:
                 spellcard_.isActive = 1;
                 spellcard_.idx = ecl.argAt<std::int16_t>(at, 2);
                 spellcard_.captureScore = spellcardBaseBonus(spellcard_.idx);
+                if (world.scores) world.scores->spellDeclared(spellcard_.idx, name, static_cast<std::uint32_t>(spellcard_.captureScore));
                 world.bullets->removeAllBullets(world, true);
                 e.resetRank();
                 break;
@@ -1155,6 +1157,8 @@ restart_sub_changed:
                                 spellcard_.captureScore + spellcard_.captureScore * world.state->bossSeconds / 10;
                             if (world.gui) world.gui->showSpellBonus(bonus);
                             world.state->score += static_cast<std::uint32_t>(bonus);
+                            ++world.state->spellsCaptured;
+                            if (world.scores) world.scores->spellCaptured(spellcard_.idx, world.state->shotType);
                         }
                     }
                     spellcard_.isActive = 0;
@@ -1199,7 +1203,10 @@ restart_sub_changed:
             case ecl_op::StdUnpause:
                 if (world.background) world.background->unpause();
                 break;
-            case ecl_op::BossSetLifeCount: world.state->bossLifeCount = ecl.argAt<std::int32_t>(at, 0); break;
+            case ecl_op::BossSetLifeCount:
+                world.state->bossLifeCount = ecl.argAt<std::int32_t>(at, 0);
+                world.state->completion += 1800;  // each boss life counts towards the completion rate
+                break;
             case ecl_op::EnemyCreate: {
                 const auto a = ecl.argAt<EclRawInstrEnemyCreateArgs>(at, 0);
                 const Vec3f pos{readFloat(world, e, a.x), readFloat(world, e, a.y), readFloat(world, e, a.z)};
@@ -1452,6 +1459,7 @@ void EnemyManager::despawn(World& world, Enemy& e) {
 }
 
 void EnemyManager::runTimeline(World& world) {
+    bossWaiting_ = false;
     const EclFile& ecl = *world.ecl;
     GameState& gs = *world.state;
     // Subrank rises at an interval that shortens with lives remaining (paused during dialogue).
@@ -1527,6 +1535,7 @@ void EnemyManager::runTimeline(World& world) {
                     Enemy* b = boss(t.arg0);
                     if (b && b->slotOccupied) {
                         timelineTime_--;
+                        bossWaiting_ = true;
                         return;
                     }
                     break;
@@ -1546,6 +1555,8 @@ void EnemyManager::update(World& world) {
     if (!world.ecl) return;
     GameState& gs = *world.state;
     runTimeline(world);
+    // The completion rate counts frames of play outside dialogue and boss waits.
+    if (!(world.gui && world.gui->msgActive()) && !bossWaiting_) ++gs.completion;
     int index = 0;
     for (Enemy& e : *enemies_) {
         const int enemyIdx = index++;
