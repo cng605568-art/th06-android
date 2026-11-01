@@ -11,6 +11,9 @@
 
 #include "core/Log.hpp"
 #include "platform/DataMount.hpp"
+#if defined(__ANDROID__)
+#include "platform/AndroidStorage.hpp"
+#endif
 
 namespace th06 {
 namespace {
@@ -76,6 +79,7 @@ bool App::init(int argc, char** argv) {
         else if (a == "--demo-touch") devTouch_ = true;
         else if (a == "--stage" && next) startStage_ = std::atoi(argv[++i]);
         else if (a == "--difficulty" && next) startDifficulty_ = std::atoi(argv[++i]);
+        else if (a == "--shot" && next) shotType_ = std::atoi(argv[++i]);
         else if (a == "--size" && next) std::sscanf(argv[++i], "%dx%d", &windowWidth_, &windowHeight_);
     }
 #endif
@@ -118,6 +122,15 @@ bool App::init(int argc, char** argv) {
     }
 
     stage_ = std::make_unique<Stage>(textures_, ui_, vfs_.get(), sound_.get());
+#if defined(__ANDROID__)
+    {
+        const AndroidGameOptions o = readAndroidGameOptions();
+        shotType_ = o.shotType;
+        startStage_ = o.stage;
+        startDifficulty_ = o.stage == 7 ? Extra : o.difficulty;
+    }
+#endif
+    stage_->setShotType(shotType_);
     if (!stage_->load(startStage_, startDifficulty_)) log::warn("Stage not started: {}", stage_->error());
 
     if (!createGpu(&err)) {

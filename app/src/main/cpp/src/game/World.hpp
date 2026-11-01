@@ -55,6 +55,7 @@ struct GameState {
     static constexpr std::int32_t kMaxBombs = 8;
 
     int difficulty = Normal;
+    int shotType = 0;  // 0 Reimu A, 1 Reimu B, 2 Marisa A, 3 Marisa B (character = shotType / 2)
     std::int32_t rank = 16;  // starting rank for every difficulty (DifficultyInfo table)
     std::int32_t minRank = 10, maxRank = 32;  // Normal; see setDifficulty
     std::int32_t subRank = 0;

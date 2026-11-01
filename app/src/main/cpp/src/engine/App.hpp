@@ -47,6 +47,8 @@ class App {
     //   --screenshot F    write the last frame to F (binary PPM)
     //   --stage N         start at stage N (1..7, 7 = Extra)
     //   --difficulty D    0 Easy, 1 Normal, 2 Hard, 3 Lunatic, 4 Extra
+    //   --shot S          0 Reimu A, 1 Reimu B, 2 Marisa A, 3 Marisa B
+    // On Android these three come from the launcher.
     //   --demo-touch      inject finger events (hold D-pad right + Shoot) through the
     //                     touch overlay -> virtual controller -> game input path
     int devFrames_ = 0;
@@ -54,6 +56,7 @@ class App {
     bool devTouch_ = false;
     int startStage_ = 1;
     int startDifficulty_ = 1;
+    int shotType_ = 0;
     int windowWidth_ = 1280;
     int windowHeight_ = 960;
     std::uint64_t frameCount_ = 0;

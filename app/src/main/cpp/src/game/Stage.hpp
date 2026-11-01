@@ -44,6 +44,9 @@ class Stage {
     void tick(const InputState& input);
     void render(SpriteSink& sink, float alpha, const HudInfo& hud);
 
+    // 0 Reimu A, 1 Reimu B, 2 Marisa A, 3 Marisa B. Takes effect on the next load().
+    void setShotType(int shotType) { state_.shotType = shotType < 0 || shotType > 3 ? 0 : shotType; }
+
     bool paused() const { return paused_; }
     void setPaused(bool p) { paused_ = p; }
 
