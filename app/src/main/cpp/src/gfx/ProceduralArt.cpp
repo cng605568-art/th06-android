@@ -121,12 +121,6 @@ float edge(float ax, float ay, float bx, float by, float px, float py) {
     return (bx - ax) * (py - ay) - (by - ay) * (px - ax);
 }
 
-Rgba mix(Rgba a, Rgba b, float t) {
-    t = std::clamp(t, 0.0f, 1.0f);
-    return {a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t,
-            a.a + (b.a - a.a) * t};
-}
-
 Image buildUiAtlas() {
     Image img(kAtlasW, kAtlasH);
     const Rgba white{1, 1, 1, 1}, none{1, 1, 1, 0};
@@ -168,62 +162,6 @@ Image buildUiAtlas() {
     return img;
 }
 
-constexpr std::array<Rgba, 8> kBulletColors = {{
-    {0.90f, 0.16f, 0.24f, 1}, {0.94f, 0.55f, 0.12f, 1}, {0.94f, 0.86f, 0.16f, 1},
-    {0.24f, 0.78f, 0.31f, 1}, {0.16f, 0.78f, 0.86f, 1}, {0.24f, 0.35f, 0.94f, 1},
-    {0.67f, 0.24f, 0.90f, 1}, {0.86f, 0.86f, 0.86f, 1},
-}};
-
-Image buildGameSheet() {
-    Image img(128, 64);
-    const Rgba white{1, 1, 1, 1}, none{0, 0, 0, 0};
-
-    for (int i = 0; i < 8; ++i) {
-        const Rgba col = kBulletColors[i];
-        paint(img, i * 16, 0, 16, 16, [&](float x, float y) {
-            const float d = dist(x, y, 8, 8);
-            if (d > 7.0f) return none;
-            if (d < 3.0f) return white;
-            if (d < 5.5f) return mix(white, col, (d - 3.0f) / 2.5f);
-            const float k = 1.0f - 0.45f * (d - 5.5f) / 1.5f;
-            return Rgba{col.r * k, col.g * k, col.b * k, 1};
-        });
-    }
-
-    // Player stand-in: pale body with red side wings and a red core.
-    paint(img, 0, 16, 32, 48, [&](float x, float y) {
-        const auto inEllipse = [](float px, float py, float cx, float cy, float rx, float ry) {
-            const float dx = (px - cx) / rx, dy = (py - cy) / ry;
-            return dx * dx + dy * dy <= 1.0f;
-        };
-        if (dist(x, y, 16, 22) <= 3.0f) return Rgba{0.85f, 0.1f, 0.2f, 1};
-        if (inEllipse(x, y, 16, 24, 8, 17)) return mix(Rgba{1, 1, 1, 1}, Rgba{0.95f, 0.8f, 0.85f, 1}, (y - 8) / 32);
-        if (inEllipse(x, y, 6, 32, 5.5f, 11) || inEllipse(x, y, 26, 32, 5.5f, 11)) {
-            return Rgba{0.8f, 0.12f, 0.2f, 1};
-        }
-        return none;
-    });
-
-    // Player shot: soft capsule.
-    paint(img, 32, 16, 8, 24, [&](float x, float y) {
-        const float cy = std::clamp(y, 4.0f, 20.0f);
-        const float d = dist(x, y, 4, cy);
-        return d <= 3.5f ? mix(Rgba{1, 1, 1, 0.95f}, Rgba{1, 0.6f, 0.75f, 0.7f}, d / 3.5f) : none;
-    });
-
-    // Spawner: two rings and six dots.
-    paint(img, 64, 16, 48, 48, [&](float x, float y) {
-        const float d = dist(x, y, 24, 24);
-        if ((d <= 22.0f && d >= 20.0f) || (d <= 14.5f && d >= 13.0f)) return white;
-        for (int k = 0; k < 6; ++k) {
-            const float a = static_cast<float>(k) * 1.0471976f;
-            if (dist(x, y, 24 + 17.5f * std::cos(a), 24 + 17.5f * std::sin(a)) <= 2.0f) return white;
-        }
-        return none;
-    });
-    return img;
-}
-
 }  // namespace
 
 SpriteRegion UiArt::glyph(char c) const {
@@ -248,17 +186,6 @@ UiArt registerUiArt(TextureLibrary& lib) {
     ui.white = lib.region(ui.texture, 192, 0, 8, 8);
     ui.chevron = lib.region(ui.texture, 224, 0, 32, 32);
     return ui;
-}
-
-FallbackGameArt registerFallbackGameArt(TextureLibrary& lib) {
-    FallbackGameArt art;
-    const std::uint16_t tex = lib.add("game-sheet (generated)", 128, 64,
-                                      [] { return std::optional<Image>(buildGameSheet()); });
-    for (int i = 0; i < 8; ++i) art.bullets.push_back(lib.region(tex, i * 16.0f, 0, 16, 16));
-    art.player = lib.region(tex, 0, 16, 32, 48);
-    art.shot = lib.region(tex, 32, 16, 8, 24);
-    art.spawner = lib.region(tex, 64, 16, 48, 48);
-    return art;
 }
 
 void drawText(SpriteSink& sink, const UiArt& ui, float x, float y, std::string_view text,
