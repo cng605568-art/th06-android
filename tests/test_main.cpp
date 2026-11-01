@@ -43,6 +43,7 @@
 #include "game/StageMenu.hpp"
 #include "game/ScoreFile.hpp"
 #include "game/ResultScreen.hpp"
+#include "game/Ending.hpp"
 #include "gfx/Anm.hpp"
 #include "gfx/AnmManager.hpp"
 #include "gfx/Image.hpp"
@@ -931,6 +932,61 @@ static Bytes syntheticResultBackground() {
         }
     return bmpFromImage(img);
 }
+// The ending: end00.end (Reimu A's good ending) chaining to staff.end, a 640x960 scrolling
+// picture and one staff ANM.
+static std::string endCmd(char c, std::initializer_list<int> args) {
+    std::string s = std::string("@") + c;
+    for (int a : args) s += std::to_string(a) + std::string(1, '\0');
+    return s + "\r\n";
+}
+static std::string endPath(char c, const std::string& path) { return std::string("@") + c + path + std::string(1, '\0') + "\r\n"; }
+static Bytes toBytes(const std::string& s) { return Bytes(s.begin(), s.end()); }
+static const std::string kEndLine = "\x83\x65\x83\x58\x83\x67";  // three full-width characters
+static Bytes syntheticEnding() {
+    std::string s;
+    s += endCmd('s', {2, 0});
+    s += endCmd('c', {0x0000ff});  // red (0xBBGGRR)
+    s += endPath('b', "data/end/end01.bmp");
+    s += endCmd('v', {480});
+    s += endCmd('V', {480, 120});  // 4 rows a step, up to row 0
+    s += kEndLine + "\r\n";
+    s += "\r\n\r\n";  // blank lines are swallowed
+    s += kEndLine + kEndLine + "\r\n";
+    s += endCmd('w', {300, 60});
+    s += std::string(32, 'A') + std::string(32, 'B') + "\r\n";  // a full 64-byte line
+    s += endCmd('r', {100, 0});
+    s += endCmd('a', {0, 0, 1});
+    s += endCmd('2', {30});
+    s += endPath('F', "data/staff.end");
+    s += "this line is never parsed\r\n";
+    return toBytes(s);
+}
+static Bytes syntheticStaffRoll() {
+    std::string s = "@z the chained file's first line is skipped\r\n";
+    s += kEndLine + "\r\n";
+    s += endCmd('w', {200, 10});
+    s += "@z\r\n";
+    return toBytes(s);
+}
+static Bytes syntheticStaffAnm() {
+    AnmCode c;
+    c.ins(0, anm_op::SetSprite, {0});
+    c.ins(0, anm_op::MovePosition, {fbits(320.0f), fbits(120.0f), fbits(0.0f)});
+    c.ins(1, anm_op::Halt);
+    return buildAnmScripts(256, 256, "data/front.dds", {{0, 32, 0, 16, 16}, {1, 64, 0, 64, 16}}, {{0, c.bytes}});
+}
+static Bytes syntheticEndingPicture() {
+    Image img(640, 960);
+    for (int y = 0; y < 960; ++y)
+        for (int x = 0; x < 640; ++x) {
+            std::uint8_t* p = img.pixel(x, y);
+            p[0] = static_cast<std::uint8_t>(y / 4);
+            p[1] = static_cast<std::uint8_t>(x / 3);
+            p[2] = 120;
+            p[3] = 255;
+        }
+    return bmpFromImage(img);
+}
 static Bytes syntheticCapture() {
     AnmCode c;
     c.ins(0, anm_op::SetSprite, {0});
@@ -958,7 +1014,17 @@ static Bytes syntheticAsciiTexture() {
 static Bytes syntheticText() {
     const std::vector<AnmSprite> sprites = {{0, 0, 0, 256, 16}, {1, 0, 16, 256, 16}, {6, 0, 96, 256, 16}, {7, 0, 112, 256, 16},
                                             {8, 0, 32, 256, 16}, {9, 0, 48, 256, 16}};  // 8, 9: result screen names
+    std::vector<AnmSprite> all = sprites;
+    for (std::uint32_t k = 10; k <= 23; ++k) all.push_back({k, 0, 128.0f + 16.0f * static_cast<float>(k - 10), 256, 16});
     std::vector<AnmScriptBytes> scripts;
+    for (std::uint32_t k = 8; k <= 23; ++k) {  // ending text slots 0..15: eight lines of two halves
+        AnmCode c;
+        c.ins(0, anm_op::SetSprite, {k});
+        c.ins(0, anm_op::AnchorTopLeft);
+        c.ins(0, anm_op::MovePosition, {fbits(48.0f + 256.0f * static_cast<float>((k - 8) % 2)), fbits(300.0f + 20.0f * static_cast<float>((k - 8) / 2)), fbits(0.0f)});
+        c.ins(1, anm_op::Halt);
+        scripts.push_back({k, c.bytes});
+    }
     for (std::uint32_t k : {0u, 1u}) {
         AnmCode c;
         c.ins(0, anm_op::SetSprite, {k});
@@ -975,7 +1041,7 @@ static Bytes syntheticText() {
         c.ins(20, anm_op::Delete);
         scripts.push_back({k, c.bytes});
     }
-    return buildAnmScripts(256, 128, "@", sprites, scripts);
+    return buildAnmScripts(256, 512, "@", all, scripts);
 }
 // front.anm: frame tile, stars, life bar, labels; boss label enters for 10 frames and
 // leaves over 20.
@@ -1119,6 +1185,10 @@ static Bytes syntheticStageArchive() {
                       {"result02.anm", syntheticResultAnm(2)},
                       {"result03.anm", syntheticResultAnm(3)},
                       {"result.jpg", syntheticResultBackground()},
+                      {"end00.end", syntheticEnding()},
+                      {"staff.end", syntheticStaffRoll()},
+                      {"staff01.anm", syntheticStaffAnm()},
+                      {"end01.bmp", syntheticEndingPicture()},
                       {"ascii.dds", syntheticAsciiTexture()},
                       {"text.anm", syntheticText()},
                       {"front.anm", syntheticFront()},
@@ -4848,6 +4918,90 @@ static void testMischief() {
     std::filesystem::remove_all(dir, ec);
 }
 
+// ---- the ending -------------------------------------------------------------------------
+
+static void testEnding() {
+    CHECK(Ending::scriptFor(0, Normal, false) == "data/end00.end" && Ending::scriptFor(1, Hard, false) == "data/end01.end");
+    CHECK(Ending::scriptFor(2, Lunatic, false) == "data/end10.end" && Ending::scriptFor(3, Normal, false) == "data/end11.end");
+    CHECK(Ending::scriptFor(1, Easy, false) == "data/end00b.end" && Ending::scriptFor(3, Hard, true) == "data/end10b.end");
+
+    const Bytes archive = syntheticStageArchive();
+    Vfs vfs;
+    vfs.mount(open("SYNTH_ST.DAT", archive));
+    TextureLibrary lib;
+    const UiArt ui = registerUiArt(lib);
+    RecordingBackend backend;
+    SoundPlayer sound(&backend);
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "th06_ending_test";
+    std::filesystem::create_directories(dir);
+    const std::string path = (dir / "score.dat").string();
+    std::filesystem::remove(path);
+    Stage st(lib, ui, &vfs, &sound);
+    st.setScorePath(path);
+    CHECK(st.load(1, Normal));
+    InputState idle, shot, skip;
+    shot.shoot = true;
+    skip.skip = true;
+    st.tick(idle);
+    st.clearGameForTesting();
+    CHECK(st.inEnding());
+    const Ending& e = st.ending();
+    CHECK(!e.seen());  // first clear: no fast-forward in the story part
+    st.tick(idle);     // the commands, then the first line (long delay 2)
+    CHECK(e.lineCounter() == 1 && e.vmActive(0) && !e.vmActive(1) && e.textColor() == 0xff && e.backgroundRow() == 476.0f);
+    CHECK(e.vm(0).pos.x == 48.0f && e.vm(0).pos.y == 300.0f);
+    st.tick(idle);
+    st.tick(idle);
+    CHECK(e.lineCounter() == 1);
+    st.tick(idle);  // blank lines swallowed: the second line 3 steps later
+    CHECK(e.lineCounter() == 2 && e.vmActive(2) && e.backgroundRow() == 464.0f);
+    {
+        RecordingSink sink;
+        st.render(sink, 1.0f, HudInfo{60.0f, 1});
+        bool picture = false;
+        for (const auto& it : sink.items) {
+            if (lib.name(it.texture).starts_with("ending|")) picture = it.s.w == 640.0f && it.s.h == 480.0f && near(it.s.v0, 464.0f / 960.0f);
+        }
+        CHECK(picture);
+    }
+    // @w300 60: Shoot does nothing for the first 60 steps.
+    for (int i = 0; i < 3; ++i) st.tick(idle);
+    CHECK(e.waitTimer() == 300);
+    for (int i = 0; i < 30; ++i) st.tick(i % 2 ? idle : shot);
+    CHECK(e.waitTimer() == 270);
+    for (int i = 0; i < 31; ++i) st.tick(idle);
+    st.tick(shot);  // the minimum has passed: the wait ends
+    CHECK(e.waitTimer() == 0 && e.lineCounter() == 2);
+    st.tick(idle);  // the 64-byte line: both halves at once, the line end next step
+    CHECK(e.vmActive(4) && e.vmActive(5) && e.lineCounter() == 2);
+    st.tick(idle);
+    CHECK(e.lineCounter() == 3);
+    for (int i = 0; i < 3; ++i) st.tick(idle);  // @r100 0 parsed
+    st.tick(idle);
+    st.tick(shot);  // clears at once: everything wiped, then @a, @2, @F, the staff roll's line
+    CHECK(e.vmActive(0) && !e.vmActive(2) && e.seen());
+    CHECK(e.fadeAlpha() == 255);  // fade in from white starts opaque
+    st.tick(idle);
+    CHECK(e.fadeAlpha() == 255 - 255 / 30);
+    // The staff roll can be fast-forwarded: 5 steps a frame with Ctrl held.
+    const int before = e.steps();
+    st.tick(skip);
+    CHECK(e.steps() == before + 5);
+    for (int i = 0; i < 80 && st.inEnding(); ++i) st.tick(skip);
+    CHECK(!st.inEnding() && st.inResults());  // @z: on to the result screen, cleared
+    st.tick(idle);
+    CHECK(st.scores().clear(0).cleared[Normal] == 99 && st.scores().clear(0).noContinue[Normal] == 99);
+    // A missing ending file goes straight to the results.
+    Stage marisa(lib, ui, &vfs, &sound);
+    marisa.setShotType(2);
+    CHECK(marisa.load(1, Hard));
+    marisa.tick(idle);
+    marisa.clearGameForTesting();
+    CHECK(!marisa.inEnding() && marisa.inResults());
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+}
+
 int main() {
     struct Test {
         const char* name;
@@ -4895,6 +5049,7 @@ int main() {
         {"score.dat: format, tables, clears, practice, spells", testScoreFile},
         {"result screen: name entry, statistics, saving", testResultScreen},
         {"mischief: lives, bombs, invincible, power, continues", testMischief},
+        {"ending: script, text slots, waits, scroll, fades, staff roll", testEnding},
     };
     for (const Test& t : tests) {
         const int before = g_failures;

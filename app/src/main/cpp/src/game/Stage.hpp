@@ -24,6 +24,7 @@
 #include "game/StageBackground.hpp"
 #include "game/StageMenu.hpp"
 #include "game/ResultScreen.hpp"
+#include "game/Ending.hpp"
 #include "game/ScoreFile.hpp"
 #include "game/ShotData.hpp"
 #include "game/World.hpp"
@@ -97,10 +98,16 @@ class Stage {
     // A game started at stage 2..6 is a practice run: nothing is saved (nor with mischief on).
     bool practiceRun() const { return practiceRun_; }
     bool recordable() const { return recordable_; }
-    // Developer hook (desktop --demo-gameover): the game ends now, as after giving up.
+    // Developer hooks: the game ends now, as after giving up (desktop --demo-gameover), or
+    // as when the last stage's boss dialogue ends (the ending, then the results).
     void endGameForTesting() {
-        if (ready_ && !inResults_) gameOver(false);
+        if (ready_ && !inResults_ && !inEnding_) gameOver(false);
     }
+    void clearGameForTesting() {
+        if (ready_ && !inResults_ && !inEnding_) gameCleared();
+    }
+    bool inEnding() const { return inEnding_; }
+    const Ending& ending() const { return ending_; }
 
     // Diagnostics (tests, HUD, logs)
     const GameState& state() const { return state_; }
@@ -126,6 +133,8 @@ class Stage {
     void applyContinue();
     void startRun();
     void gameOver(bool cleared);
+    void gameCleared();
+    void startEnding();
     void saveScores();
 
     SoundPlayer* sound_;
@@ -167,6 +176,9 @@ class Stage {
     bool recordable_ = true;  // a full game without mischief: its scores are saved
     ResultScreen results_;
     bool inResults_ = false;
+    Ending ending_;
+    bool inEnding_ = false;
+    bool endingMusic_ = false;  // the result screen keeps what the ending left playing
     TextureLibrary& textures_;
     std::string error_;
     int stageNumber_ = 1;

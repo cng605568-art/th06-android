@@ -81,6 +81,7 @@ bool App::init(int argc, char** argv) {
         else if (a == "--demo-bomb" && next) devBombFrame_ = std::atoi(argv[++i]);
         else if (a == "--demo-pause" && next) devPauseFrame_ = std::atoi(argv[++i]);
         else if (a == "--demo-gameover" && next) devGameOverFrame_ = std::atoi(argv[++i]);
+        else if (a == "--demo-clear" && next) devClearFrame_ = std::atoi(argv[++i]);
         else if (a == "--stage" && next) startStage_ = std::atoi(argv[++i]);
         else if (a == "--difficulty" && next) startDifficulty_ = std::atoi(argv[++i]);
         else if (a == "--shot" && next) shotType_ = std::atoi(argv[++i]);
@@ -385,6 +386,7 @@ void App::developerFrameHooks() {
     }
     if (devPauseFrame_ >= 0 && frameCount_ == static_cast<std::uint64_t>(devPauseFrame_)) stage_->pressMenu();
     if (devGameOverFrame_ >= 0 && frameCount_ == static_cast<std::uint64_t>(devGameOverFrame_)) stage_->endGameForTesting();
+    if (devClearFrame_ >= 0 && frameCount_ == static_cast<std::uint64_t>(devClearFrame_)) stage_->clearGameForTesting();
     const bool byFrames = devFrames_ > 0 && frameCount_ >= static_cast<std::uint64_t>(devFrames_);
     const bool byTicks = devTicks_ > 0 && tickCount_ >= static_cast<std::uint64_t>(devTicks_);
     if (!byFrames && !byTicks) return;

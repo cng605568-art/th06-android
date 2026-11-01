@@ -235,7 +235,7 @@ void Gui::startStage(World& world, const Vfs& vfs, int stage, bool firstStage) {
 }
 
 bool Gui::renderText(World& world, AnmVm& element, std::span<const std::uint8_t> sjis, int fontSize,
-                     std::uint32_t rgb, Align align) {
+                     std::uint32_t rgb, Align align, std::uint32_t shadowRgb) {
     const AnmLoadedSprite* s = world.anm->sprite(element);
     if (!s || !text_) return false;
     Image* img = textures_.pixels(s->texture);
@@ -250,6 +250,7 @@ bool Gui::renderText(World& world, AnmVm& element, std::span<const std::uint8_t>
     TextStyle style;
     style.fontSize = fontSize;
     style.rgb = rgb;
+    style.shadow = shadowRgb;
     text_->render(sjis, style, startX, band);
     finishTextBand(band);
     const int top = static_cast<int>(s->startY);

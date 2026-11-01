@@ -151,7 +151,7 @@ class Gui {
     void setHiScore(std::uint32_t v) { hiScore_ = v; }  // from score.dat at the start of a game
     // Renders text into the element's texture band (exposed for tests).
     bool renderText(World& world, AnmVm& element, std::span<const std::uint8_t> sjis, int fontSize,
-                    std::uint32_t rgb, Align align);
+                    std::uint32_t rgb, Align align, std::uint32_t shadowRgb = 0x000000);
 
   private:
     void updateBossHud(World& world);

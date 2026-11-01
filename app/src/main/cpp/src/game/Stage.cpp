@@ -177,6 +177,15 @@ void Stage::tick(const InputState& raw) {
     menuPress_ = false;
     if (music_ && ready_) music_->tick();
     if (!ready_ || quitRequested_) return;
+    if (inEnding_) {
+        if (ending_.update(world_, gui_, in)) {
+            inEnding_ = false;
+            endingMusic_ = true;
+            gameOver(true);
+        }
+        if (sound_) sound_->flush();
+        return;
+    }
     if (inResults_) {
         if (results_.update(world_, gui_, in)) {
             saveScores();
@@ -190,7 +199,7 @@ void Stage::tick(const InputState& raw) {
     if (menus_.frozen() || state_.continueMenu) runMenus(edges);
     else gui_.updatePopups();
     // Game over: the stage is gone (the result screen has taken the enemy art's slots).
-    if (quitRequested_ || inResults_) return;
+    if (quitRequested_ || inResults_ || inEnding_) return;
     // The game manager: the pause check, then the freeze.
     if (!menus_.frozen() && !state_.continueMenu && edges.menu) menus_.openPause();
     if (menus_.frozen()) return;
@@ -215,13 +224,7 @@ void Stage::tick(const InputState& raw) {
     // is gone.
     if (gui_.ready() && gui_.hasDialogue()) {
         if (gui_.takeStageEndRequest() && stageNumber_ < 7) load(stageNumber_ + 1, state_.difficulty);
-        else if (gui_.takeGameClearRequest()) {  // the last stage's end: the ending, then the results
-            if (state_.difficulty != Extra && recordable_) {
-                scores_.gameCleared(state_.shotType, state_.difficulty, state_.continuesUsed > 0);
-                unported_.hit("ending and staff roll");
-            }
-            gameOver(true);
-        }
+        else if (gui_.takeGameClearRequest()) gameCleared();  // the last stage's end
     } else if (enemies_->timelineFinished() && enemies_->activeCount() == 0) {
         if (++clearTimer_ >= kClearDelay && stageNumber_ < 6) {
             state_.score += stageClearBonus(state_, stageNumber_);
@@ -279,6 +282,40 @@ void Stage::startRun() {
     gui_.setHiScore(hi);
 }
 
+// The last stage is over (stage 6, Easy's stage 5, or Extra): a practice run ends, Extra
+// goes straight to the results, the main game to its ending first.
+void Stage::gameCleared() {
+    state_.displayedScore = state_.score;
+    if (practiceRun_ || state_.difficulty == Extra) {
+        gameOver(true);
+        return;
+    }
+    startEnding();
+}
+
+void Stage::startEnding() {
+    if (music_) music_->stop();  // the ending starts silent
+    const bool continued = state_.continuesUsed > 0;
+    const int d = std::clamp(state_.difficulty, 0, 3);
+    const ScoreFile::Clear& c = scores_.clear(state_.shotType);
+    Ending::Setup setup;
+    setup.shotType = state_.shotType;
+    setup.difficulty = state_.difficulty;
+    setup.continued = continued;
+    // Seen before: fast-forward is allowed from the start (the original only looks at the
+    // record matching how this clear was made).
+    setup.seen = (continued ? c.cleared[static_cast<std::size_t>(d)] : c.noContinue[static_cast<std::size_t>(d)]) ==
+                 ScoreFile::kStageCleared;
+    if (recordable_) scores_.gameCleared(state_.shotType, state_.difficulty, continued);
+    if (!vfs_ || !ending_.start(world_, *vfs_, textures_, gui_, setup)) {
+        unported_.hit("ending (the ED archive's end files are missing)");
+        gameOver(true);
+        return;
+    }
+    inEnding_ = true;
+    clearInput_ = true;
+}
+
 // The game ended: a full game goes to the result screen (name entry, statistics), a
 // practice run straight back to the title (the launcher).
 void Stage::gameOver(bool cleared) {
@@ -288,7 +325,7 @@ void Stage::gameOver(bool cleared) {
         quitRequested_ = true;
         return;
     }
-    if (music_) music_->stop();
+    if (music_ && !endingMusic_) music_->stop();
     ResultScreen::Run run;
     run.difficulty = state_.difficulty;
     run.shotType = state_.shotType;
@@ -342,6 +379,10 @@ void Stage::applyContinue() {
 
 void Stage::render(SpriteSink& s, float alpha, const HudInfo& hud) {
     anm_.beginFrame();
+    if (inEnding_) {
+        ending_.draw(world_, s, ui_.white);
+        return;
+    }
     if (inResults_) {
         results_.draw(world_, gui_, s);
         gui_.drawStrings(world_, s);
