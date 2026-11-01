@@ -32,6 +32,7 @@ struct AnmSprite {
 // exactly as the original engine offsets the script's sprite by the bullet's colour.
 struct AnmScript {
     std::uint32_t id = 0;
+    std::uint32_t offset = 0;       // byte offset of the first instruction in the file
     std::int32_t firstSprite = -1;  // -1: the script never sets a sprite
 };
 

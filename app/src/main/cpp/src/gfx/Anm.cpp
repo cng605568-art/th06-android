@@ -102,7 +102,8 @@ std::optional<AnmFile> parseAnm(std::span<const std::uint8_t> b, std::string* er
     for (std::int32_t i = 0; i < numScripts; ++i) {
         AnmScript script;
         script.id = u32At(b, scriptsAt + 8u * i);
-        script.firstSprite = firstSpriteOfScript(b, u32At(b, scriptsAt + 8u * i + 4));
+        script.offset = u32At(b, scriptsAt + 8u * i + 4);
+        script.firstSprite = firstSpriteOfScript(b, script.offset);
         anm.scripts.push_back(script);
     }
     return anm;
