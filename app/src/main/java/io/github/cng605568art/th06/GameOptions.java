@@ -77,5 +77,17 @@ final class GameOptions {
         };
     }
 
+    // Display (read by the engine as getDisplayOptions()).
+    static final String[] LAYOUTS = {"Landscape (sideways)", "Portrait (upright; playfield fills the width)"};
+    static final String[] SCALINGS = {"Smooth", "Sharp pixels", "Pixel-perfect (whole multiples)"};
+
+    /** {portrait, scaling (0 smooth, 1 sharp, 2 pixel-perfect), scanlines}. */
+    static int[] display(Context ctx) {
+        return new int[] {
+            controlChoice(ctx, "layout", 0) == 1 ? 1 : 0, clamp(controlChoice(ctx, "scaling", 0), 0, 2),
+            controlFlag(ctx, "scanlines", false) ? 1 : 0,
+        };
+    }
+
     private static int clamp(int v, int lo, int hi) { return Math.max(lo, Math.min(hi, v)); }
 }

@@ -1,6 +1,7 @@
 package io.github.cng605568art.th06;
 
 import android.content.Context;
+import android.content.pm.ActivityInfo;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
@@ -36,6 +37,9 @@ public class GameActivity extends SDLActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Upright or sideways, as chosen in the launcher (before the window exists).
+        setRequestedOrientation(GameOptions.display(this)[0] != 0 ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                : ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         super.onCreate(savedInstanceState);
         requestSixtyHertz();
     }
@@ -144,6 +148,13 @@ public class GameActivity extends SDLActivity {
     }
 
     /** Launcher choices: {shot type 0..3, difficulty 0..3, stage 1..7 (7 = Extra)}. */
+    /** The launcher's display settings: {portrait, scaling, scanlines}. */
+    public static int[] getDisplayOptions() {
+        Context ctx = SDL.getContext();
+        if (ctx == null) return new int[] {0, 0, 0};
+        return GameOptions.display(ctx);
+    }
+
     /** The launcher's touch-control settings, see GameOptions.controls(). */
     public static int[] getControlOptions() {
         Context ctx = SDL.getContext();

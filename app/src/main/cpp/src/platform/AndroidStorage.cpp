@@ -158,6 +158,24 @@ ControlOptions readAndroidControlOptions() {
     return out;
 }
 
+DisplayOptions readAndroidDisplayOptions() {
+    DisplayOptions out;
+    ActivityClass a;
+    const jmethodID mid = a.method("getDisplayOptions", "()[I");
+    if (!mid) return out;
+    auto array = static_cast<jintArray>(a.env->CallStaticObjectMethod(a.cls, mid));
+    if (a.clearException() || !array) return out;
+    if (a.env->GetArrayLength(array) >= 3) {
+        jint v[3] = {};
+        a.env->GetIntArrayRegion(array, 0, 3, v);
+        out.portrait = v[0] != 0;
+        out.scaling = v[1] < 0 || v[1] > 2 ? 0 : v[1];
+        out.scanlines = v[2] != 0;
+    }
+    a.env->DeleteLocalRef(array);
+    return out;
+}
+
 void androidVibrate(int milliseconds) {
     ActivityClass a;
     const jmethodID mid = a.method("vibrate", "(I)V");

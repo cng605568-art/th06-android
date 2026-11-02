@@ -43,7 +43,18 @@ int App::run(int argc, char** argv) {
 }
 
 bool App::init(int argc, char** argv) {
-    SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
+#if defined(__ANDROID__)
+    display_ = readAndroidDisplayOptions();
+#else
+    for (int i = 1; i < argc; ++i) {
+        const std::string a = argv[i] ? argv[i] : "";
+        if (a == "--portrait") display_.portrait = true;
+        else if (a == "--sharp") display_.scaling = DisplayOptions::Sharp;
+        else if (a == "--pixel") display_.scaling = DisplayOptions::PixelPerfect;
+        else if (a == "--scanlines") display_.scanlines = true;
+    }
+#endif
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, display_.portrait ? "Portrait PortraitUpsideDown" : "LandscapeLeft LandscapeRight");
     SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
     SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
     SDL_SetHint(SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1");
@@ -232,15 +243,49 @@ void App::shutdown() {
 void App::relayout() {
     SDL_GL_GetDrawableSize(window_, &drawWidth_, &drawHeight_);
     if (drawWidth_ <= 0 || drawHeight_ <= 0) return;
-    const float scale = std::min(static_cast<float>(drawWidth_) / kVirtualWidth,
-                                 static_cast<float>(drawHeight_) / kVirtualHeight);
+    const float w = static_cast<float>(drawWidth_), h = static_cast<float>(drawHeight_);
+    auto snap = [&](float scale) {  // pixel-perfect: whole multiples once there is room
+        return display_.scaling == DisplayOptions::PixelPerfect && scale >= 1.0f ? std::floor(scale) : scale;
+    };
+    // The whole 640x480 picture (landscape, and every screen but the playfield in portrait).
+    const bool upright = h > w;
+    const float scale = snap(std::min(w / kVirtualWidth, h / kVirtualHeight));
     gameW_ = kVirtualWidth * scale;
     gameH_ = kVirtualHeight * scale;
-    gameX_ = std::floor((static_cast<float>(drawWidth_) - gameW_) * 0.5f);
-    gameY_ = std::floor((static_cast<float>(drawHeight_) - gameH_) * 0.5f);
-    touch_.layout(drawWidth_, drawHeight_, gameX_, gameY_, gameW_, gameH_);
-    log::info("Screen {}x{}, game area {:.0f}x{:.0f} at ({:.0f},{:.0f})", drawWidth_, drawHeight_,
-              gameW_, gameH_, gameX_, gameY_);
+    gameX_ = std::floor((w - gameW_) * 0.5f);
+    gameY_ = std::floor(upright ? h * 0.06f : (h - gameH_) * 0.5f);
+    // Portrait play: the 384x448 playfield across the width (a strip kept clear at the top for
+    // the camera cut-out), the panel's score rows (224x224 from its top) under its left half.
+    const float top = std::floor(h * 0.035f);
+    const float ps = snap(std::min(w / kGameRegionWidth, (h * 0.62f) / kGameRegionHeight));
+    playW_ = kGameRegionWidth * ps;
+    playH_ = kGameRegionHeight * ps;
+    playX_ = std::floor((w - playW_) * 0.5f);
+    playY_ = top;
+    const float below = h - (playY_ + playH_);
+    const float panelScale = std::max(0.5f, std::min(ps * 0.75f, below * 0.45f / 224.0f));
+    panelW_ = panelH_ = 224.0f * panelScale;
+    panelX_ = playX_ + std::floor(w * 0.02f);
+    panelY_ = playY_ + playH_ + std::floor(below * 0.03f);
+    lastPlayView_ = playView();
+    layoutTouch();
+    log::info("Screen {}x{}, game area {:.0f}x{:.0f} at ({:.0f},{:.0f}){}", drawWidth_, drawHeight_, gameW_, gameH_, gameX_,
+              gameY_, display_.portrait ? " (portrait layout)" : "");
+}
+
+bool App::playView() const {
+    if (!display_.portrait || drawHeight_ <= drawWidth_ || !stage_) return false;
+    return stage_->ready() && !stage_->inMenus() && !stage_->inResults() && !stage_->inEnding();
+}
+
+// The touch controls follow the picture: around the playfield in the portrait play view (with
+// the drag scaled to playfield pixels), around the whole picture otherwise.
+void App::layoutTouch() {
+    if (lastPlayView_) {
+        touch_.layout(drawWidth_, drawHeight_, playX_, playY_, playW_, playH_, kGameRegionWidth / playW_);
+    } else {
+        touch_.layout(drawWidth_, drawHeight_, gameX_, gameY_, gameW_, gameH_);
+    }
 }
 
 void App::handleEvent(const SDL_Event& e) {
@@ -526,6 +571,29 @@ bool App::capturePlayfield() {
     return ok;
 }
 
+// Draws part of the 640x480 game picture (sx..: picture pixels) at dx.. on the screen.
+void App::blitRegion(float sx, float sy, float sw, float sh, float dx, float dy, float dw, float dh) {
+    SpriteInstance blit;
+    blit.x = dx + dw * 0.5f;
+    blit.y = dy + dh * 0.5f;
+    blit.w = dw;
+    blit.h = dh;
+    blit.u0 = sx / kVirtualWidth;
+    blit.u1 = (sx + sw) / kVirtualWidth;
+    blit.v0 = 1.0f - sy / kVirtualHeight;  // GL framebuffers are stored bottom-up
+    blit.v1 = 1.0f - (sy + sh) / kVirtualHeight;
+    batch_.drawTexture(target_.texture(), Blend::Alpha, blit);
+}
+
+// A soft CRT look: the lower part of every picture row darkened.
+void App::drawScanlines(float x, float y, float w, float h, int rows) {
+    const float row = h / static_cast<float>(rows);
+    if (row < 1.5f) return;  // too small to show
+    for (int r = 0; r < rows; ++r) {
+        batch_.fillRect(ui_.white, x, y + row * (static_cast<float>(r) + 0.55f), w, row * 0.45f, rgba(0, 0, 0, 70));
+    }
+}
+
 void App::renderFrame(float alpha) {
     // 1) The game at its native 640x480.
     target_.bind();
@@ -537,22 +605,33 @@ void App::renderFrame(float alpha) {
     stage_->render(batch_, alpha, HudInfo{fps_, lastDrawCalls_});
     batch_.end();
 
-    // 2) Letterboxed onto the screen, then the touch controls at full resolution.
+    // 2) Onto the screen (letterboxed, or the portrait play view), sharp or smooth, with the
+    //    optional scanlines, then the touch controls at full resolution.
+    const bool play = playView();
+    if (play != lastPlayView_) {
+        lastPlayView_ = play;
+        layoutTouch();
+    }
     RenderTarget::bindScreen();
     glViewport(0, 0, drawWidth_, drawHeight_);
     glClearColor(0.02f, 0.02f, 0.03f, 1);
     glClear(GL_COLOR_BUFFER_BIT);
+    const GLint filter = display_.scaling == DisplayOptions::Smooth ? GL_LINEAR : GL_NEAREST;
+    glBindTexture(GL_TEXTURE_2D, target_.texture());
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
     batch_.begin(static_cast<float>(drawWidth_), static_cast<float>(drawHeight_), &gpu_);
-    SpriteInstance blit;
-    blit.x = gameX_ + gameW_ * 0.5f;
-    blit.y = gameY_ + gameH_ * 0.5f;
-    blit.w = gameW_;
-    blit.h = gameH_;
-    blit.u0 = 0;
-    blit.v0 = 1;  // GL framebuffers are stored bottom-up
-    blit.u1 = 1;
-    blit.v1 = 0;
-    batch_.drawTexture(target_.texture(), Blend::Alpha, blit);
+    if (play) {
+        blitRegion(kGameRegionX, kGameRegionY, kGameRegionWidth, kGameRegionHeight, playX_, playY_, playW_, playH_);
+        blitRegion(kGameRegionX + kGameRegionWidth, kGameRegionY, 224.0f, 224.0f, panelX_, panelY_, panelW_, panelH_);
+        if (display_.scanlines) {
+            drawScanlines(playX_, playY_, playW_, playH_, static_cast<int>(kGameRegionHeight));
+            drawScanlines(panelX_, panelY_, panelW_, panelH_, 224);
+        }
+    } else {
+        blitRegion(0, 0, kVirtualWidth, kVirtualHeight, gameX_, gameY_, gameW_, gameH_);
+        if (display_.scanlines) drawScanlines(gameX_, gameY_, gameW_, gameH_, kVirtualHeight);
+    }
     touch_.draw(batch_, ui_);
     batch_.end();
     lastDrawCalls_ = batch_.takeDrawCalls();

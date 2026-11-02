@@ -11,6 +11,7 @@
 #include "audio/AudioMixer.hpp"
 #include "audio/SoundPlayer.hpp"
 #include "core/FixedTimestep.hpp"
+#include "engine/DisplayOptions.hpp"
 #include "game/Stage.hpp"
 #include "gfx/GpuTextures.hpp"
 #include "gfx/ProceduralArt.hpp"
@@ -43,6 +44,11 @@ class App {
     // to fill it, top row first), for the menus to draw over.
     bool capturePlayfield();
     void renderFrame(float alpha);
+    // Portrait in play: the playfield fills the width and the score panel sits below it.
+    bool playView() const;
+    void layoutTouch();
+    void blitRegion(float sx, float sy, float sw, float sh, float dx, float dy, float dw, float dh);
+    void drawScanlines(float x, float y, float w, float h, int rows);
     void developerFrameHooks();
     void parseDevKeys(const std::string& spec);
     void applyDevKeys(InputState& in);
@@ -73,6 +79,11 @@ class App {
     std::unique_ptr<TextRenderer> text_;  // platform text (null: built-in fallback); outlives stage_
     bool quickStart_ = false;
     ControlOptions controls_;  // the launcher's touch settings (desktop: --dpad, --autofire)
+    DisplayOptions display_;   // the launcher's display settings (desktop: --portrait, --sharp, --pixel, --scanlines)
+    // Portrait play view: the playfield and the panel's score rows on screen.
+    float playX_ = 0, playY_ = 0, playW_ = 0, playH_ = 0;
+    float panelX_ = 0, panelY_ = 0, panelW_ = 0, panelH_ = 0;
+    bool lastPlayView_ = false;
     std::uint32_t lastDeaths_ = 0, lastBombs_ = 0;  // for the vibration on a miss / bomb
     void haptics();
     struct DevKey {
