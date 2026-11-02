@@ -126,6 +126,21 @@
     <string name="help_log_saved">Log disimpan. Lampirkannya pada laporan pepijat anda.</string>
     <string name="help_log_failed">Log tidak dapat disimpan: %1$s</string>
     <string name="footer">Port buatan peminat untuk salinan 東方紅魔郷 ～ the Embodiment of Scarlet Devil (Team Shanghai Alice) anda sendiri. Tiada fail permainan disertakan.\nFon: Yuji Syuku dan Zen Antique (SIL Open Font License 1.1).</string>
+    <string name="gametext_caption">Teks permainan (cerita, kad mantera, muzik)</string>
+    <string name="gametext_same">Sama seperti aplikasi</string>
+    <string name="gametext_original">Teks asal permainan dalam bahasa Jepun.</string>
+    <string name="gametext_not_installed">Muat turun terjemahan daripada Touhou Patch Center (thpatch.net). Hanya fail teks permainan diambil (kecil).</string>
+    <string name="gametext_installed">Dipasang: %1$d fail, dialog untuk %2$d daripada 7 peringkat, dikemas kini %3$s.</string>
+    <string name="gametext_download">Muat turun terjemahan</string>
+    <string name="gametext_update">Semak terjemahan lebih baharu</string>
+    <string name="gametext_remove">Buang terjemahan</string>
+    <string name="gametext_connecting">Menyambung ke thpatch.net…</string>
+    <string name="gametext_downloading">Memuat turun %1$s: fail %2$d daripada %3$d…</string>
+    <string name="gametext_done">Selesai (%1$d fail baharu). Permainan menggunakan terjemahan mulai permulaan seterusnya.</string>
+    <string name="gametext_failed">Tidak dapat dimuat turun: %1$s</string>
+    <string name="gametext_unavailable">Touhou Patch Center belum ada terjemahan teks permainan dalam bahasa ini, jadi ia kekal dalam bahasa Jepun.</string>
+    <string name="gametext_removed">Dibuang. Permainan memaparkan teks asal dalam bahasa Jepun.</string>
+    <string name="gametext_credit">Terjemahan teks permainan: penyumbang Touhou Patch Center (thpatch.net), CC BY-SA 3.0. Gambar dalam permainan tidak diubah.</string>
     <string-array name="shot_types">
         <item>Reimu A (azimat pemburu)</item>
         <item>Reimu B (jarum)</item>

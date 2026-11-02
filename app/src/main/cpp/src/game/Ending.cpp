@@ -6,6 +6,7 @@
 #include "audio/MusicPlayer.hpp"
 #include "core/Log.hpp"
 #include "game/Gui.hpp"
+#include "game/Translation.hpp"
 #include "game/World.hpp"
 #include "gfx/Image.hpp"
 #include "gfx/TextureLibrary.hpp"
@@ -44,6 +45,10 @@ bool Ending::loadScript(std::string_view path) {
         return false;
     }
     script_ = std::move(*bytes);
+    if (translation_) {  // translated text lines, by line number
+        const std::size_t slash = path.find_last_of('/');
+        translation_->patchEnd(script_, slash == std::string_view::npos ? path : path.substr(slash + 1));
+    }
     pc_ = 0;
     longDelay_ = 8;
     wait_ = 0;
@@ -54,6 +59,7 @@ bool Ending::start(World& world, const Vfs& vfs, TextureLibrary& textures, Gui& 
     (void)gui;
     vfs_ = &vfs;
     textures_ = &textures;
+    translation_ = world.translation;
     shotType_ = setup.shotType;
     AnmManager& anm = *world.anm;
     for (int slot : kGuiSlotsToRelease) anm.releaseAnm(slot);
@@ -230,6 +236,21 @@ bool Ending::parse(World& world, Gui& gui, bool held) {
             wait_ = waitMin_ = d;
             ++line_;
             return true;
+        }
+        // A translated line (UTF-8): all of it, across the line's two halves.
+        if (b == kUtf8TextMarker && pending_.empty() && half_ == 0) {
+            std::vector<std::uint8_t> line;
+            while (pc_ < script_.size() && !lineEnd(script_[pc_])) line.push_back(script_[pc_++]);
+            const int j = 2 * line_;
+            if (j + 1 < kVms) {
+                AnmVm& a = vms_[static_cast<std::size_t>(j)];
+                AnmVm& c = vms_[static_cast<std::size_t>(j + 1)];
+                world.anm->setAndExecuteScript(a, kTextScriptFirst + j);
+                world.anm->setAndExecuteScript(c, kTextScriptFirst + j + 1);
+                active_[static_cast<std::size_t>(j)] = active_[static_cast<std::size_t>(j + 1)] = true;
+                gui.renderTextAcross(world, a, c, line, 15, colorRefToRgb(textColor_), 0xd0d0c0u);
+            }
+            continue;
         }
         // Text, one full-width character (2 bytes) at a time.
         pending_.push_back(b);

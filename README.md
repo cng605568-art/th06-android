@@ -123,6 +123,21 @@ card at the top; "Phone setting" follows Android's language). All its text lives
 uses the system's CJK fonts; the other languages use the bundled brush and Mincho faces,
 subset to exactly the characters the launcher needs.
 
+**Game text** (same card): the game's own Japanese, or a community translation from the
+[Touhou Patch Center](https://www.thpatch.net/) (English, Simplified or Traditional Chinese,
+Malay when one exists). **Download translation** fetches only that patch's th06 text files
+(and the patches it falls back on) from thpatch's servers into the app's storage, checking
+each file's CRC32; nothing is bundled with the app and nothing is copied into the game
+folder. The engine applies them itself, as thcrap would: dialogue and boss title cards
+(`msgN.dat.jdiff`, thcrap's box-numbering rules, checked line for line against a port of
+thcrap's matcher), endings and the staff roll (`*.end.jdiff`), spell card names in play and
+in the score viewer (`spells.js`), stage titles (`stages.js`), music titles in the "♪"
+caption and the Music Room plus its comments (`themes.js`, `musiccmt.js`) and the bomb names
+(`stringdefs.js`). Translated lines are drawn with a proportional font (condensed Latin, the
+system CJK face) and narrowed to fit the original text sprites. Pictures with text (the
+title menu, HUD labels) stay as in your files. Translations: Touhou Patch Center
+contributors, CC BY-SA 3.0.
+
 ## Launcher look
 
 Shrine red (primary) and sakura pink (accent) on warm paper: a red header with the app's

@@ -127,6 +127,21 @@
     <string name="help_log_saved">Log saved. Attach it to your bug report.</string>
     <string name="help_log_failed">Could not save the log: %1$s</string>
     <string name="footer">A fan-made port for your own copy of 東方紅魔郷 ～ the Embodiment of Scarlet Devil (Team Shanghai Alice). No game files are included.\nFonts: Yuji Syuku and Zen Antique (SIL Open Font License 1.1).</string>
+    <string name="gametext_caption">Game text (story, spell cards, music)</string>
+    <string name="gametext_same">Same as the app</string>
+    <string name="gametext_original">The game\'s own Japanese text.</string>
+    <string name="gametext_not_installed">Download the translation from Touhou Patch Center (thpatch.net). Only the game\'s text files are fetched (small).</string>
+    <string name="gametext_installed">Installed: %1$d files, dialogue for %2$d of 7 stages, updated %3$s.</string>
+    <string name="gametext_download">Download translation</string>
+    <string name="gametext_update">Check for a newer translation</string>
+    <string name="gametext_remove">Remove translation</string>
+    <string name="gametext_connecting">Connecting to thpatch.net…</string>
+    <string name="gametext_downloading">Downloading %1$s: file %2$d of %3$d…</string>
+    <string name="gametext_done">Done (%1$d new files). The game uses the translation from its next start.</string>
+    <string name="gametext_failed">Could not download: %1$s</string>
+    <string name="gametext_unavailable">Touhou Patch Center has no translation of the game\'s text in this language yet, so it stays in Japanese.</string>
+    <string name="gametext_removed">Removed. The game shows its own Japanese text.</string>
+    <string name="gametext_credit">Game text translations: Touhou Patch Center contributors (thpatch.net), CC BY-SA 3.0. Pictures in the game are not changed.</string>
     <string-array name="shot_types">
         <item>Reimu A (homing amulets)</item>
         <item>Reimu B (needles)</item>

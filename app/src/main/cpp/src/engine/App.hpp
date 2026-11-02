@@ -90,7 +90,8 @@ class App {
         std::uint64_t tick;
         std::string key;
     };
-    std::vector<DevKey> devKeys_;  // in order
+    std::vector<DevKey> devKeys_;
+    std::string translation_;  // --translation (desktop)  // in order
     std::size_t devKeyNext_ = 0;
     bool devKeyHeld_ = false;
     int startStage_ = 1;

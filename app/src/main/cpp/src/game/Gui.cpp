@@ -9,6 +9,7 @@
 #include "audio/MusicPlayer.hpp"
 #include "game/EffectManager.hpp"
 #include "game/Resources.hpp"
+#include "game/Translation.hpp"
 #include "io/Vfs.hpp"
 
 namespace th06 {
@@ -208,11 +209,11 @@ void Gui::startStage(World& world, const Vfs& vfs, int stage, bool firstStage) {
             songPaths_[static_cast<std::size_t>(i)].assign(path.begin(), path.end());
         }
     }
-    const std::vector<std::uint8_t>& song = songs_[0];
     // Dialogue scripts: a count, then one offset per script.
     msg_ = Msg{};
     if (auto file = vfs.read(std::format("data/msg{}.dat", stage_))) {
         msg_.file = std::move(*file);
+        if (world.translation) world.translation->patchMsg(msg_.file, stage_);
         const auto count = readLe<std::int32_t>(msg_.file, 0);
         for (std::int32_t i = 0; i < count && 4 + 4 * static_cast<std::size_t>(i + 1) <= msg_.file.size(); ++i) {
             msg_.offsets.push_back(readLe<std::uint32_t>(msg_.file, 4 + 4 * static_cast<std::size_t>(i)));
@@ -221,17 +222,59 @@ void Gui::startStage(World& world, const Vfs& vfs, int stage, bool firstStage) {
     tallyOn_ = tallyPending_ = false;
     stageEndRequested_ = gameClearRequested_ = false;
     anm.setAndExecuteScript(stageName_, kScriptStageName);
+    if (world.translation) {
+        if (auto t = world.translation->stageTitle(stage_)) title = utf8GameText(*t);
+    }
     renderText(world, stageName_, title, 15, kStageNameRgb, Align::Centre);
     anm.setAndExecuteScript(songName_, kScriptSongName);
-    std::vector<std::uint8_t> note(std::begin(kNoteSign), std::end(kNoteSign));
-    note.insert(note.end(), song.begin(), song.end());
-    renderText(world, songName_, note, 16, kStageNameRgb, Align::Right);
+    renderText(world, songName_, songCaption(world, 0), 16, kStageNameRgb, Align::Right);
 
     bonus_ = fullPower_ = spellBonus_ = Slide{};
     popups_ = {};
     smallPopups_ = {};
     nextPopup_ = nextSmallPopup_ = 0;
     strings_.clear();
+}
+
+// The music caption ("♪" and the title) of song t (0 the stage theme, 1 the boss theme).
+std::vector<std::uint8_t> Gui::songCaption(World& world, int t) const {
+    if (world.translation) {
+        if (auto title = world.translation->musicTitle(stage_ * 2 + t)) return utf8GameText(world.translation->musicCaption(*title));
+    }
+    std::vector<std::uint8_t> note(std::begin(kNoteSign), std::end(kNoteSign));
+    if (t >= 0 && t < 4) note.insert(note.end(), songs_[static_cast<std::size_t>(t)].begin(), songs_[static_cast<std::size_t>(t)].end());
+    return note;
+}
+
+bool Gui::renderTextAcross(World& world, AnmVm& left, AnmVm& right, std::span<const std::uint8_t> text, int fontSize,
+                           std::uint32_t rgb, std::uint32_t shadowRgb) {
+    const AnmLoadedSprite* a = world.anm->sprite(left);
+    const AnmLoadedSprite* b = world.anm->sprite(right);
+    if (!a || !b || !text_ || !isUtf8Text(text)) return false;
+    Image* ia = textures_->pixels(a->texture);
+    Image* ib = textures_->pixels(b->texture);
+    if (!ia || !ib) return false;
+    const int wa = std::max(1, static_cast<int>(a->endX - a->startX)), wb = std::max(1, static_cast<int>(b->endX - b->startX));
+    Image band(wa + wb, 16);
+    TextStyle style;
+    style.fontSize = fontSize;
+    style.rgb = rgb;
+    style.shadow = shadowRgb;
+    const std::string_view utf8(reinterpret_cast<const char*>(text.data()) + 1, text.size() - 1);
+    lastTextWidth_ = text_->renderUtf8(utf8, style, 0.0f, static_cast<float>(wa + wb), TextAlign::Left, band);
+    finishTextBand(band);
+    auto copy = [&](Image& img, const AnmLoadedSprite& s, int from, int width) {
+        const int x0 = static_cast<int>(s.startX), top = static_cast<int>(s.startY);
+        for (int y = 0; y < 16; ++y) {
+            if (top + y < 0 || top + y >= img.height) continue;
+            for (int x = 0; x < width && x0 + x < img.width; ++x) std::memcpy(img.pixel(x0 + x, top + y), band.pixel(from + x, y), 4);
+        }
+        textures_->touch(s.texture);
+    };
+    copy(*ia, *a, 0, wa);
+    copy(*ib, *b, wa, wb);
+    left.visible = right.visible = true;
+    return true;
 }
 
 bool Gui::renderText(World& world, AnmVm& element, std::span<const std::uint8_t> sjis, int fontSize,
@@ -241,17 +284,25 @@ bool Gui::renderText(World& world, AnmVm& element, std::span<const std::uint8_t>
     Image* img = textures_->pixels(s->texture);
     if (!img) return false;
     const int w = img->width;
-    const float n = static_cast<float>(sjis.size());
-    float startX = s->startX;
-    if (align == Align::Right) startX += static_cast<float>(w) - n * static_cast<float>(fontSize + 1) / 2.0f;
-    else if (align == Align::Centre) startX += static_cast<float>(w) / 2.0f - n * static_cast<float>(fontSize + 1) / 4.0f;
-    startX = std::floor(startX);
     Image band(w, 16);
     TextStyle style;
     style.fontSize = fontSize;
     style.rgb = rgb;
     style.shadow = shadowRgb;
-    text_->render(sjis, style, startX, band);
+    if (isUtf8Text(sjis)) {  // a translated line: laid out within the sprite's own rectangle
+        const std::string_view utf8(reinterpret_cast<const char*>(sjis.data()) + 1, sjis.size() - 1);
+        const float width = std::max(1.0f, s->endX - s->startX);
+        const TextAlign a = align == Align::Right ? TextAlign::Right : align == Align::Centre ? TextAlign::Centre : TextAlign::Left;
+        lastTextWidth_ = text_->renderUtf8(utf8, style, s->startX, width, a, band);
+    } else {
+        const float n = static_cast<float>(sjis.size());
+        float startX = s->startX;
+        if (align == Align::Right) startX += static_cast<float>(w) - n * static_cast<float>(fontSize + 1) / 2.0f;
+        else if (align == Align::Centre) startX += static_cast<float>(w) / 2.0f - n * static_cast<float>(fontSize + 1) / 4.0f;
+        startX = std::floor(startX);
+        text_->render(sjis, style, startX, band);
+        lastTextWidth_ = n * static_cast<float>(fontSize + 1) / 2.0f;
+    }
     finishTextBand(band);
     const int top = static_cast<int>(s->startY);
     for (int y = 0; y < 16; ++y) {
@@ -290,21 +341,36 @@ void Gui::showBomb(World& world, int shotType) {
     const int t = shotType & 3;
     anm.setActiveSprite(bombPortrait_, t == 0 || t == 3 ? 0x4a1 : 0x4a3);
     anm.setAndExecuteScript(bombName_, kScriptBombName);
-    const auto name = bombNameBytes(t);
-    renderText(world, bombName_, name, 15, kBombNameRgb, Align::Left);
-    bombNameLength_ = static_cast<float>(name.size()) * 7.5f + 16.0f;
+    static constexpr const char* kBombIds[4] = {"th06 Bomb Reimu A", "th06 Bomb Reimu B", "th06 Bomb Marisa A", "th06 Bomb Marisa B"};
+    std::optional<std::string> translated;
+    if (world.translation) translated = world.translation->stringDef(kBombIds[t]);
+    if (translated) {
+        renderText(world, bombName_, utf8GameText(*translated), 15, kBombNameRgb, Align::Left);
+        bombNameLength_ = lastTextWidth_ + 16.0f;
+    } else {
+        const auto name = bombNameBytes(t);
+        renderText(world, bombName_, name, 15, kBombNameRgb, Align::Left);
+        bombNameLength_ = static_cast<float>(name.size()) * 7.5f + 16.0f;
+    }
     // (Sound 14 is played by the bomb itself.)
 }
 
 void Gui::endBombName() { bombName_.pendingInterrupt = 1; }
 
-void Gui::spellStart(World& world, int portrait, std::span<const std::uint8_t> name) {
+void Gui::spellStart(World& world, int portrait, std::span<const std::uint8_t> name, int spellId) {
     world.playSound(kSoundBombName);
     if (!ready_) return;
     AnmManager& anm = *world.anm;
     anm.setAndExecuteScript(spellPortrait_, kScriptSpellPortrait);
     anm.setActiveSprite(spellPortrait_, 0x4a8 + portrait);
     anm.setAndExecuteScript(spellName_, kScriptSpellName);
+    if (world.translation && spellId >= 0) {
+        if (auto t = world.translation->spellName(spellId)) {
+            renderText(world, spellName_, utf8GameText(*t), 15, kSpellNameRgb, Align::Right);
+            spellNameLength_ = lastTextWidth_ + 16.0f;
+            return;
+        }
+    }
     renderText(world, spellName_, name, 15, kSpellNameRgb, Align::Right);
     spellNameLength_ = static_cast<float>(name.size()) * 7.5f + 16.0f;
 }
@@ -655,9 +721,7 @@ void Gui::msgStep(World& world, const InputState& input) {
             case 7: {
                 const auto t = readLe<std::int32_t>(f, a);
                 anm.setAndExecuteScript(songName_, kScriptSongName);
-                std::vector<std::uint8_t> note(std::begin(kNoteSign), std::end(kNoteSign));
-                if (t >= 0 && t < 4) note.insert(note.end(), songs_[static_cast<std::size_t>(t)].begin(), songs_[static_cast<std::size_t>(t)].end());
-                renderText(world, songName_, note, 16, kStageNameRgb, Align::Right);
+                renderText(world, songName_, songCaption(world, t), 16, kStageNameRgb, Align::Right);
                 if (world.music) world.music->play(songPath(t));  // the boss theme
                 break;
             }

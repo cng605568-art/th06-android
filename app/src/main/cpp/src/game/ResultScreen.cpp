@@ -9,6 +9,7 @@
 
 #include "core/Log.hpp"
 #include "game/Gui.hpp"
+#include "game/Translation.hpp"
 #include "game/World.hpp"
 #include "gfx/Image.hpp"
 #include "gfx/TextureLibrary.hpp"
@@ -296,6 +297,11 @@ bool ResultScreen::titleUpdate(World& world, Gui& gui, const Edges& e) {
                         const auto end = std::find(sp.name.begin(), sp.name.end(), std::uint8_t{0});
                         name = std::span(sp.name.data(), static_cast<std::size_t>(end - sp.name.begin()));
                     }
+                    std::vector<std::uint8_t> translated;
+                    if (sp.attempts != 0 && world.translation) {
+                        if (auto t = world.translation->spellName(n)) translated = utf8GameText(*t);
+                    }
+                    if (!translated.empty()) name = translated;
                     gui.renderText(world, texts_[static_cast<std::size_t>(n % 10)], name, 15, 0xffffffu, Gui::Align::Left);
                 }
             }

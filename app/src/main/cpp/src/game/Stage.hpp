@@ -31,6 +31,7 @@
 #include "game/ShotData.hpp"
 #include "game/Replay.hpp"
 #include "game/Title.hpp"
+#include "game/Translation.hpp"
 #include "game/World.hpp"
 #include "gfx/AnmManager.hpp"
 #include "gfx/Image.hpp"
@@ -115,6 +116,13 @@ class Stage {
     bool demoPlaying() const { return demo_; }
     // The recording of the game in play (live games only).
     const Replay* recording() const { return recording_.get(); }
+    // The game's text in another language: translation patch folders, lowest priority first
+    // (empty: the original Japanese). Takes effect for text drawn from now on.
+    void setTranslation(std::vector<std::string> folders) {
+        translation_.setStack(std::move(folders));
+        world_.translation = translation_.active() ? &translation_ : nullptr;
+    }
+    const Translation& translation() const { return translation_; }
     // The game RNG's seed (the original takes the clock at start-up).
     void seedRandom(std::uint16_t seed) { rng_.seed(seed); }
     // The launcher's mischief options (Mischief bits). Set before the first load().
@@ -272,6 +280,7 @@ class Stage {
     int toastTimer_ = 0;
     void renderToast(SpriteSink& sink);
     bool recordable_ = true;  // a full game without mischief: its scores are saved
+    Translation translation_;
     // Replays: the recording of a live game, or the replay being watched.
     std::string replayDir_;
     std::unique_ptr<Replay> recording_;

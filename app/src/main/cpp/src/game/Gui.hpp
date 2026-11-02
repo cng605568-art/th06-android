@@ -98,7 +98,7 @@ class Gui {
     void popup(const Vec3f& fieldPos, std::int32_t value, std::uint32_t argb, bool small = false);
     void showBomb(World& world, int shotType);
     void endBombName();
-    void spellStart(World& world, int portrait, std::span<const std::uint8_t> name);
+    void spellStart(World& world, int portrait, std::span<const std::uint8_t> name, int spellId = -1);
     void spellNameExit();
     void showBonus(std::int32_t total);
     void showFullPower();
@@ -153,6 +153,13 @@ class Gui {
     std::uint32_t hiScore() const { return hiScore_; }
     void setHiScore(std::uint32_t v) { hiScore_ = v; }  // from score.dat at the start of a game
     // Renders text into the element's texture band (exposed for tests).
+    // Draws one line (the game's Shift-JIS, or translated UTF-8 behind kUtf8TextMarker)
+    // into the element's text sprite. lastTextWidth(): the width drawn, in texels.
+    float lastTextWidth() const { return lastTextWidth_; }
+    std::vector<std::uint8_t> songCaption(World& world, int t) const;
+    // A translated line across two text sprites side by side (the ending's half lines).
+    bool renderTextAcross(World& world, AnmVm& left, AnmVm& right, std::span<const std::uint8_t> text, int fontSize,
+                          std::uint32_t rgb, std::uint32_t shadowRgb);
     bool renderText(World& world, AnmVm& element, std::span<const std::uint8_t> sjis, int fontSize,
                     std::uint32_t rgb, Align align, std::uint32_t shadowRgb = 0x000000);
 
@@ -195,6 +202,7 @@ class Gui {
     AnmVm stageName_, songName_, bombPortrait_, bombName_, spellPortrait_, spellName_, bombBar_, spellBar_, loading_;
     bool loadingActive_ = false;
     float bombNameLength_ = 0.0f, spellNameLength_ = 0.0f;
+    float lastTextWidth_ = 0.0f;
 
     BossHud bossState_ = BossHud::Idle;
     std::uint32_t bossOpacity_ = 0;

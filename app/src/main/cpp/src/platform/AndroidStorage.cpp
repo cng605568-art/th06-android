@@ -96,8 +96,46 @@ int openAndroidDataSource(const std::string& uri) {
 
 namespace {
 
+// The band's pixels from Java (ARGB ints); an extra trailing int, if present, is returned.
+bool copyBand(ActivityClass& a, jintArray pixels, Image& band, jint* extra) {
+    const jsize n = a.env->GetArrayLength(pixels);
+    const jsize want = band.width * band.height;
+    if (n != want && n != want + 1) return false;
+    std::vector<jint> argb(static_cast<std::size_t>(n));
+    a.env->GetIntArrayRegion(pixels, 0, n, argb.data());
+    for (jsize i = 0; i < want; ++i) {
+        const auto v = static_cast<std::uint32_t>(argb[static_cast<std::size_t>(i)]);
+        std::uint8_t* p = band.rgba.data() + static_cast<std::size_t>(i) * 4;
+        p[0] = static_cast<std::uint8_t>(v >> 16);
+        p[1] = static_cast<std::uint8_t>(v >> 8);
+        p[2] = static_cast<std::uint8_t>(v);
+        p[3] = static_cast<std::uint8_t>(v >> 24);
+    }
+    if (extra && n == want + 1) *extra = argb.back();
+    return true;
+}
+
 class AndroidTextRenderer final : public TextRenderer {
   public:
+    float renderUtf8(std::string_view utf8, const TextStyle& style, float left, float width, TextAlign align,
+                     Image& band) override {
+        if (utf8.empty() || band.empty()) return 0.0f;
+        ActivityClass a;
+        const jmethodID mid = a.method("renderTextUtf8", "([BIIIFFIII)[I");
+        if (!mid) return 0.0f;
+        jbyteArray bytes = a.env->NewByteArray(static_cast<jsize>(utf8.size()));
+        a.env->SetByteArrayRegion(bytes, 0, static_cast<jsize>(utf8.size()), reinterpret_cast<const jbyte*>(utf8.data()));
+        auto pixels = static_cast<jintArray>(a.env->CallStaticObjectMethod(
+            a.cls, mid, bytes, style.fontSize, static_cast<jint>(style.rgb), static_cast<jint>(style.shadow), left, width,
+            static_cast<jint>(align), band.width, band.height));
+        a.env->DeleteLocalRef(bytes);
+        if (a.clearException() || !pixels) return 0.0f;
+        jint drawn = 0;  // texels x 256
+        const bool ok = copyBand(a, pixels, band, &drawn);
+        a.env->DeleteLocalRef(pixels);
+        return ok ? static_cast<float>(drawn) / 256.0f : 0.0f;
+    }
+
     bool render(std::span<const std::uint8_t> sjis, const TextStyle& style, float startX, Image& band) override {
         if (sjis.empty() || band.empty()) return false;
         ActivityClass a;
@@ -133,6 +171,23 @@ class AndroidTextRenderer final : public TextRenderer {
 }  // namespace
 
 std::unique_ptr<TextRenderer> makeAndroidTextRenderer() { return std::make_unique<AndroidTextRenderer>(); }
+
+std::vector<std::string> readAndroidGameTextStack() {
+    std::vector<std::string> out;
+    ActivityClass a;
+    const jmethodID mid = a.method("getGameTextStack", "()[Ljava/lang/String;");
+    if (!mid) return out;
+    auto array = static_cast<jobjectArray>(a.env->CallStaticObjectMethod(a.cls, mid));
+    if (a.clearException() || !array) return out;
+    const jsize n = a.env->GetArrayLength(array);
+    for (jsize i = 0; i < n; ++i) {
+        auto s = static_cast<jstring>(a.env->GetObjectArrayElement(array, i));
+        out.push_back(toUtf8(a.env, s));
+        if (s) a.env->DeleteLocalRef(s);
+    }
+    a.env->DeleteLocalRef(array);
+    return out;
+}
 
 ControlOptions readAndroidControlOptions() {
     ControlOptions out;

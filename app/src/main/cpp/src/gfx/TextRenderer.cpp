@@ -27,6 +27,29 @@ bool FallbackTextRenderer::render(std::span<const std::uint8_t> sjis, const Text
     return any;
 }
 
+// ASCII in the 5x7 font, 6 texels a character (other characters count as one blank cell).
+float FallbackTextRenderer::renderUtf8(std::string_view utf8, const TextStyle& style, float left, float width, TextAlign align,
+                                       Image& band) {
+    std::string ascii;
+    for (std::size_t i = 0; i < utf8.size(); ++i) {
+        const auto c = static_cast<unsigned char>(utf8[i]);
+        if ((c & 0xC0) == 0x80) continue;  // continuation bytes
+        ascii.push_back(c >= 0x20 && c < 0x7f ? static_cast<char>(c) : ' ');
+    }
+    const float advance = 6.0f;
+    const float full = advance * static_cast<float>(ascii.size());
+    const float drawn = std::min(full, width);
+    float x = align == TextAlign::Right ? left + width - drawn : align == TextAlign::Centre ? left + (width - drawn) / 2.0f : left;
+    const std::size_t fit = static_cast<std::size_t>(drawn / advance);
+    const auto r = static_cast<std::uint8_t>(style.rgb >> 16), g = static_cast<std::uint8_t>(style.rgb >> 8),
+               b = static_cast<std::uint8_t>(style.rgb);
+    const std::string shown = ascii.substr(0, fit);
+    if (shown.find_first_not_of(' ') == std::string::npos) return 0.0f;
+    rasterizeText(band, static_cast<int>(x) + 1, 5, shown, 1, 0, 0, 0);
+    rasterizeText(band, static_cast<int>(x), 4, shown, 1, r, g, b);
+    return drawn;
+}
+
 void finishTextBand(Image& band) {
     for (int y = 0; y < band.height; ++y) {
         const float k = band.height > 1 ? static_cast<float>(y) / static_cast<float>(band.height - 1) : 0.0f;

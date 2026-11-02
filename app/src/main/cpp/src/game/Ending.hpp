@@ -21,6 +21,8 @@
 
 namespace th06 {
 
+class Translation;
+
 class Gui;
 class TextureLibrary;
 class Vfs;
@@ -74,6 +76,7 @@ class Ending {
     TextureLibrary* textures_ = nullptr;
     std::vector<std::uint8_t> script_;
     std::size_t pc_ = 0;
+    const Translation* translation_ = nullptr;
     std::array<AnmVm, kVms> vms_{};
     std::array<bool, kVms> active_{};
     std::vector<std::uint8_t> pending_;  // text bytes since the last render

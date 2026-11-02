@@ -126,6 +126,21 @@
     <string name="help_log_saved">日誌已儲存。請將其附加到你的錯誤回報中。</string>
     <string name="help_log_failed">無法儲存日誌：%1$s</string>
     <string name="footer">供你使用自己擁有的《東方紅魔郷 ～ the Embodiment of Scarlet Devil》（上海愛麗絲幻樂團）遊玩的同人移植版。不包含任何遊戲檔案。\n字型：Yuji Syuku、Zen Antique（SIL Open Font License 1.1）。</string>
+    <string name="gametext_caption">遊戲內文字（劇情、符卡、音樂）</string>
+    <string name="gametext_same">與應用程式相同</string>
+    <string name="gametext_original">遊戲原本的日文文字。</string>
+    <string name="gametext_not_installed">從 Touhou Patch Center（thpatch.net）下載翻譯。只取得遊戲的文字檔（檔案很小）。</string>
+    <string name="gametext_installed">已安裝：%1$d 個檔案，7 個關卡中 %2$d 個關卡的對話，更新於 %3$s。</string>
+    <string name="gametext_download">下載翻譯</string>
+    <string name="gametext_update">檢查翻譯更新</string>
+    <string name="gametext_remove">刪除翻譯</string>
+    <string name="gametext_connecting">正在連線 thpatch.net…</string>
+    <string name="gametext_downloading">正在下載 %1$s：第 %2$d 個，共 %3$d 個…</string>
+    <string name="gametext_done">完成（%1$d 個新檔案）。下次啟動遊戲時開始使用翻譯。</string>
+    <string name="gametext_failed">無法下載：%1$s</string>
+    <string name="gametext_unavailable">Touhou Patch Center 目前還沒有該語言的遊戲文字翻譯，因此維持日文。</string>
+    <string name="gametext_removed">已刪除。遊戲將顯示原本的日文文字。</string>
+    <string name="gametext_credit">遊戲文字翻譯：Touhou Patch Center 貢獻者（thpatch.net），CC BY-SA 3.0。遊戲內的圖片不會改變。</string>
     <string-array name="shot_types">
         <item>靈夢A（追蹤符札）</item>
         <item>靈夢B（封魔針）</item>

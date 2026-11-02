@@ -68,6 +68,11 @@ public class ImportActivity extends Activity {
     private TextView updateStatus;
     private Button updateButton;
     private volatile boolean busy;
+    // Game text (translations)
+    private TextView gameTextStatus;
+    private Button gameTextDownload;
+    private Button gameTextRemove;
+    private volatile boolean gameTextBusy;
 
     @Override
     protected void attachBaseContext(android.content.Context base) {
@@ -339,6 +344,79 @@ public class ImportActivity extends Activity {
             Lang.choose(this, v);
             recreate();  // every text on the page in the new language
         }), ui.matchWrap(8, 0));
+
+        // The game's own text: the original, or a Touhou Patch Center translation.
+        card.addView(ui.caption(getString(R.string.gametext_caption)), LauncherUi.matchWrap());
+        String[] labels = {getString(R.string.gametext_same), "日本語 (Original)", "English", "简体中文", "繁體中文", "Bahasa Melayu"};
+        card.addView(ui.spinner(ui.adapter(labels), GameText.chosenIndex(this), v -> {
+            if (v == GameText.chosenIndex(this)) return;
+            GameText.choose(this, v);
+            refreshGameText(null);
+        }), LauncherUi.matchWrap());
+        gameTextStatus = ui.body("", 14, LauncherUi.INK);
+        gameTextStatus.setPadding(ui.dp(4), ui.dp(10), ui.dp(4), ui.dp(4));
+        card.addView(gameTextStatus, LauncherUi.matchWrap());
+        gameTextDownload = ui.primary(getString(R.string.gametext_download));
+        gameTextDownload.setOnClickListener(v -> downloadGameText());
+        card.addView(gameTextDownload, ui.matchWrap(6, 4));
+        gameTextRemove = ui.secondary(getString(R.string.gametext_remove));
+        gameTextRemove.setOnClickListener(v -> {
+            GameText.remove(this, GameText.effective(this));
+            refreshGameText(getString(R.string.gametext_removed));
+        });
+        card.addView(gameTextRemove, ui.matchWrap(0, 4));
+        TextView credit = ui.caption(getString(R.string.gametext_credit));
+        card.addView(credit, LauncherUi.matchWrap());
+        refreshGameText(null);
+    }
+
+    private void refreshGameText(String message) {
+        if (gameTextStatus == null) return;
+        String code = GameText.effective(this);
+        String state;
+        boolean translatable = GameText.patchFor(code) != null;
+        boolean installed = false;
+        if (!translatable) {
+            state = getString(R.string.gametext_original);
+        } else {
+            GameText.Status st = GameText.status(this, code);
+            installed = st.installed;
+            state = installed
+                    ? getString(R.string.gametext_installed, st.files, st.dialogue,
+                            java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(new java.util.Date(st.updated)))
+                    : getString(R.string.gametext_not_installed);
+        }
+        gameTextStatus.setText(message != null ? message + "\n" + state : state);
+        gameTextDownload.setVisibility(translatable ? View.VISIBLE : View.GONE);
+        gameTextDownload.setText(installed ? R.string.gametext_update : R.string.gametext_download);
+        gameTextRemove.setVisibility(installed ? View.VISIBLE : View.GONE);
+        gameTextDownload.setEnabled(!gameTextBusy);
+        gameTextRemove.setEnabled(!gameTextBusy);
+    }
+
+    private void downloadGameText() {
+        final String code = GameText.effective(this);
+        gameTextBusy = true;
+        refreshGameText(getString(R.string.gametext_connecting));
+        new Thread(() -> {
+            String message;
+            try {
+                int n = GameText.download(this, code, m -> runOnUiThread(() -> {
+                    if (gameTextStatus != null) gameTextStatus.setText(m);
+                }));
+                message = getString(R.string.gametext_done, n);
+            } catch (GameText.NotAvailable e) {
+                message = getString(R.string.gametext_unavailable);
+            } catch (IOException | RuntimeException e) {
+                message = getString(R.string.gametext_failed, e.getMessage());
+            }
+            final String result = message;
+            runOnUiThread(() -> {
+                gameTextBusy = false;
+                if (isFinishing() || isDestroyed()) return;
+                refreshGameText(result);
+            });
+        }, "th06-gametext").start();
     }
 
     // ---- banners ----------------------------------------------------------------------
