@@ -27,13 +27,17 @@ import java.util.Locale;
  * a chosen loop point to the end). Nothing in the game folder is changed.
  */
 final class MusicReplacer {
-    /** The game's 17 songs (bgm/th06_01 .. th06_17), by where they play. */
-    static final String[] TRACKS = {
-        "01  Title screen", "02  Stage 1", "03  Stage 1 boss", "04  Stage 2", "05  Stage 2 boss",
-        "06  Stage 3", "07  Stage 3 boss", "08  Stage 4", "09  Stage 4 boss", "10  Stage 5",
-        "11  Stage 5 boss", "12  Stage 6", "13  Stage 6 boss", "14  Extra stage", "15  Extra boss",
-        "16  Ending", "17  Staff roll",
-    };
+    /** The game's 17 songs (bgm/th06_01 .. th06_17), named by where they play (R.array.track_names). */
+    static final int TRACK_COUNT = 17;
+
+    static String trackName(Context ctx, int track) {
+        return ctx.getResources().getStringArray(R.array.track_names)[track];
+    }
+
+    /** "01  Title screen" */
+    static String trackLabel(Context ctx, int track) {
+        return String.format(Locale.ROOT, "%02d  ", track + 1) + trackName(ctx, track);
+    }
 
     interface Progress {
         void update(String message);
@@ -64,7 +68,7 @@ final class MusicReplacer {
 
     static int replacedCount(Context ctx) {
         int n = 0;
-        for (int t = 0; t < TRACKS.length; ++t) n += isReplaced(ctx, t) ? 1 : 0;
+        for (int t = 0; t < TRACK_COUNT; ++t) n += isReplaced(ctx, t) ? 1 : 0;
         return n;
     }
 
@@ -86,8 +90,7 @@ final class MusicReplacer {
         } catch (IOException ignored) {
             // No loop file: the whole song loops.
         }
-        return String.format(Locale.ROOT, "%s, loops from %s, %.1f MB", time(frames), time(loopStart),
-                w.length() / 1048576.0);
+        return ctx.getString(R.string.music_describe, time(frames), time(loopStart), w.length() / 1048576.0);
     }
 
     private static String time(long frames) {
@@ -108,12 +111,12 @@ final class MusicReplacer {
         File tmp = new File(folder, "replace.tmp");
         try {
             int[] format = decode(ctx, source, raw, progress);
-            progress.update("Converting to WAV (44,100 Hz, stereo)...");
+            progress.update(ctx.getString(R.string.music_converting));
             final long total = raw.length() / (2L * format[1]);
             long frames;
             try (InputStream in = new FileInputStream(raw)) {
                 frames = PcmConverter.convert(in, format[0], format[1], tmp, consumed ->
-                        progress.update(String.format(Locale.ROOT, "Converting... %d%%", total > 0 ? consumed * 100 / total : 0)));
+                        progress.update(ctx.getString(R.string.music_converting_pct, (int) (total > 0 ? consumed * 100 / total : 0))));
             }
             long loopStart = Math.round(Math.max(0, loopStartSeconds) * PcmConverter.RATE);
             if (loopStart >= frames) loopStart = 0;
@@ -144,7 +147,7 @@ final class MusicReplacer {
                     break;
                 }
             }
-            if (format == null) throw new IOException("That file has no audio track");
+            if (format == null) throw new IOException(ctx.getString(R.string.music_err_no_audio));
             String mime = format.getString(MediaFormat.KEY_MIME);
             int rate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE);
             int channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
@@ -175,7 +178,7 @@ final class MusicReplacer {
                                     int percent = (int) Math.min(100, t * 100 / durationUs);
                                     if (percent != lastPercent) {
                                         lastPercent = percent;
-                                        progress.update("Decoding... " + percent + "%");
+                                        progress.update(ctx.getString(R.string.music_decoding_pct, percent));
                                     }
                                 }
                             }
@@ -199,10 +202,10 @@ final class MusicReplacer {
                     }
                 }
             }
-            if (raw.length() == 0) throw new IOException("Nothing could be decoded from that file");
+            if (raw.length() == 0) throw new IOException(ctx.getString(R.string.music_err_nothing));
             return new int[] {rate, channels};
         } catch (IllegalStateException | IllegalArgumentException e) {
-            throw new IOException("This file cannot be decoded: " + e.getMessage(), e);
+            throw new IOException(ctx.getString(R.string.music_err_cannot, e.getMessage()), e);
         } finally {
             if (codec != null) {
                 try {
