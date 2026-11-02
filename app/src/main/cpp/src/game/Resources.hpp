@@ -20,5 +20,8 @@ void rollScore(World& world);
 
 // Bonus awarded when a stage is cleared (stage 1..7).
 std::uint32_t stageClearBonus(const GameState& state, int stage, int startingLivesSetting = 2);
+// A replay entering a stage: the extend counter moves past every threshold the displayed
+// score has already reached (it is not stored in the file).
+void skipPassedExtends(GameState& state);
 
 }  // namespace th06

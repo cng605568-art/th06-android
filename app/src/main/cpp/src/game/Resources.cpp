@@ -53,6 +53,10 @@ void rollScore(World& world) {
     }
 }
 
+void skipPassedExtends(GameState& gs) {
+    while (gs.extendIndex >= 0 && gs.extendIndex < 4 && gs.displayedScore >= kExtendScores[gs.extendIndex]) ++gs.extendIndex;
+}
+
 std::uint32_t stageClearBonus(const GameState& gs, int stage, int startingLivesSetting) {
     std::int64_t bonus = (static_cast<std::int64_t>(stage) * 1000 + static_cast<std::int64_t>(gs.grazes) * 10 +
                           static_cast<std::int64_t>(gs.power) * 100) *

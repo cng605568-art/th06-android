@@ -178,6 +178,9 @@ bool App::init(int argc, char** argv) {
         controls_ = readAndroidControlOptions();
     }
 #endif
+    // The game RNG starts from the clock, as the original's does.
+    stage_->seedRandom(static_cast<std::uint16_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count()));
     stage_->setShotType(shotType_);
     stage_->setMischief(mischief_);
     stage_->setAutoFire(controls_.autoFire);
@@ -187,6 +190,7 @@ bool App::init(int argc, char** argv) {
         stage_->setConfigPath(std::string(pref) + "th06.cfg");
         // The launcher's replaced music: <files>/music/th06_NN.wav (+ .pos loop points).
         if (music_) music_->setOverrideDir(std::string(pref) + "music/");
+        stage_->setReplayDir(std::string(pref) + "replay/");  // th6_01..15.rpy, as the PC game's replay folder
         SDL_free(pref);
     }
     // The game's title screen, unless the launcher asked for a quick start (or the title

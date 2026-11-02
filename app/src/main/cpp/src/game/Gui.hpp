@@ -109,6 +109,9 @@ class Gui {
     // Dialogue. msgRead starts script character * 10 + n (the timeline's "read dialogue").
     void msgRead(World& world, int n);
     bool msgActive() const { return msg_.active; }
+    bool msgSkippable() const { return msg_.skippable; }
+    // The attract demo: " DEMO PLAY" in place of the stage title, no stage or song names.
+    void setDemo(bool on) { demo_ = on; }
     bool msgBlocksTimeline() const { return msg_.active && msg_.resume == 0; }
     bool hasDialogue() const { return !msg_.offsets.empty(); }
     // Set by the dialogue's stage-end opcode; the stage loads the next one and clears it.
@@ -205,6 +208,7 @@ class Gui {
     std::vector<QueuedString> strings_;
     std::uint32_t hiScore_ = 0;
     const Vfs* vfs_ = nullptr;
+    bool demo_ = false;  // the attract demo (see setDemo)
     std::array<std::vector<std::uint8_t>, 4> songs_{};
     std::array<std::string, 4> songPaths_{};
     Msg msg_;

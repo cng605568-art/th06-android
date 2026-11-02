@@ -463,12 +463,16 @@ void Gui::draw(World& world, SpriteSink& sink, const SpriteRegion& white, float 
 
     // Stage elements.
     if (stageName_.visible) {
-        anm.drawWorld(sink, stageName_, gs.playfieldX, gs.playfieldY);
         const std::uint32_t alpha = stageName_.color >> 24;
-        if (stage_ <= 5) queueString(168.0f, 198.0f, std::format("STAGE {}", stage_), withAlpha(0xffff40, alpha));
-        else queueString(136.0f, 198.0f, stage_ == 6 ? "FINAL STAGE" : "EXTRA STAGE", withAlpha(0xffff40, alpha));
+        if (demo_) {  // the attract demo: only the caption, no stage or song name
+            queueString(136.0f, 198.0f, " DEMO PLAY", withAlpha(0xffff40, alpha));
+        } else {
+            anm.drawWorld(sink, stageName_, gs.playfieldX, gs.playfieldY);
+            if (stage_ <= 5) queueString(168.0f, 198.0f, std::format("STAGE {}", stage_), withAlpha(0xffff40, alpha));
+            else queueString(136.0f, 198.0f, stage_ == 6 ? "FINAL STAGE" : "EXTRA STAGE", withAlpha(0xffff40, alpha));
+        }
     }
-    if (songName_.visible) anm.drawWorld(sink, songName_, gs.playfieldX, gs.playfieldY);
+    if (songName_.visible && !demo_) anm.drawWorld(sink, songName_, gs.playfieldX, gs.playfieldY);
     anm.drawScreen(sink, bombPortrait_);
     anm.drawScreen(sink, spellPortrait_);
     drawNameWithBar(world, sink, bombName_, bombBar_, bombNameLength_ * 8.0f / 15.0f - 144.0f, bombNameLength_);

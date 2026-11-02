@@ -57,6 +57,7 @@ add_library(th06_core STATIC
   ${TH06_SRC}/game/ScoreFile.cpp
   ${TH06_SRC}/game/ResultScreen.cpp
   ${TH06_SRC}/game/Ending.cpp
+  ${TH06_SRC}/game/Replay.cpp
   ${TH06_SRC}/game/Title.cpp
   ${TH06_SRC}/game/MusicRoom.cpp
   ${TH06_SRC}/input/DragPad.cpp
