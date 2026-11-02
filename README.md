@@ -105,6 +105,15 @@ app also pauses. A Bluetooth/USB gamepad works too (the touch overlay hides itse
 screen). Advanced: archives placed in `Android/data/io.github.cng605568art.th06/files/gamedata/`
 (e.g. with `adb push`) are also loaded.
 
+## Launcher look
+
+Shrine red (primary) and sakura pink (accent) on warm paper: a red header with the app's
+picture and 東方紅魔郷 in brush script, a big Play button, and white cards for Game files,
+Stage select, Mischief and Replace music. Titles and buttons use **Yuji Syuku** (brush) and
+text uses **Zen Antique** (antique Mincho), both SIL Open Font License 1.1, bundled as
+subsets with their licences in `app/src/main/assets/fonts/`. The app icon is an adaptive
+icon (the picture over shrine red) with round and square fallbacks for older launchers.
+
 ## Layout
 
 ```

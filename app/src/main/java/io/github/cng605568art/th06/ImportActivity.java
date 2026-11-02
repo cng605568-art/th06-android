@@ -3,27 +3,30 @@ package io.github.cng605568art.th06;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.UriPermission;
-import android.graphics.Typeface;
+import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
-import android.view.ViewGroup;
-import android.widget.AdapterView;
+import android.view.Window;
+import android.view.WindowInsets;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
-import android.text.InputType;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.Locale;
-import java.util.function.IntConsumer;
 
 /**
  * Launcher screen. The player picks the folder that holds their own copy of the game
@@ -34,7 +37,10 @@ public class ImportActivity extends Activity {
     private static final int REQUEST_TREE = 6;
     private static final int REQUEST_AUDIO = 7;
 
+    private LauncherUi ui;
     private TextView status;
+    private TextView playHint;
+    private CheckBox quick;
     private Button chooseButton;
     private Button playButton;
     private CheckBox preferNewClassic;
@@ -51,97 +57,188 @@ public class ImportActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        ui = new LauncherUi(this);
+        drawEdgeToEdge();
 
-        int pad = dp(20);
-        LinearLayout column = new LinearLayout(this);
-        column.setOrientation(LinearLayout.VERTICAL);
-        column.setPadding(pad, pad, pad, pad);
-        column.setGravity(Gravity.CENTER_HORIZONTAL);
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout header = buildHeader();
+        page.addView(header, LauncherUi.matchWrap());
 
-        TextView title = new TextView(this);
-        title.setText("TH06 Android Port");
-        title.setTextSize(24);
-        title.setTypeface(Typeface.DEFAULT_BOLD);
-        column.addView(title, wrap());
+        // Play, floating over the header's edge, with a line saying what it will do.
+        playButton = ui.hero("Play");
+        playButton.setOnClickListener(v -> startActivity(new Intent(this, GameActivity.class)));
+        LinearLayout.LayoutParams playLp = LauncherUi.matchWrap();
+        playLp.setMargins(ui.dp(28), -ui.dp(32), ui.dp(28), 0);
+        page.addView(playButton, playLp);
+        playHint = ui.body("", 13, LauncherUi.MUTED);
+        playHint.setGravity(Gravity.CENTER_HORIZONTAL);
+        playHint.setPadding(ui.dp(24), ui.dp(8), ui.dp(24), ui.dp(4));
+        page.addView(playHint, LauncherUi.matchWrap());
 
-        TextView help = new TextView(this);
-        help.setText("Copy your own game folder to the phone (the 2002 original with its "
-                + "紅魔郷**.DAT / KOUMAKYO_**.dat files, or the New Classic data folder with "
-                + "th06**.dat), then choose it below. The files are read in place.");
-        help.setPadding(0, dp(12), 0, dp(12));
-        column.addView(help, wrap());
-
-        chooseButton = new Button(this);
-        chooseButton.setText("Choose game folder");
+        // Game files
+        LinearLayout files = ui.card(page, "Game files",
+                "Copy your own game folder to the phone (the 2002 original with its 紅魔郷**.DAT / "
+                        + "KOUMAKYO_**.dat files, or the New Classic data folder with th06**.dat), then "
+                        + "choose it here. The files are read in place; nothing is copied.");
+        status = ui.statusBox();
+        files.addView(status, ui.matchWrap(12, 12));
+        chooseButton = ui.primary("Choose game folder");
         chooseButton.setOnClickListener(v -> {
             Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
             pick.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
                     | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
             startActivityForResult(pick, REQUEST_TREE);
         });
-        column.addView(chooseButton, wrap());
-
-        preferNewClassic = new CheckBox(this);
-        preferNewClassic.setText("If both versions are found, prefer New Classic assets");
-        preferNewClassic.setChecked(DataSources.preferNewClassic(this));
+        files.addView(chooseButton, ui.matchWrap(2, 4));
+        preferNewClassic = ui.check("If both versions are found, prefer New Classic assets",
+                DataSources.preferNewClassic(this));
         preferNewClassic.setOnCheckedChangeListener(
                 (b, checked) -> DataSources.setPreferNewClassic(this, checked));
-        column.addView(preferNewClassic, wrap());
+        files.addView(preferNewClassic, LauncherUi.matchWrap());
 
-        status = new TextView(this);
-        status.setPadding(0, dp(12), 0, dp(12));
-        status.setTypeface(Typeface.MONOSPACE);
-        column.addView(status, wrap());
-
-        // The game opens at its own title screen (Start, Extra, Practice, Option). Stage select
-        // skips it and starts at any stage chosen here, as practice: the game plays on from
-        // there, and nothing from it (high scores, clear progress, spell cards) is saved.
-        column.addView(label("Stage select"), wrap());
-        CheckBox quick = new CheckBox(this);
-        quick.setText("Start at any stage (skips the title; practice, scores not saved)");
-        quick.setChecked(GameOptions.quickStart(this));
-        column.addView(quick, wrap());
+        // Stage select: skip the title and start at any stage chosen here, as practice. The
+        // game plays on from there, and nothing from it (high scores, clear progress, spell
+        // cards) is saved.
+        LinearLayout select = ui.card(page, "Stage select",
+                "Skip the title screen and start at any stage. Practice only: nothing from these "
+                        + "games is saved.");
+        quick = ui.check("Start at any stage (scores not saved)", GameOptions.quickStart(this));
+        select.addView(quick, ui.matchWrap(6, 0));
         LinearLayout quickOptions = new LinearLayout(this);
         quickOptions.setOrientation(LinearLayout.VERTICAL);
-        quickOptions.addView(label("Shot type"), wrap());
-        quickOptions.addView(choice(GameOptions.SHOT_TYPES, GameOptions.shotType(this),
-                v -> GameOptions.setShotType(this, v)), wrap());
-        quickOptions.addView(label("Difficulty"), wrap());
-        quickOptions.addView(choice(GameOptions.DIFFICULTIES, GameOptions.difficulty(this),
-                v -> GameOptions.setDifficulty(this, v)), wrap());
-        quickOptions.addView(label("Start at (Extra uses its own difficulty)"), wrap());
-        quickOptions.addView(choice(GameOptions.STAGES, GameOptions.stage(this) - 1,
-                v -> GameOptions.setStage(this, v + 1)), wrap());
+        quickOptions.addView(ui.caption("Shot type"), LauncherUi.matchWrap());
+        quickOptions.addView(ui.spinner(ui.adapter(GameOptions.SHOT_TYPES), GameOptions.shotType(this),
+                v -> GameOptions.setShotType(this, v)), LauncherUi.matchWrap());
+        quickOptions.addView(ui.caption("Difficulty"), LauncherUi.matchWrap());
+        quickOptions.addView(ui.spinner(ui.adapter(GameOptions.DIFFICULTIES), GameOptions.difficulty(this),
+                v -> GameOptions.setDifficulty(this, v)), LauncherUi.matchWrap());
+        quickOptions.addView(ui.caption("Start at (Extra uses its own difficulty)"), LauncherUi.matchWrap());
+        quickOptions.addView(ui.spinner(ui.adapter(GameOptions.STAGES), GameOptions.stage(this) - 1, v -> {
+            GameOptions.setStage(this, v + 1);
+            updatePlayHint();
+        }), LauncherUi.matchWrap());
         quickOptions.setVisibility(quick.isChecked() ? View.VISIBLE : View.GONE);
         quick.setOnCheckedChangeListener((b, checked) -> {
             GameOptions.setQuickStart(this, checked);
             quickOptions.setVisibility(checked ? View.VISIBLE : View.GONE);
+            updatePlayHint();
         });
-        column.addView(quickOptions, wrap());
+        select.addView(quickOptions, LauncherUi.matchWrap());
 
-        column.addView(label("Mischief (high scores are not saved while any is on)"), wrap());
+        // Mischief
+        LinearLayout mischiefCard = ui.card(page, "Mischief",
+                "Not in the original game. While any of these is on, scores, clears and spell cards "
+                        + "are not saved.");
         int mischief = GameOptions.mischief(this);
         for (int i = 0; i < GameOptions.MISCHIEF.length; ++i) {
             final int bit = i;
-            CheckBox box = new CheckBox(this);
-            box.setText(GameOptions.MISCHIEF[i]);
-            box.setChecked((mischief & (1 << i)) != 0);
+            CheckBox box = ui.check(GameOptions.MISCHIEF[i], (mischief & (1 << i)) != 0);
             box.setOnCheckedChangeListener((b, checked) -> GameOptions.setMischief(this, bit, checked));
-            column.addView(box, wrap());
+            mischiefCard.addView(box, LauncherUi.matchWrap());
         }
 
-        playButton = new Button(this);
-        playButton.setOnClickListener(v -> startActivity(new Intent(this, GameActivity.class)));
-        column.addView(playButton, wrap());
+        addMusicSection(page);
 
-        addMusicSection(column);
+        TextView footer = ui.body("A fan-made port for your own copy of 東方紅魔郷 ～ the Embodiment of "
+                + "Scarlet Devil (Team Shanghai Alice). No game files are included.\n"
+                + "Fonts: Yuji Syuku and Zen Antique (SIL Open Font License 1.1).", 12, LauncherUi.MUTED);
+        footer.setGravity(Gravity.CENTER_HORIZONTAL);
+        footer.setPadding(ui.dp(28), ui.dp(10), ui.dp(28), ui.dp(8));
+        page.addView(footer, LauncherUi.matchWrap());
 
         ScrollView scroll = new ScrollView(this);
-        scroll.setFitsSystemWindows(true);
-        scroll.addView(column);
+        scroll.setBackgroundColor(LauncherUi.PAPER);
+        scroll.setClipToPadding(false);
+        scroll.addView(page);
         setContentView(scroll);
+        // The header runs under the status bar; the page keeps clear of the system bars.
+        final int headerTop = ui.dp(30), headerBottom = ui.dp(54), side = ui.dp(20);
+        scroll.setOnApplyWindowInsetsListener((v, insets) -> {
+            int top, bottom, left, right;
+            if (Build.VERSION.SDK_INT >= 30) {
+                android.graphics.Insets i = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                top = i.top;
+                bottom = i.bottom;
+                left = i.left;
+                right = i.right;
+            } else {
+                top = insets.getSystemWindowInsetTop();
+                bottom = insets.getSystemWindowInsetBottom();
+                left = insets.getSystemWindowInsetLeft();
+                right = insets.getSystemWindowInsetRight();
+            }
+            header.setPadding(side + left, headerTop + top, side + right, headerBottom);
+            page.setPadding(left, 0, right, bottom + ui.dp(20));
+            return insets;
+        });
 
         refresh();
+    }
+
+    private void drawEdgeToEdge() {
+        Window w = getWindow();
+        w.setStatusBarColor(Color.TRANSPARENT);
+        if (Build.VERSION.SDK_INT >= 30) {
+            w.setDecorFitsSystemWindows(false);
+        } else {
+            w.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+        }
+    }
+
+    /** The red header: the picture in a white ring, the title in brush script. */
+    private LinearLayout buildHeader() {
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.VERTICAL);
+        header.setGravity(Gravity.CENTER_HORIZONTAL);
+        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[] {LauncherUi.RED_DEEP, LauncherUi.RED_DARK, LauncherUi.RED});
+        float r = ui.dp(36);
+        bg.setCornerRadii(new float[] {0, 0, 0, 0, r, r, r, r});
+        header.setBackground(bg);
+
+        FrameLayout ring = new FrameLayout(this);
+        GradientDrawable ringBg = new GradientDrawable();
+        ringBg.setShape(GradientDrawable.OVAL);
+        ringBg.setColor(Color.WHITE);
+        ringBg.setStroke(ui.dp(3), LauncherUi.PINK_SOFT);
+        ring.setBackground(ringBg);
+        ring.setPadding(ui.dp(5), ui.dp(5), ui.dp(5), ui.dp(5));
+        ring.setElevation(ui.dp(10));
+        LauncherUi.clipOval(ring);
+        ImageView art = new ImageView(this);
+        art.setImageResource(R.drawable.launcher_art);
+        art.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        LauncherUi.clipOval(art);
+        ring.addView(art, new FrameLayout.LayoutParams(ui.dp(108), ui.dp(108)));
+        LinearLayout.LayoutParams ringLp = new LinearLayout.LayoutParams(ui.dp(118), ui.dp(118));
+        ringLp.bottomMargin = ui.dp(14);
+        header.addView(ring, ringLp);
+
+        TextView title = ui.title("東方紅魔郷", 44, Color.WHITE);
+        title.setShadowLayer(ui.dp(6), 0, ui.dp(2), 0x80000000);
+        header.addView(title);
+        TextView subtitle = ui.title("the Embodiment of Scarlet Devil", 18, LauncherUi.PINK_SOFT);
+        subtitle.setPadding(0, ui.dp(8), 0, 0);
+        header.addView(subtitle);
+        TextView tag = ui.body("Android port  ·  plays your own 2002 game files", 13, 0xFFFFC2D2);
+        tag.setPadding(0, ui.dp(8), 0, 0);
+        header.addView(tag);
+        return header;
+    }
+
+    private void updatePlayHint() {
+        if (playHint == null) return;
+        if (DataSources.load(this).isEmpty()) {
+            playHint.setText("Choose your game folder first (Game files, below).");
+        } else if (quick != null && quick.isChecked()) {
+            int st = GameOptions.stage(this);
+            playHint.setText((st == 7 ? "Starts at the Extra stage" : "Starts at stage " + st)
+                    + "  ·  practice, nothing is saved");
+        } else {
+            playHint.setText("Opens the game's title screen");
+        }
     }
 
     /**
@@ -149,28 +246,18 @@ public class ImportActivity extends Activity {
      * OGG, FLAC, WAV ...); it is converted to the game's format and played (and looped) in
      * that song's place. The game folder is not touched; "Restore" puts the original back.
      */
-    private void addMusicSection(LinearLayout column) {
-        column.addView(label("Replace music (play your own audio file instead of one of the game's songs)"), wrap());
-        musicTracks = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, trackLabels());
-        musicTracks.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        musicTrack = new Spinner(this);
-        musicTrack.setAdapter(musicTracks);
-        musicTrack.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                showMusicStatus(null);
-            }
-
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) {}
-        });
-        column.addView(musicTrack, wrap());
-        loopFrom = new EditText(this);
-        loopFrom.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-        loopFrom.setHint("Loop from (seconds into your song; empty or 0 = loop the whole song)");
-        column.addView(loopFrom, wrap());
-        musicPick = new Button(this);
-        musicPick.setText("Choose audio file (MP3 ...)");
+    private void addMusicSection(LinearLayout page) {
+        LinearLayout card = ui.card(page, "Replace music",
+                "Play your own audio file (MP3, AAC, OGG, FLAC, WAV …) in place of one of the game's "
+                        + "songs. It is converted to WAV (44,100 Hz, stereo) and loops like the game's music.");
+        card.addView(ui.caption("Song"), LauncherUi.matchWrap());
+        musicTracks = ui.adapter(trackLabels());
+        musicTrack = ui.spinner(musicTracks, 0, position -> showMusicStatus(null));
+        card.addView(musicTrack, LauncherUi.matchWrap());
+        card.addView(ui.caption("Loop from (seconds into your song; empty or 0 = the whole song)"), LauncherUi.matchWrap());
+        loopFrom = ui.field("0", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        card.addView(loopFrom, LauncherUi.matchWrap());
+        musicPick = ui.primary("Choose audio file");
         musicPick.setOnClickListener(v -> {
             Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             pick.addCategory(Intent.CATEGORY_OPENABLE);
@@ -179,18 +266,17 @@ public class ImportActivity extends Activity {
             pick.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             startActivityForResult(pick, REQUEST_AUDIO);
         });
-        column.addView(musicPick, wrap());
-        musicRestore = new Button(this);
-        musicRestore.setText("Restore the game's song");
+        card.addView(musicPick, ui.matchWrap(16, 8));
+        musicRestore = ui.secondary("Restore the game's song");
         musicRestore.setOnClickListener(v -> {
             MusicReplacer.restore(this, musicTrack.getSelectedItemPosition());
             refreshTracks();
             showMusicStatus("Restored: the game's own song plays again.");
         });
-        column.addView(musicRestore, wrap());
-        musicStatus = new TextView(this);
-        musicStatus.setPadding(0, dp(6), 0, dp(12));
-        column.addView(musicStatus, wrap());
+        card.addView(musicRestore, ui.matchWrap(0, 4));
+        musicStatus = ui.body("", 14, LauncherUi.INK);
+        musicStatus.setPadding(ui.dp(4), ui.dp(10), ui.dp(4), 0);
+        card.addView(musicStatus, LauncherUi.matchWrap());
         showMusicStatus(null);
     }
 
@@ -329,7 +415,7 @@ public class ImportActivity extends Activity {
         if (entries.isEmpty()) {
             sb.append("No game data selected yet. Choose the folder of the 2002 game"
                     + " (\u7d05\u9b54\u90f7CM.DAT, \u7d05\u9b54\u90f7ST.DAT ... or KOUMAKYO_*.dat).");
-            playButton.setText("Play (no game data selected)");
+            playButton.setText("Play");
         } else {
             boolean classic = false;
             int tracks = 0;
@@ -369,42 +455,8 @@ public class ImportActivity extends Activity {
             }
             playButton.setText("Play");
         }
-        status.setText(sb.toString());
+        status.setText(sb.toString().trim());
+        updatePlayHint();
     }
 
-    private int dp(int v) {
-        return Math.round(v * getResources().getDisplayMetrics().density);
-    }
-
-    private TextView label(String text) {
-        TextView t = new TextView(this);
-        t.setText(text);
-        t.setPadding(0, dp(10), 0, 0);
-        t.setTypeface(Typeface.DEFAULT_BOLD);
-        return t;
-    }
-
-    private Spinner choice(String[] items, int selected, IntConsumer onSelect) {
-        Spinner spinner = new Spinner(this);
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
-                android.R.layout.simple_spinner_item, items);
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        spinner.setAdapter(adapter);
-        spinner.setSelection(selected);
-        spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                onSelect.accept(position);
-            }
-
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) {}
-        });
-        return spinner;
-    }
-
-    private static LinearLayout.LayoutParams wrap() {
-        return new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT);
-    }
 }

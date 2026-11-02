@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Th06.Launcher" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:colorPrimary">@color/th06_red</item>
+        <item name="android:colorPrimaryDark">@color/th06_red_dark</item>
+        <item name="android:colorAccent">@color/th06_pink</item>
+        <item name="android:colorControlActivated">@color/th06_pink</item>
+        <item name="android:colorControlHighlight">#33FF5C8D</item>
+        <item name="android:textColorPrimary">@color/th06_ink</item>
+        <item name="android:textColorSecondary">@color/th06_muted</item>
+        <item name="android:windowBackground">@color/th06_paper</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@color/th06_paper</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+</resources>
