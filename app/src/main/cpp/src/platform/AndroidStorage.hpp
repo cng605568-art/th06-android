@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "engine/DisplayOptions.hpp"
 #include "input/ControlOptions.hpp"
 
 #include "gfx/TextRenderer.hpp"
@@ -34,6 +35,8 @@ AndroidGameOptions readAndroidGameOptions();
 
 // Calls GameActivity.getControlOptions() (the launcher's touch-control settings).
 ControlOptions readAndroidControlOptions();
+// Calls GameActivity.getDisplayOptions() (portrait, scaling, scanlines).
+DisplayOptions readAndroidDisplayOptions();
 // A short vibration (GameActivity.vibrate).
 void androidVibrate(int milliseconds);
 

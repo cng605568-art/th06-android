@@ -127,6 +127,7 @@ public class ImportActivity extends Activity {
         select.addView(quickOptions, LauncherUi.matchWrap());
 
         addControlsSection(page);
+        addDisplaySection(page);
 
         // Mischief
         LinearLayout mischiefCard = ui.card(page, "Mischief",
@@ -264,6 +265,22 @@ public class ImportActivity extends Activity {
             box.setOnCheckedChangeListener((b, checked) -> GameOptions.setControlFlag(this, key, checked));
             card.addView(box, LauncherUi.matchWrap());
         }
+    }
+
+    /** How the game is shown: sideways or upright, smooth or sharp pixels, scanlines. */
+    private void addDisplaySection(LinearLayout page) {
+        LinearLayout card = ui.card(page, "Display",
+                "Upright play puts the playfield across the whole width with the score below it and "
+                        + "the controls underneath; menus and story screens stay whole.");
+        card.addView(ui.caption("Screen"), LauncherUi.matchWrap());
+        card.addView(ui.spinner(ui.adapter(GameOptions.LAYOUTS), GameOptions.controlChoice(this, "layout", 0),
+                v -> GameOptions.setControlChoice(this, "layout", v)), LauncherUi.matchWrap());
+        card.addView(ui.caption("Scaling"), LauncherUi.matchWrap());
+        card.addView(ui.spinner(ui.adapter(GameOptions.SCALINGS), GameOptions.controlChoice(this, "scaling", 0),
+                v -> GameOptions.setControlChoice(this, "scaling", v)), LauncherUi.matchWrap());
+        CheckBox scan = ui.check("CRT scanlines", GameOptions.controlFlag(this, "scanlines", false));
+        scan.setOnCheckedChangeListener((b, checked) -> GameOptions.setControlFlag(this, "scanlines", checked));
+        card.addView(scan, LauncherUi.matchWrap());
     }
 
     private void updatePlayHint() {

@@ -67,7 +67,7 @@ void VirtualController::setOptions(const ControlOptions& options) {
 }
 
 void VirtualController::relayout() {
-    if (screenW_ > 0) layout(screenW_, screenH_, gameX_, gameY_, gameW_, gameH_);
+    if (screenW_ > 0) layout(screenW_, screenH_, gameX_, gameY_, gameW_, gameH_, gamePerScreen_);
 }
 
 void VirtualController::fillDrag(InputState& in) const {
@@ -79,7 +79,8 @@ void VirtualController::fillDrag(InputState& in) const {
 }
 
 void VirtualController::layout(int screenWidth, int screenHeight, float gameX, float gameY,
-                               float gameW, float gameH) {
+                               float gameW, float gameH, float gamePerScreen) {
+    gamePerScreen_ = gamePerScreen;
     screenW_ = screenWidth;
     screenH_ = screenHeight;
     gameX_ = gameX;
@@ -134,6 +135,7 @@ void VirtualController::layout(int screenWidth, int screenHeight, float gameX, f
         pause.r = unit * 0.045f;
         pause.x = w - pause.r * 1.6f;
         pause.y = pause.r * 1.6f;
+        if (h > w) pause.y = std::min(gameY + gameH + pause.r * 1.8f, h - pause.r * 1.6f);  // upright: under the picture
     }
 
     shoot.button = SDL_CONTROLLER_BUTTON_A;
@@ -159,7 +161,8 @@ void VirtualController::layout(int screenWidth, int screenHeight, float gameX, f
         for (int i = kDpad; i < kPause; ++i) controls_[i].x = w - controls_[i].x;
     }
     // Drag: playfield pixels per screen pixel of travel; menus need a short swipe.
-    pad_.configure(640.0f / std::max(gameW, 1.0f) * options_.sensitivity, unit * 0.045f);
+    const float perScreen = gamePerScreen > 0.0f ? gamePerScreen : 640.0f / std::max(gameW, 1.0f);
+    pad_.configure(perScreen * options_.sensitivity, unit * 0.045f);
 }
 
 VirtualController::Control VirtualController::hitTest(float x, float y, bool buttonsOnly) const {

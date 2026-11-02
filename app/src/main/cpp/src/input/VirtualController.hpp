@@ -38,7 +38,9 @@ class VirtualController {
     SDL_JoystickID joystickId() const;
 
     // gameX..gameH: where the 640x480 picture sits on the screen, in pixels.
-    void layout(int screenWidth, int screenHeight, float gameX, float gameY, float gameW, float gameH);
+    // gamePerScreen: playfield pixels per screen pixel for the drag (0: the 640x480 picture's).
+    void layout(int screenWidth, int screenHeight, float gameX, float gameY, float gameW, float gameH,
+                float gamePerScreen = 0.0f);
     // Consumes finger events; returns true when a touch landed on the controls.
     bool handleEvent(const SDL_Event& event, int screenWidth, int screenHeight);
     void releaseAll();
@@ -81,7 +83,7 @@ class VirtualController {
     DragPad pad_;
     bool focusLatched_ = false, focusWasHeld_ = false;
     int screenW_ = 0, screenH_ = 0;
-    float gameX_ = 0, gameY_ = 0, gameW_ = 640, gameH_ = 480;
+    float gameX_ = 0, gameY_ = 0, gameW_ = 640, gameH_ = 480, gamePerScreen_ = 0.0f;
     std::array<bool, SDL_CONTROLLER_BUTTON_MAX> sent_{};
     std::array<Button, kControlCount> controls_{};  // kDpad entry holds the D-pad circle
     std::array<Finger, 10> fingers_{};
