@@ -119,7 +119,39 @@ bool Stage::load(int stageNumber, int difficulty) {
     }
     world_.ecl = &ecl_;
 
-    state_.setDifficulty(difficulty);
+    // A new run starts from the difficulty's rank; between stages rank, its limits and the
+    // extend counter carry on (only the sub-rank restarts).
+    if (runStartStage_ == 0) state_.setDifficulty(difficulty);
+    else state_.subRank = 0;
+    if (playback_) {  // the replay's state at this stage's start
+        const ReplayStage& b = playback_->stages[static_cast<std::size_t>(s)];
+        if (!b.present) {
+            error_ = "THE REPLAY HAS NO DATA FOR THIS STAGE";
+            return false;
+        }
+        state_.totalPointItems = static_cast<std::uint32_t>(std::max<int>(0, b.pointItems));
+        rng_.seed(b.seed);
+        state_.rank = b.rank;
+        state_.livesRemaining = b.lives;
+        state_.bombs = b.bombs;
+        state_.power = b.power;
+        state_.fullPowerChain = b.powerItemStep;
+        if (s >= 1 && playback_->stages[static_cast<std::size_t>(s - 1)].present) {
+            state_.score = state_.displayedScore = static_cast<std::uint32_t>(playback_->stages[static_cast<std::size_t>(s - 1)].endScore);
+        }
+        skipPassedExtends(state_);
+        cursor_.start(&b);
+    } else if (recording_) {
+        // The previous stage's block closes with the score at its end.
+        stopRecordingStage();
+        for (int p = s - 1; p >= 0; --p) {
+            ReplayStage& prev = recording_->stages[static_cast<std::size_t>(p)];
+            if (!prev.present) continue;
+            prev.endScore = static_cast<std::int32_t>(state_.score);
+            break;
+        }
+    }
+    const std::uint16_t stageSeed = rng_.currentSeed();  // (live: recorded; replay: just restored)
     bullets_ = std::make_unique<BulletManager>();
     world_.bullets = bullets_.get();
     if (!need(bullets_->initializeTemplates(world_, &err), "BULLET TYPES")) return false;
@@ -142,7 +174,7 @@ bool Stage::load(int stageNumber, int difficulty) {
     if (runStartStage_ == 0) startRun();
     gui_.setHiScore(std::max(gui_.hiScore(), state_.displayedScore));
     if (recordable_) scores_.stageEntered(state_.shotType, state_.difficulty, stageNumber_, state_.continuesUsed > 0);
-    if (music_) {  // the stage theme, from its beginning (unless the music is off)
+    if (music_ && !demo_) {  // the stage theme, from its beginning (the demo keeps the title theme)
         music_->setUnported(&unported_);
         music_->play(gui_.songPath(0));
     }
@@ -157,8 +189,31 @@ bool Stage::load(int stageNumber, int difficulty) {
     }
     captureTexture_ = anm_.fileTexture(kAnmFileCapture);
     captureReady_ = false;
+    gui_.setDemo(demo_);
     enemies_->startStage(world_);
     clearTimer_ = 0;
+    // Live play: this stage's block of the recording (the state at its start, then the
+    // buttons as they change).
+    if (!playback_) {
+        if (runStartStage_ == stageNumber_ && !recording_) {  // the run's first stage
+            recording_ = std::make_unique<Replay>();
+            recording_->shotType = state_.shotType;
+            recording_->difficulty = state_.difficulty;
+        }
+        if (recording_) {
+            ReplayStage& b = recording_->stages[static_cast<std::size_t>(s)];
+            b = ReplayStage{};
+            b.present = true;
+            b.seed = stageSeed;
+            b.pointItems = static_cast<std::int16_t>(std::min<std::uint32_t>(state_.totalPointItems, 32767));
+            b.power = static_cast<std::uint8_t>(std::clamp(state_.power, 0, 255));
+            b.lives = static_cast<std::int8_t>(state_.livesRemaining);
+            b.bombs = static_cast<std::int8_t>(state_.bombs);
+            b.rank = static_cast<std::uint8_t>(std::clamp(state_.rank, 0, 255));
+            b.powerItemStep = static_cast<std::int8_t>(state_.fullPowerChain);
+            recorder_.start(&b);
+        }
+    }
     ready_ = true;
     error_.clear();
     log::info("Stage {} ({}) loaded", stageNumber_, kDifficultyNames[state_.difficulty]);
@@ -166,6 +221,17 @@ bool Stage::load(int stageNumber, int difficulty) {
 }
 
 void Stage::tick(const InputState& raw) {
+    tickPass(raw);
+    // Watching a replay: skippable dialogue runs three passes per frame (the extra two are
+    // not drawn), as the original's playback does.
+    for (int extra = 0; extra < 2; ++extra) {
+        if (!playback_ || !ready_ || inTitle_ || inResults_ || inEnding_ || menus_.frozen()) break;
+        if (!gui_.msgActive() || !gui_.msgSkippable() || cursor_.frame() % 3 == 2) break;
+        tickPass(raw);
+    }
+}
+
+void Stage::tickPass(const InputState& raw) {
     // Supervisor: input for this pass (nothing on the pass after a stage transition, so a
     // key held through it counts as a fresh press afterwards) and the music fades, which
     // run on through the menus.
@@ -208,10 +274,22 @@ void Stage::tick(const InputState& raw) {
     // Game over: the stage is gone (the result screen has taken the enemy art's slots).
     if (quitRequested_ || inResults_ || inEnding_ || inTitle_) return;
     // The game manager: the pause check, then the freeze.
-    if (!menus_.frozen() && !state_.continueMenu && edges.menu) menus_.openPause();
+    if (demo_) {
+        // The attract demo: any new press ends it, as does its timer (black from 3,600).
+        const bool pressed = (in.up && !demoPrev_.up) || (in.down && !demoPrev_.down) || (in.left && !demoPrev_.left) ||
+                             (in.right && !demoPrev_.right) || (in.shoot && !demoPrev_.shoot) || (in.bomb && !demoPrev_.bomb) ||
+                             (in.focus && !demoPrev_.focus) || (in.pause && !demoPrev_.pause) || (in.skip && !demoPrev_.skip) ||
+                             (in.drag && !demoPrev_.drag) || menuPress;
+        demoPrev_ = in;
+        if (pressed || ++demoTimer_ >= 3720) {
+            endPlayback(false);
+            return;
+        }
+    }
+    if (!demo_ && !menus_.frozen() && !state_.continueMenu && edges.menu) menus_.openPause();
     if (menus_.frozen()) return;
     // Practice save states (F5 / F9, pad L3 / R3, the touch buttons).
-    if (saveStates_) {
+    if (saveStates_ && !playback_) {  // (not while watching: the replay would lose its place)
         if (in.saveState && !saveEdge_) saveState();
         const bool loadNow = in.loadState && !loadEdge_;
         saveEdge_ = in.saveState;
@@ -225,17 +303,26 @@ void Stage::tick(const InputState& raw) {
     rollScore(world_);
     background_.update(world_);
     InputState play = in;
-    if (autoFire_) play.shoot = true;
+    if (playback_) {
+        play = cursor_.next(in);  // the recorded buttons (live pause and quit still count)
+    } else {
+        // Auto-fire holds Shot outside dialogue (the dialogue still takes taps); drags are
+        // rounded the way a replay stores them. The player and the dialogue see the same
+        // input, which is what the recording keeps.
+        if (autoFire_ && !gui_.msgActive()) play.shoot = true;
+        quantizeDrag(play);
+    }
     player_->update(world_, play);
     enemies_->update(world_);
     effects_.update(world_);
     bullets_->update(world_);
     if (state_.timeStop == 0) {  // the GUI freezes during a time stop (score popups do not)
-        gui_.update(world_, in);
+        gui_.update(world_, play);
         player_->bomb().updateGui();
     }
     shake_.update(world_);
     if (sound_) sound_->flush();
+    if (recording_ && !playback_) recorder_.sample(play);  // after every subsystem, as the original
 
     // The stage ends through its post-boss dialogue (results, then the next stage). Without
     // the dialogue file, it counts as cleared once the timeline has run out and every enemy
@@ -243,7 +330,7 @@ void Stage::tick(const InputState& raw) {
     if (gui_.ready() && gui_.hasDialogue()) {
         if (gui_.takeStageEndRequest() && stageNumber_ < 7) {
             if (practiceRun_) practiceOver();  // a practice run is one stage
-            else load(stageNumber_ + 1, state_.difficulty);
+            else nextStage();
         } else if (gui_.takeGameClearRequest()) {
             gameCleared();  // the last stage's end
         }
@@ -251,7 +338,7 @@ void Stage::tick(const InputState& raw) {
         if (++clearTimer_ >= kClearDelay && stageNumber_ < 6) {
             state_.score += stageClearBonus(state_, stageNumber_, state_.startingLives);
             if (practiceRun_) practiceOver();
-            else load(stageNumber_ + 1, state_.difficulty);  // keeps score, power, lives and bombs
+            else nextStage();  // keeps score, power, lives and bombs
         }
     } else {
         clearTimer_ = 0;
@@ -261,6 +348,10 @@ void Stage::tick(const InputState& raw) {
 void Stage::runMenus(const MenuInput& edges) {
     // The player ran out of lives on the previous pass: the continue menu opens now, unless
     // there is nothing to continue with (Extra, or all three credits used).
+    if (state_.continueMenu && !menus_.continueActive() && playback_) {
+        endPlayback(true);  // a replay ends where the original game went to the continue menu
+        return;
+    }
     if (state_.continueMenu && !menus_.continueActive()) {
         if (practiceRun_ || (state_.continuesUsed >= 3 && !state_.cheat(MischiefContinues)) || state_.difficulty == Extra) {
             gameOver(false);
@@ -365,7 +456,8 @@ void Stage::renderToast(SpriteSink& s) {
 // HUD's hi-score (in practice, the stage's practice best).
 void Stage::startRun() {
     runStartStage_ = stageNumber_;
-    recordable_ = state_.mischief == 0 && !stageSelect_ && speedPercent_ >= 100;
+    // Watching a replay records nothing either (no clear progress, spell history or scores).
+    recordable_ = state_.mischief == 0 && !stageSelect_ && speedPercent_ >= 100 && !playback_;
     toolsUsed_ = speedPercent_ < 100;
     if (!recordable_) world_.scores = nullptr;  // no spell history either
     loadScores();
@@ -399,6 +491,10 @@ void Stage::loadScores() {
 // goes straight to the results, the main game to its ending first.
 void Stage::gameCleared() {
     state_.displayedScore = state_.score;
+    if (playback_) {
+        endPlayback(true);
+        return;
+    }
     if (practiceRun_ || state_.difficulty == Extra) {
         gameOver(true);
         return;
@@ -407,6 +503,7 @@ void Stage::gameCleared() {
 }
 
 void Stage::startEnding() {
+    stopRecordingStage();
     if (music_) music_->stop();  // the ending starts silent
     const bool continued = state_.continuesUsed > 0;
     const int d = std::clamp(state_.difficulty, 0, 3);
@@ -434,6 +531,7 @@ void Stage::startEnding() {
 void Stage::gameOver(bool cleared) {
     state_.continueMenu = false;
     state_.displayedScore = state_.score;
+    stopRecordingStage();
     if (practiceRun_) {
         practiceOver();
         return;
@@ -451,6 +549,8 @@ void Stage::gameOver(bool cleared) {
     run.spellsCaptured = state_.spellsCaptured;
     run.completion = state_.completion;
     run.recordable = recordable_;
+    // The save-replay prompt: only for a full game (Stage 1 or Extra, no tools or mischief).
+    results_.setReplay(recordable_ && !stageSelect_ ? recording_.get() : nullptr, replayDir_, &rng_);
     if (!vfs_ || !results_.start(world_, *vfs_, textures_, gui_, scores_, run)) {
         unported_.hit("results screen (result files missing)");
         saveScores();
@@ -541,7 +641,7 @@ void Stage::applyConfig() {
 
 // The title object is created: back from a game (cursor on Extra Start after an Extra game,
 // on Practice Start after practice), or at start-up.
-bool Stage::openTitle(bool firstVisit, int cursor) {
+bool Stage::openTitle(bool firstVisit, int cursor, Title::Entry entry) {
     if (!vfs_ || !vfs_->hasFormat("PBG3")) return false;
     std::string err;
     if (!anm_.fileLoaded(kAnmFileAscii) && !anm_.loadAnm(*vfs_, kAnmFileAscii, "data/ascii.anm", kAnmOffsetAscii, &err)) {
@@ -557,7 +657,7 @@ bool Stage::openTitle(bool firstVisit, int cursor) {
     loadScores();  // the Extra lock and the practice stages come from score.dat
     applyConfig();
     if (cursor < 0) cursor = session_.difficulty == Extra ? 1 : 0;
-    if (!title_.start(world_, *vfs_, textures_, scores_, config_, session_, cursor, firstVisit)) {
+    if (!title_.start(world_, *vfs_, textures_, scores_, config_, session_, cursor, firstVisit, entry)) {
         title_.release(world_);
         log::warn("Title screen files missing: starting a game directly");
         return false;
@@ -648,6 +748,20 @@ void Stage::startFromTitle() {
     title_.release(world_);
     inTitle_ = false;
     saveConfig();  // the remembered difficulty
+    if (c.replay) {  // a replay from the list, or the attract demo from the archives
+        std::vector<std::uint8_t> bytes;
+        if (c.demo) {
+            if (vfs_) {
+                if (auto b = vfs_->read(Title::kDemoFile)) bytes = std::move(*b);
+            }
+        } else {
+            bytes = readFile(c.replayPath);
+        }
+        if (!startReplay(bytes, c.replayStage, c.demo) && !inTitle_) {
+            if (!openTitle(false, -1, c.demo ? Title::Entry::FromDemo : Title::Entry::ReplayList)) quitRequested_ = true;
+        }
+        return;
+    }
     setShotType(c.shotType);
     newRun(c.stage, c.lives, c.bombs, c.practice);
     if (!load(c.stage, c.stage == 7 ? Extra : c.difficulty)) log::warn("Stage not started: {}", error_);
@@ -686,6 +800,7 @@ void Stage::newRun(int stageNumber, int lives, int bombs, bool practice) {
     practiceRun_ = practice;
     stageSelect_ = false;
     runStartStage_ = 0;
+    recording_.reset();
     quitRequested_ = inResults_ = inEnding_ = endingMusic_ = false;
     world_.scores = &scores_;
 }
@@ -706,7 +821,65 @@ void Stage::practiceOver() {
 // Back to the title (or, without the title files, to the launcher).
 void Stage::leaveGame() {
     if (music_) music_->stop();
+    recording_.reset();
+    playback_.reset();
+    demo_ = false;
+    gui_.setDemo(false);
     if (!openTitle(false)) quitRequested_ = true;
+}
+
+void Stage::stopRecordingStage() {
+    if (recording_ && !playback_) recorder_.stop();
+}
+
+// The stage is over: the next one (watching a replay: only if the file has it, else back
+// to the title, as the original does after a desync).
+void Stage::nextStage() {
+    if (playback_ && (stageNumber_ >= kReplayStages || !playback_->stages[static_cast<std::size_t>(stageNumber_)].present)) {
+        endPlayback(false);
+        return;
+    }
+    load(stageNumber_ + 1, state_.difficulty);
+}
+
+bool Stage::startReplay(std::span<const std::uint8_t> file, int stageIndex, bool demo) {
+    std::string why;
+    auto r = Replay::parse(file, &why);
+    if (!r || stageIndex < 0 || stageIndex >= kReplayStages || !r->stages[static_cast<std::size_t>(stageIndex)].present) {
+        log::warn("Replay not played: {}", r ? "no data for that stage" : why);
+        return false;
+    }
+    recording_.reset();
+    playback_ = std::make_unique<Replay>(std::move(*r));
+    demo_ = demo;
+    demoTimer_ = 0;
+    demoPrev_ = InputState{};
+    setShotType(playback_->shotType);
+    session_.difficulty = playback_->difficulty;
+    // The run's starting lives and bombs (respawn bombs, the clear-bonus penalty) come from
+    // the first block, which is where a saved replay's run started.
+    const ReplayStage& first = playback_->stages[static_cast<std::size_t>(playback_->firstStage())];
+    newRun(stageIndex + 1, first.lives, first.bombs, false);
+    inTitle_ = false;
+    if (!load(stageIndex + 1, playback_->difficulty)) {
+        log::warn("Replay not played: {}", error_);
+        endPlayback(false);
+        return false;
+    }
+    return true;
+}
+
+// Watching ends: to the replay list (the run's end) or the title (the demo, a quit, or a
+// stage the file does not have).
+void Stage::endPlayback(bool toReplayList) {
+    const bool demo = demo_;
+    playback_.reset();
+    demo_ = false;
+    gui_.setDemo(false);
+    ready_ = false;
+    if (!demo && music_) music_->stop();
+    const Title::Entry entry = demo ? Title::Entry::FromDemo : toReplayList ? Title::Entry::ReplayList : Title::Entry::Normal;
+    if (!openTitle(false, -1, entry)) quitRequested_ = true;
 }
 
 void Stage::render(SpriteSink& s, float alpha, const HudInfo& hud) {
@@ -754,6 +927,10 @@ void Stage::render(SpriteSink& s, float alpha, const HudInfo& hud) {
         renderDiagnostics(s);
         renderToast(s);
         menus_.draw(anm_, s, state_.cheat(MischiefContinues) ? 9 : 3 - state_.continuesUsed, captureReady_);
+        if (demo_ && demoTimer_ > 3600) {  // the demo's last two seconds fade to black
+            const int a = std::min(255, (demoTimer_ - 3600) * 255 / 120);
+            s.fillRect(ui_.white, 0.0f, 0.0f, 640.0f, 480.0f, rgba(0, 0, 0, static_cast<std::uint8_t>(a)));
+        }
         return;
     }
     // Without the game's GUI files: the port's own frame and diagnostic HUD.

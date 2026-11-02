@@ -8,12 +8,14 @@
 //   difficulty, character, shot type and practice stage choices.
 // Animations are driven by interrupts as in the original; the code only tints and nudges
 // the item under the cursor. Result (the score viewer) and Music Room are screens of their
-// own (the title hands over to them). The original's demo play, replays and Key Config are
-// not in the port: Replay plays the cancel sound.
+// own (the title hands over to them). Replay lists replay/th6_01..15.rpy (and th6_ud*.rpy)
+// over replay00.anm, then the chosen file's stages; twelve idle seconds start the attract
+// demo (data/demo/demo00.rpy, Stage 4). Key Config is not in the port.
 
 #include <array>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "game/GameConfig.hpp"
 #include "game/Input.hpp"
@@ -42,8 +44,13 @@ class Title {
     static constexpr int kVms = 122;
     enum class Sub {
         Startup, PreInput, MainMenu, DifficultyLoad, DifficultySelect, BackToTitle, CharacterSelect,
-        ShotSelect, PracticeSelect, Options, Quit, Score, Music,
+        ShotSelect, PracticeSelect, Options, Quit, Score, Music, ReplayLoad, ReplayList, ReplayStageList, ReplayUnload,
     };
+    // How the title is entered: normally; back from the attract demo (the title theme plays
+    // on, no fade-in); back from watching a replay (straight into the replay list).
+    enum class Entry { Normal, FromDemo, ReplayList };
+    static constexpr const char* kDemoFile = "data/demo/demo00.rpy";
+    static constexpr int kDemoIdlePasses = 720;
     enum class Result { None, StartGame, Quit, Failed, OpenScores, OpenMusicRoom };
 
     // The game the player chose.
@@ -52,13 +59,27 @@ class Title {
         int stage = 1;  // 1..7
         int lives = 2, bombs = 3;
         bool practice = false;
+        // A replay to watch (the demo: kDemoFile from the archives) from stage index 0..6.
+        bool replay = false, demo = false;
+        std::string replayPath;
+        int replayStage = 0;
+    };
+    // One file of the replay list (its header and the stages it has).
+    struct ReplayEntry {
+        std::string label, path, name, date;
+        int shotType = 0, difficulty = 0;
+        float slowdown = 0.0f;
+        std::array<bool, 7> present{};
+        std::array<std::int32_t, 7> endScore{};
     };
 
     // Opens the title (the original's title object creation): the initial cursor from where
     // the player came from, the title theme (`firstVisit`: a 200-pass white fade-in, else
     // 120), and the title graphics. False if the title files are missing.
     bool start(World& world, const Vfs& vfs, TextureLibrary& textures, const ScoreFile& scores, GameConfig& config,
-               TitleSession& session, int cursor, bool firstVisit);
+               TitleSession& session, int cursor, bool firstVisit, Entry entry = Entry::Normal);
+    // Where the replay files are (empty: the list is empty).
+    void setReplayDir(std::string dir) { replayDir_ = std::move(dir); }
     // One logic pass. StartGame: choice() holds the game (the title is gone). Quit: the
     // player left. OpenScores / OpenMusicRoom: Result or Music Room was chosen (60 passes
     // ago). Failed: the select-screen files could not be loaded.
@@ -88,6 +109,10 @@ class Title {
     int overlayAlpha() const;
     int whiteFadeAlpha() const { return fadeOn_ ? fadeAlpha_ : 0; }
     bool drawsBackground() const { return haveBackground_; }
+    const std::vector<ReplayEntry>& replays() const { return replays_; }
+    int replayCursor() const { return replayCursor_; }
+    int replayStageCursor() const { return stageCursor_; }
+    int idlePasses() const { return idle_; }
 
   private:
     struct Edges {
@@ -122,6 +147,12 @@ class Title {
     void dropRiders(int keepCharacter);
     int difficultyCard() const;
     void stepOverlay();
+    bool loadReplayScreen(World& world);
+    void scanReplays();
+    void replayList(World& world, const Edges& e);
+    Result replayStageList(World& world, const Edges& e);
+    Result tryDemo();
+    void drawReplays(Gui& gui) const;
 
     const Vfs* vfs_ = nullptr;
     TextureLibrary* textures_ = nullptr;
@@ -153,6 +184,12 @@ class Title {
     // Input: previous buttons and the auto-repeat counter (whole input unchanged).
     std::uint32_t prevButtons_ = 0;
     int repeatCounter_ = 0;
+    // Replays and the attract demo.
+    std::string replayDir_;
+    std::vector<ReplayEntry> replays_;
+    int replayCursor_ = 0, stageCursor_ = 0;
+    int idle_ = 0;
+    bool demoMissing_ = false;
 };
 
 }  // namespace th06

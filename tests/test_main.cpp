@@ -49,6 +49,7 @@
 #include "game/Ending.hpp"
 #include "game/GameConfig.hpp"
 #include "game/Title.hpp"
+#include "game/Replay.hpp"
 #include "game/MusicRoom.hpp"
 #include "input/DragPad.hpp"
 #include "gfx/Anm.hpp"
@@ -1352,6 +1353,20 @@ static std::string musicComment() {
     }
     return s;
 }
+// replay00.anm: V96 (header art) and the text anchors V97..V121 of the replay screens.
+static Bytes syntheticReplayFile() {
+    std::vector<Bytes> scripts;
+    for (int v = 96; v <= 121; ++v) {
+        float x = 64.0f, y = 40.0f;
+        if (v == 96) x = 320.0f;
+        else if (v == 97) x = 400.0f, y = 64.0f;
+        else if (v == 98) y = 80.0f;
+        else if (v <= 113) y = 100.0f + 16.0f * static_cast<float>(v - 99);
+        else x = 400.0f, y = 120.0f + 16.0f * static_cast<float>(v - 114);
+        scripts.push_back(titleScript(x, y, 0, {{15, 'v'}, {4, 'h'}, {16, 'v'}, {17, 'v'}}));
+    }
+    return titleAnm(scripts, {{0, 0, 0, 160, 20}});
+}
 static Bytes syntheticTitleArchive() {
     return buildPbg3({{"title01.anm", syntheticTitleFile(0)},
                       {"title02.anm", syntheticTitleFile(1)},
@@ -1373,7 +1388,8 @@ static Bytes syntheticTitleArchive() {
                       {"music01.anm", syntheticMusicTitles(16)},
                       {"music02.anm", syntheticMusicTitles(1)},
                       {"music.jpg", syntheticTitleBackground(60, 20, 70)},
-                      {"musiccmt.txt", toBytes(musicComment())}});
+                      {"musiccmt.txt", toBytes(musicComment())},
+                      {"replay00.anm", syntheticReplayFile()}});
 }
 
 // A World with the synthetic bullet/player art loaded straight from bytes.
@@ -5005,6 +5021,10 @@ static void testResultScreen() {
         st.tick(shot);
         CHECK(rs.state() == ResultScreen::State::StatisticsFade);
         for (int i = 0; i < 30; ++i) st.tick(idle);
+        // The save-replay prompt (tested on its own below): declined.
+        CHECK(rs.state() == ResultScreen::State::ReplayQuestion);
+        for (int i = 0; i < 20; ++i) st.tick(idle);
+        st.tick(esc);
         CHECK(rs.state() == ResultScreen::State::Exiting && !st.quitRequested());
         for (int i = 0; i < 60 && !st.quitRequested(); ++i) st.tick(idle);
         CHECK(st.quitRequested() && std::filesystem::exists(path));
@@ -5723,6 +5743,358 @@ static void testPracticeTools() {
     }
 }
 
+// Replays: the .rpy format (checksum, key, blocks, terminators, the drag chunk).
+static void testReplayFormat() {
+    Replay r;
+    r.shotType = 2;
+    r.difficulty = 3;
+    r.name = "TESTER  ";
+    r.date = "11/02/26";
+    r.score = 123456;
+    ReplayStage& a = r.stages[0];
+    a.present = true;
+    a.endScore = 5000;
+    a.seed = 0x1234;
+    a.pointItems = 77;
+    a.power = 128;
+    a.lives = 2;
+    a.bombs = 3;
+    a.rank = 16;
+    a.powerItemStep = 5;
+    a.records = {{0, 0}, {3, kReplayShoot}, {10, kReplayShoot | kReplayUp}, {12, 0}};
+    a.frames = 20;
+    a.drags = {{2, true, true, 8, -16}, {5, true, false, 24, -16}, {9, false, false, 0, 0}};
+    ReplayStage& b = r.stages[1];
+    b.present = true;
+    b.records = {{0, 0}};
+    b.frames = 5;
+    ZunRng rng(77);
+    const std::vector<std::uint8_t> file = r.serialize(rng);
+    CHECK(rng.generations() == 4);  // the key and three fillers
+    CHECK(file.size() > 0x50 && std::memcmp(file.data(), "T6RP", 4) == 0 && file[4] == 0x02 && file[5] == 0x01);
+    CHECK(file[6] == 2 && file[7] == 3);
+    const std::uint8_t key = file[0x0E];
+    CHECK(key >= 64 && key < 192);
+    // Decoded independently: +key +7 per byte from 0x0F, checksum over 0x0E.. .
+    std::vector<std::uint8_t> plain = file;
+    for (std::size_t o = 0x0F; o < plain.size(); ++o) plain[o] = static_cast<std::uint8_t>(plain[o] - key - 7 * (o - 0x0F));
+    std::uint32_t sum = 0x3F000318u;
+    for (std::size_t o = 0x0E; o < plain.size(); ++o) sum += plain[o];
+    auto u32 = [&](std::size_t o) { return static_cast<std::uint32_t>(plain[o] | plain[o + 1] << 8 | plain[o + 2] << 16 | plain[o + 3] << 24); };
+    CHECK(sum == u32(8));
+    CHECK(std::memcmp(&plain[0x10], "11/02/26", 8) == 0 && plain[0x18] == 0 && std::memcmp(&plain[0x19], "TESTER  ", 8) == 0);
+    CHECK(u32(0x24) == 123456 && u32(0x34) == 0x50 && u32(0x34 + 4 * 6) == 0);
+    const std::size_t blockA = 0x50;
+    CHECK(u32(blockA) == 5000 && plain[blockA + 4] == 0x34 && plain[blockA + 5] == 0x12 && plain[blockA + 8] == 128);
+    // Stage 1: 4 records, then {20, 0} and the sentinel; the last stage's pair comes twice.
+    const std::size_t endA = blockA + 16 + 8 * 4;
+    CHECK(u32(endA) == 20 && u32(endA + 8) == 9999999 && u32(0x34 + 4) == endA + 16);
+    const std::size_t blockB = endA + 16;
+    CHECK(u32(blockB + 16) == 0 && u32(blockB + 24) == 5 && u32(blockB + 32) == 9999999 && u32(blockB + 40) == 5 &&
+          u32(blockB + 48) == 9999999);
+    CHECK(std::memcmp(&plain[plain.size() - 4], "T6XD", 4) == 0);  // (obfuscated like the rest)
+    // Read back.
+    std::string why;
+    auto back = Replay::parse(file, &why);
+    CHECK(back.has_value());
+    if (back) {
+        CHECK(back->shotType == 2 && back->difficulty == 3 && back->name == "TESTER  " && back->date == "11/02/26" &&
+              back->score == 123456);
+        const ReplayStage& ba = back->stages[0];
+        CHECK(ba.present && ba.endScore == 5000 && ba.seed == 0x1234 && ba.pointItems == 77 && ba.power == 128 && ba.lives == 2 &&
+              ba.bombs == 3 && ba.rank == 16 && ba.powerItemStep == 5 && ba.frames == 20);
+        bool same = ba.records.size() == a.records.size();
+        for (std::size_t i = 0; same && i < a.records.size(); ++i) {
+            same = ba.records[i].frame == a.records[i].frame && ba.records[i].buttons == a.records[i].buttons;
+        }
+        CHECK(same && ba.drags.size() == 3 && ba.drags[0].newTouch && ba.drags[1].x == 24 && ba.drags[1].y == -16 && !ba.drags[2].active);
+        CHECK(back->stages[1].present && back->stages[1].frames == 5 && !back->stages[2].present);
+        CHECK(back->firstStage() == 0 && back->lastStage() == 1);
+    }
+    // Damage is caught by the checksum; a file without drags has no chunk.
+    std::vector<std::uint8_t> bad = file;
+    bad[0x60] ^= 0x40;
+    CHECK(!Replay::parse(bad, &why) && why == "checksum mismatch");
+    CHECK(!Replay::parse(std::span(file.data(), 0x40)) && !Replay::parse(std::vector<std::uint8_t>(0x60, 0)));
+    a.drags.clear();
+    ZunRng rng2(5);
+    const std::vector<std::uint8_t> plainFile = r.serialize(rng2);
+    CHECK(plainFile.size() < file.size() && Replay::parse(plainFile).has_value());
+    CHECK(std::string(Replay::shotName(3)) == "MarisaB" && std::string(Replay::difficultyName(4)) == "Extra  ");
+
+    // Recording and playing back a stream: the same recorded fields, pass by pass.
+    ReplayStage st;
+    ReplayRecorder rec;
+    rec.start(&st);
+    std::vector<InputState> inputs;
+    for (int f = 0; f < 60; ++f) {
+        InputState in;
+        in.shoot = f % 7 < 4;
+        in.focus = f >= 20 && f < 30;
+        in.left = f % 11 == 3;
+        in.skip = f == 40;
+        in.pause = f == 50;  // not recorded
+        if (f >= 5 && f < 25) {
+            in.drag = true;
+            in.dragId = f < 15 ? 3 : 4;
+            in.dragX = static_cast<float>(f) * 1.37f;
+            in.dragY = -static_cast<float>(f) * 0.61f;
+            quantizeDrag(in);
+        }
+        inputs.push_back(in);
+        rec.sample(in);
+    }
+    rec.stop();
+    CHECK(st.frames == 60 && st.records.front().frame == 0 && st.records.size() < 60);
+    ReplayCursor cur;
+    cur.start(&st);
+    bool match = true, ids = true;
+    unsigned lastLive = 0, lastPlayed = 0;
+    for (int f = 0; f < 60; ++f) {
+        const InputState out = cur.next(InputState{});
+        const InputState& in = inputs[static_cast<std::size_t>(f)];
+        match = match && replayButtons(out) == replayButtons(in) && out.drag == in.drag && !out.pause &&
+                (!in.drag || (out.dragX == in.dragX && out.dragY == in.dragY));
+        if (in.drag) {
+            ids = ids && ((in.dragId != lastLive) == (out.dragId != lastPlayed));
+            lastLive = in.dragId;
+            lastPlayed = out.dragId;
+        }
+    }
+    CHECK(match && ids && cur.frame() == 60);
+    CHECK(replayButtons(cur.next(InputState{})) == 0);  // past the end: nothing held
+}
+
+// Replays in the game: a live game's recording plays back pass for pass; the save prompt
+// writes th6_NN.rpy; the title lists and plays it; the attract demo.
+static void testReplaysInGame() {
+    const Bytes stArc = syntheticStageArchive(), tlArc = syntheticTitleArchive();
+    Vfs vfs;
+    vfs.mount(open("SYNTH_ST.DAT", stArc));
+    vfs.mount(open("SYNTH_TL.DAT", tlArc));
+    TextureLibrary lib;
+    const UiArt ui = registerUiArt(lib);
+    RecordingBackend backend;
+    SoundPlayer sound(&backend);
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "th06_replay_test";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    const std::string replayDir = (dir / "replay").string() + "/";
+    InputState idle, shot, esc, up, down, left;
+    shot.shoot = true;
+    esc.pause = true;
+    up.up = true;
+    down.down = true;
+    left.left = true;
+    auto script = [](int f) {
+        InputState in;
+        in.shoot = f % 9 < 6;
+        in.focus = f > 60 && f < 90;
+        if (f > 20 && f < 70) {
+            in.drag = true;
+            in.dragId = f < 45 ? 1 : 2;
+            in.dragX = std::sin(static_cast<float>(f) * 0.2f) * 40.0f;
+            in.dragY = -static_cast<float>(f % 30) * 1.3f;
+        }
+        in.right = f >= 100 && f < 120;
+        return in;
+    };
+    constexpr int kFrames = 150;
+    std::vector<StageFingerprint> live;
+    std::vector<std::uint8_t> file;
+    {
+        Stage st(lib, ui, &vfs, &sound);
+        st.seedRandom(4321);
+        CHECK(st.quickStart(1, Normal, false) && st.recording() && !st.replaying());
+        for (int f = 0; f < kFrames; ++f) {
+            st.tick(script(f));
+            live.push_back(fingerprint(st));
+        }
+        st.endGameForTesting();
+        const Replay* rec = st.recording();
+        CHECK(rec && rec->stages[0].present && rec->stages[0].frames == kFrames && rec->shotType == 0 && rec->difficulty == Normal);
+        if (rec) {
+            Replay copy = *rec;
+            copy.name = "LIVE    ";
+            ZunRng rng(9);
+            file = copy.serialize(rng);
+        }
+    }
+    {
+        Stage st(lib, ui, &vfs, &sound);
+        CHECK(!st.startReplay(file, 3));  // no Stage 4 in this file
+        CHECK(st.startReplay(file, 0) && st.replaying() && !st.recording());
+        bool same = true;
+        int firstDiff = -1;
+        for (int f = 0; f < kFrames; ++f) {
+            st.tick(f % 5 == 0 ? shot : idle);  // live buttons are ignored while watching
+            if (!(fingerprint(st) == live[static_cast<std::size_t>(f)]) && firstDiff < 0) firstDiff = f;
+            same = same && fingerprint(st) == live[static_cast<std::size_t>(f)];
+        }
+        if (firstDiff >= 0) std::printf("  replay differs from frame %d\n", firstDiff);
+        CHECK(same && !st.recordable());
+        // Esc pauses a replay (the stream waits), and resumes it.
+        const std::uint32_t frame = st.state().frame;
+        st.tick(idle);
+        st.tick(esc);
+        CHECK(st.paused());
+        for (int i = 0; i < 5; ++i) st.tick(idle);
+        CHECK(st.state().frame == frame + 1);
+    }
+
+    // The save prompt after a game: Yes, an empty slot, a name, END.
+    {
+        Stage st(lib, ui, &vfs, &sound);
+        st.setScorePath((dir / "score.dat").string());
+        st.setReplayDir(replayDir);
+        CHECK(st.quickStart(1, Normal, false));
+        for (int f = 0; f < 90; ++f) st.tick(script(f));
+        st.world().state->score = st.world().state->displayedScore = 2'000'000;
+        st.endGameForTesting();
+        const ResultScreen& rs = st.results();
+        for (int i = 0; i < 31; ++i) st.tick(idle);
+        st.tick(esc);  // leaves the high-score name entry
+        CHECK(rs.state() == ResultScreen::State::Statistics);
+        for (int i = 0; i < 95; ++i) st.tick(idle);
+        st.tick(shot);
+        for (int i = 0; i < 30; ++i) st.tick(idle);
+        CHECK(rs.state() == ResultScreen::State::ReplayQuestion);
+        for (int i = 0; i < 20; ++i) st.tick(idle);
+        st.tick(left);  // to No ...
+        CHECK(rs.replayChoice() == 1);
+        st.tick(idle);
+        st.tick(left);  // ... and back to Yes
+        st.tick(idle);
+        st.tick(shot);
+        CHECK(rs.state() == ResultScreen::State::ReplaySlots && rs.replaySlot() == 0);
+        for (int i = 0; i < 20; ++i) st.tick(idle);
+        st.tick(down);
+        st.tick(idle);
+        st.tick(down);  // slot 3
+        st.tick(idle);
+        st.tick(shot);
+        CHECK(rs.state() == ResultScreen::State::ReplayName && rs.replaySlot() == 2);
+        {
+            RecordingSink sink;
+            st.results().draw(st.world(), st.gui(), sink);
+            int rows = 0;
+            for (const auto& q : st.gui().strings()) rows += q.text.size() > 4 && q.text.starts_with("No.") && q.text[3] != ' ';
+            CHECK(rows == kReplaySlots);
+            st.gui().drawStrings(st.world(), sink);
+        }
+        for (int i = 0; i < 30; ++i) st.tick(idle);
+        st.tick(shot);  // 'A'
+        st.tick(idle);
+        st.tick(up);  // row 5 ...
+        st.tick(idle);
+        st.tick(left);  // ... END
+        st.tick(idle);
+        CHECK(rs.keyCursor() == 95 && rs.replayName()[0] == 'A');
+        st.tick(shot);
+        CHECK(rs.state() == ResultScreen::State::Exiting && rs.savedReplay() == replayDir + "th6_03.rpy");
+        for (int i = 0; i < 70 && !st.inTitle(); ++i) st.tick(idle);
+    }
+    std::vector<std::uint8_t> saved;
+    {
+        std::ifstream in(replayDir + "th6_03.rpy", std::ios::binary);
+        saved.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+        auto r = Replay::parse(saved);
+        CHECK(r && r->name[0] == 'A' && r->score == 2'000'000 && r->date.size() == 8 && r->stages[0].frames == 90 &&
+              r->stages[0].endScore == 2'000'000 && !r->stages[0].drags.empty());
+    }
+    // A continue makes the prompt say it cannot save.
+    {
+        Stage st(lib, ui, &vfs, &sound);
+        st.setReplayDir(replayDir);
+        CHECK(st.quickStart(1, Normal, false));
+        for (int f = 0; f < 10; ++f) st.tick(idle);
+        st.world().state->continuesUsed = 1;
+        st.endGameForTesting();
+        const ResultScreen& rs = st.results();
+        st.tick(idle);
+        for (int i = 0; i < 96 && rs.state() != ResultScreen::State::Statistics; ++i) st.tick(esc), st.tick(idle);
+        for (int i = 0; i < 95; ++i) st.tick(idle);
+        st.tick(shot);
+        for (int i = 0; i < 32; ++i) st.tick(idle);
+        CHECK(rs.state() == ResultScreen::State::ReplayCannot);
+    }
+
+    // The title's Replay item: the list, the file's stages, watching it, and back.
+    {
+        Stage st(lib, ui, &vfs, &sound);
+        st.setReplayDir(replayDir);
+        CHECK(st.openTitle(true));
+        for (int i = 0; i < 40; ++i) st.tick(idle);
+        st.tick(shot);  // press a key: the main menu
+        for (int i = 0; i < 25; ++i) st.tick(idle);
+        for (int k = 0; k < 3; ++k) st.tick(down), st.tick(idle);  // Replay (Extra Start is locked: 2 steps + 1)
+        const int cursor = st.title().cursor();
+        if (cursor != 3) st.tick(up), st.tick(idle);
+        CHECK(st.title().cursor() == 3);
+        st.tick(shot);
+        CHECK(st.title().sub() == Title::Sub::ReplayLoad);
+        for (int i = 0; i < 62; ++i) st.tick(idle);
+        CHECK(st.title().sub() == Title::Sub::ReplayList && st.title().replays().size() == 1);
+        if (st.title().replays().size() == 1) {
+            const Title::ReplayEntry& e = st.title().replays()[0];
+            CHECK(e.label == "No.03" && e.name[0] == 'A' && e.present[0] && !e.present[1] && e.endScore[0] == 2'000'000);
+        }
+        {
+            RecordingSink sink;
+            st.render(sink, 1.0f, HudInfo{60.0f, 1});
+            bool header = false, row = false;
+            for (const auto& q : st.gui().strings()) {
+                header = header || q.text.starts_with("No.   Name");
+                row = row || (q.text.starts_with("No.03 A") && q.text.find("ReimuA   Normal") != std::string::npos);
+            }
+            (void)header;
+            (void)row;
+        }
+        st.tick(shot);
+        CHECK(st.title().sub() == Title::Sub::ReplayStageList && st.title().replayStageCursor() == 0);
+        for (int i = 0; i < 41; ++i) st.tick(idle);
+        st.tick(shot);  // watch Stage 1
+        CHECK(!st.inTitle() && st.replaying() && st.ready());
+        // The run ends where the original went to the continue menu: back to the list.
+        for (int i = 0; i < 5; ++i) st.tick(idle);
+        st.world().state->livesRemaining = 0;
+        st.world().state->bombs = 0;
+        st.player().state = Player::Alive;
+        st.player().checkCollision(st.world(), st.player().positionCenter, {4.0f, 4.0f, 4.0f});
+        for (int i = 0; i < 60 && !st.inTitle(); ++i) st.tick(idle);
+        CHECK(st.inTitle() && !st.replaying());
+        st.tick(idle);
+        CHECK(st.title().sub() == Title::Sub::ReplayList);
+        // Cancel: back to the title page.
+        for (int i = 0; i < 2; ++i) st.tick(idle);
+        st.tick(esc);
+        CHECK(st.title().sub() == Title::Sub::ReplayUnload);
+        for (int i = 0; i < 40; ++i) st.tick(idle);
+        CHECK(st.title().sub() == Title::Sub::PreInput || st.title().sub() == Title::Sub::MainMenu);
+    }
+
+    // The attract demo: no pause, any key ends it, and so does its timer.
+    {
+        Stage st(lib, ui, &vfs, &sound);
+        CHECK(st.openTitle(true));
+        CHECK(st.startReplay(saved, 0, true) && st.demoPlaying());
+        for (int i = 0; i < 30; ++i) st.tick(idle);
+        CHECK(!st.paused() && st.replaying());
+        st.tick(esc);  // a key: back to the title
+        CHECK(st.inTitle() && !st.demoPlaying());
+        CHECK(st.startReplay(saved, 0, true));
+        int n = 0;
+        while (!st.inTitle() && n < 4000) st.tick(idle), ++n;
+        // (The synthetic stage is over long before the 3,720-pass timer: with no Stage 2 in
+        // the file, the demo goes back to the title there.)
+        CHECK(st.inTitle() && !st.demoPlaying() && n > 90 && n < 3720);
+        // Twelve idle seconds on the title would start the demo (none in these archives).
+        for (int i = 0; i < 800; ++i) st.tick(idle);
+        CHECK(st.inTitle() && st.title().idlePasses() >= 720);
+    }
+    std::filesystem::remove_all(dir);
+}
+
 // The session log file for bug reports: lines with their level, the previous run kept.
 static void testLogFile() {
     const std::filesystem::path dir = std::filesystem::temp_directory_path() / "th06_log_test";
@@ -6027,6 +6399,8 @@ int main() {
         {"touch: drag-to-move pad and ship", testDragControls},
         {"practice: save states, slow motion, hitbox", testPracticeTools},
         {"session log file", testLogFile},
+        {"replays: .rpy format, recording, playback", testReplayFormat},
+        {"replays in the game: playback, save prompt, title, demo", testReplaysInGame},
     };
     for (const Test& t : tests) {
         const int before = g_failures;

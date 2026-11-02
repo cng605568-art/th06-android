@@ -1,7 +1,10 @@
 #include "game/ResultScreen.hpp"
 
 #include <algorithm>
+#include <cstdio>
+#include <ctime>
 #include <cstring>
+#include <filesystem>
 #include <format>
 
 #include "core/Log.hpp"
@@ -23,6 +26,9 @@ constexpr int kScriptFirst = 0x100;
 constexpr int kTextSpriteFirst = 0x708;  // text.anm sprites 8..23
 
 constexpr int kVmTableAnchor = 14, kVmStatistics = 37;
+// The save-replay prompt: V15..V20 its pictures (V16 Yes, V17 No), V21 the slot list's
+// header, V22..V36 its rows.
+constexpr int kVmReplayFirst = 15, kVmReplayLast = 20, kVmYes = 16, kVmNo = 17, kVmSlotHeader = 21, kVmSlotRows = 22;
 constexpr int kSoundOk = 10, kSoundCancel = 11, kSoundSelect = 12;
 
 constexpr std::uint32_t kUp = 1, kDown = 2, kLeft = 4, kRight = 8, kShoot = 16, kBomb = 32, kEsc = 64, kFocus = 128,
@@ -115,6 +121,10 @@ bool ResultScreen::start(World& world, const Vfs& vfs, TextureLibrary& textures,
     t_ = 0;
     rank_ = 10;
     key_ = cursor_ = 0;
+    choice_ = slot_ = 0;
+    replayName_ = std::string(8, ' ');
+    savedPath_.clear();
+    for (auto& s : slots_) s.reset();
     prevButtons_ = 0;
     repeatCounter_ = 0;
     return true;
@@ -352,6 +362,7 @@ void ResultScreen::moveKey(int step, bool vertical) {
 
 void ResultScreen::finishNameEntry(World& world) {
     (void)world;
+    replayName_ = name();  // the replay's name starts as the high-score name (or blank)
     state_ = State::Statistics;
     t_ = 0;
     interruptAll(2);
@@ -440,11 +451,25 @@ bool ResultScreen::update(World& world, Gui& gui, const InputState& in) {
             }
             break;
         case State::StatisticsFade:
-            if (t_ == 30) {  // (the save-replay prompt would follow; no replays here)
-                state_ = State::Exiting;
-                interruptAll(2);
-                t_ = 0;
+            if (t_ == 30) {
+                if (replay_ && run_.recordable) {  // the save-replay prompt (its first pass at t = 60)
+                    state_ = State::ReplayQuestion;
+                    t_ = 59;
+                } else {
+                    state_ = State::Exiting;
+                    interruptAll(2);
+                    t_ = 0;
+                }
             }
+            break;
+        case State::ReplayQuestion:
+        case State::ReplayCannot:
+        case State::ReplaySlots:
+        case State::ReplayOverwrite:
+            replayPrompt(world, e);
+            break;
+        case State::ReplayName:
+            replayNameEntry(world, e);
             break;
         case State::Exiting:
             if (t_ >= 60) {
@@ -460,6 +485,250 @@ bool ResultScreen::update(World& world, Gui& gui, const InputState& in) {
     for (AnmVm& vm : vms_) world.anm->executeScript(vm);
     ++t_;
     return false;
+}
+
+// ---- the save-replay prompt ------------------------------------------------------------
+
+void ResultScreen::colourChoices() {
+    auto set = [this](int vm, bool chosen) {
+        std::uint32_t& c = vms_[static_cast<std::size_t>(vm)].color;
+        c = (c & 0xff000000u) | (chosen ? 0xff6060u : 0x606060u);
+    };
+    set(kVmYes, choice_ == 0);
+    set(kVmNo, choice_ == 1);
+}
+
+void ResultScreen::enterSlots(World& world) {
+    (void)world;
+    interruptAll(10);
+    t_ = 0;
+    state_ = State::ReplaySlots;
+    for (auto& s : slots_) s.reset();
+    if (replayDir_.empty()) return;
+    std::error_code ec;
+    std::filesystem::create_directories(replayDir_, ec);
+    for (int n = 0; n < kReplaySlots; ++n) {
+        std::vector<std::uint8_t> bytes;
+        if (std::FILE* f = std::fopen((replayDir_ + std::format("th6_{:02d}.rpy", n + 1)).c_str(), "rb")) {
+            std::uint8_t buf[8192];
+            for (std::size_t k; (k = std::fread(buf, 1, sizeof buf, f)) > 0;) bytes.insert(bytes.end(), buf, buf + k);
+            std::fclose(f);
+        }
+        if (bytes.empty()) continue;
+        if (auto r = Replay::parse(bytes)) slots_[static_cast<std::size_t>(n)] = SlotInfo{r->name, r->date, r->shotType, r->score};
+    }
+}
+
+void ResultScreen::replayPrompt(World& world, const Edges& e) {
+    auto toV1to37 = [this](std::int16_t k) {
+        for (int i = 1; i < kVms; ++i) vms_[static_cast<std::size_t>(i)].pendingInterrupt = k;
+    };
+    auto decline = [&] {
+        t_ = 0;
+        world.playSound(kSoundCancel);
+        interruptAll(2);
+        state_ = State::Exiting;
+    };
+    auto toName = [&] {
+        interruptAll(15);
+        vms_[static_cast<std::size_t>(kVmSlotRows + slot_)].pendingInterrupt = 14;
+        cursor_ = 0;
+        key_ = 0;
+        state_ = State::ReplayName;
+    };
+    switch (state_) {
+        case State::ReplayQuestion:
+            if (t_ == 60) {
+                choice_ = 0;
+                if (run_.continues != 0) {  // "cannot save: a continue was used"
+                    toV1to37(12);
+                    state_ = State::ReplayCannot;
+                    break;
+                }
+                toV1to37(9);
+            }
+            colourChoices();
+            if (t_ < 80) break;
+            if (e.left || e.right) {
+                choice_ ^= 1;  // (two choices: Left and Right both toggle)
+                world.playSound(kSoundSelect);
+            }
+            if (e.cancel) {
+                decline();
+            } else if (e.confirm) {
+                if (choice_ == 1) {
+                    decline();
+                } else {
+                    world.playSound(kSoundOk);
+                    enterSlots(world);
+                }
+            }
+            break;
+        case State::ReplayCannot:
+            if (t_ >= 20 && (e.confirm || e.cancel)) decline();
+            break;
+        case State::ReplaySlots:
+            if (t_ < 20) break;
+            if (e.up) {
+                slot_ = (slot_ + kReplaySlots - 1) % kReplaySlots;
+                world.playSound(kSoundSelect);
+            }
+            if (e.down) {
+                slot_ = (slot_ + 1) % kReplaySlots;
+                world.playSound(kSoundSelect);
+            }
+            if (e.confirm) {
+                world.playSound(kSoundOk);
+                t_ = 0;
+                if (slots_[static_cast<std::size_t>(slot_)]) {  // used: overwrite?
+                    interruptAll(11);
+                    vms_[static_cast<std::size_t>(kVmSlotRows + slot_)].pendingInterrupt = 14;
+                    choice_ = 0;
+                    cursor_ = 0;
+                    key_ = 0;
+                    state_ = State::ReplayOverwrite;
+                } else {
+                    toName();
+                }
+            } else if (e.cancel) {  // back to the question (asked again at t = 60)
+                world.playSound(kSoundCancel);
+                interruptAll(2);
+                t_ = 0;
+                state_ = State::ReplayQuestion;
+            }
+            break;
+        case State::ReplayOverwrite:
+            colourChoices();
+            if (t_ < 20) break;
+            if (e.left || e.right) {
+                choice_ ^= 1;
+                world.playSound(kSoundSelect);
+            }
+            if (e.cancel) {
+                world.playSound(kSoundOk);
+                enterSlots(world);
+            } else if (e.confirm) {
+                t_ = 0;
+                if (choice_ == 0) {
+                    toName();  // (no sound)
+                } else {
+                    world.playSound(kSoundOk);
+                    enterSlots(world);
+                }
+            }
+            break;
+        default:
+            break;
+    }
+}
+
+void ResultScreen::replayNameEntry(World& world, const Edges& e) {
+    if (t_ < 30) return;
+    if (e.up) moveKey(-16, true), world.playSound(kSoundSelect);
+    if (e.down) moveKey(16, true), world.playSound(kSoundSelect);
+    if (e.left) moveKey(-1, false), world.playSound(kSoundSelect);
+    if (e.right) moveKey(1, false), world.playSound(kSoundSelect);
+    if (e.confirmRepeat) {
+        const int p = std::min(cursor_, 7);
+        const bool end = key_ == kKeyEnd;
+        if (end) {
+            saveReplay();
+            t_ = 0;
+            interruptAll(2);
+            state_ = State::Exiting;
+        } else {
+            replayName_[static_cast<std::size_t>(p)] = keyChar(key_);
+        }
+        if (cursor_ < 8 && ++cursor_ == 8) key_ = kKeyEnd;
+        world.playSound(kSoundOk);
+        if (end) return;
+    }
+    if (e.cancelRepeat) {
+        const int p = std::min(cursor_, 7);  // (the original blanks the cell at the cursor)
+        if (cursor_ > 0) {
+            replayName_[static_cast<std::size_t>(p)] = ' ';
+            --cursor_;
+        }
+        world.playSound(kSoundCancel);
+    }
+    if (e.esc) {
+        world.playSound(kSoundOk);
+        enterSlots(world);
+    }
+}
+
+std::string ResultScreen::today() const {
+    if (!date_.empty()) return date_;
+    const std::time_t now = std::time(nullptr);
+    std::tm tm{};
+#if defined(_WIN32)
+    localtime_s(&tm, &now);
+#else
+    localtime_r(&now, &tm);
+#endif
+    return std::format("{:02d}/{:02d}/{:02d}", tm.tm_mon + 1, tm.tm_mday, tm.tm_year % 100);
+}
+
+bool ResultScreen::saveReplay() {
+    if (!replay_ || replayDir_.empty()) return false;
+    Replay r = *replay_;
+    r.name = replayName_;
+    r.date = today();
+    r.score = run_.score;
+    r.slowdown = 0.0f;  // the port runs at a steady 60
+    if (const int last = r.lastStage(); last >= 0) r.stages[static_cast<std::size_t>(last)].endScore = static_cast<std::int32_t>(run_.score);
+    ZunRng local(0);
+    const std::vector<std::uint8_t> bytes = r.serialize(rng_ ? *rng_ : local);
+    std::error_code ec;
+    std::filesystem::create_directories(replayDir_, ec);
+    const std::string path = replayDir_ + std::format("th6_{:02d}.rpy", slot_ + 1);
+    const std::string tmp = path + ".tmp";
+    std::FILE* f = std::fopen(tmp.c_str(), "wb");
+    if (!f) {
+        log::warn("Could not write {}", tmp);
+        return false;
+    }
+    const bool ok = std::fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size();
+    if (std::fclose(f) != 0 || !ok) {
+        log::warn("Could not write {}", tmp);
+        return false;
+    }
+    std::filesystem::rename(tmp, path, ec);
+    if (ec) {
+        log::warn("Could not save {}: {}", path, ec.message());
+        return false;
+    }
+    savedPath_ = path;
+    log::info("Replay saved to {}", path);
+    return true;
+}
+
+void ResultScreen::drawReplaySlots(Gui& gui, SpriteSink& sink, World& world) {
+    for (int i = kVmReplayFirst; i <= kVmReplayLast; ++i) {  // drawn again on top, without their offset
+        AnmVm vm = vms_[static_cast<std::size_t>(i)];
+        vm.rotation.z = 0.0f;
+        world.anm->drawScreen(sink, vm);
+    }
+    const Vec3f h = vms_[kVmSlotHeader].pos;
+    gui.queueString(h.x, h.y, "No.   Name     Date     Player Score", 0xffffffffu);
+    const bool naming = state_ == State::ReplayName;
+    std::string underscore = "      " + std::string(8, ' ');
+    underscore[6 + static_cast<std::size_t>(std::min(cursor_, 7))] = '_';
+    for (int n = 0; n < kReplaySlots; ++n) {
+        const Vec3f p = vms_[static_cast<std::size_t>(kVmSlotRows + n)].pos;
+        const std::uint32_t color = n == slot_ ? 0xffff8080u : 0xff808080u;
+        std::string text;
+        if (naming) {
+            text = std::format("No.{:02d} {} {} {} {:9d}", n + 1, replayName_, today(), Replay::shotName(run_.shotType), run_.score);
+        } else if (const auto& s = slots_[static_cast<std::size_t>(n)]) {
+            text = std::format("No.{:02d} {:8.8} {:8.8} {} {:9d}", n + 1, s->name, s->date, Replay::shotName(s->shotType), s->score);
+        } else {
+            text = std::format("No.{:02d} -------- --/--/-- -------         0", n + 1);
+        }
+        gui.queueString(p.x, p.y, text, color);
+        if (naming) gui.queueString(p.x, p.y, underscore, 0xfff0f0ffu);
+    }
+    if (naming) drawKeys(gui);
 }
 
 std::string ResultScreen::completionText(const Run& run) {
@@ -571,6 +840,10 @@ void ResultScreen::draw(World& world, Gui& gui, SpriteSink& sink) {
     if (scores_) drawTable(gui, sink, world);
     if (state_ == State::NameEntry && rank_ < 10) drawKeys(gui);
     if (state_ == State::Statistics || state_ == State::StatisticsFade) drawStatistics(gui);
+    if (state_ == State::ReplayQuestion || state_ == State::ReplayCannot || state_ == State::ReplaySlots ||
+        state_ == State::ReplayName || state_ == State::ReplayOverwrite) {
+        drawReplaySlots(gui, sink, world);
+    }
 }
 
 }  // namespace th06

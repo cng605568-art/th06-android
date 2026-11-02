@@ -29,6 +29,7 @@
 #include "game/MusicRoom.hpp"
 #include "game/ScoreFile.hpp"
 #include "game/ShotData.hpp"
+#include "game/Replay.hpp"
 #include "game/Title.hpp"
 #include "game/World.hpp"
 #include "gfx/AnmManager.hpp"
@@ -55,7 +56,7 @@ class Stage {
 
     // Opens the game's title screen (the menus before a game); every game then returns to
     // it. False if the title files are missing (then start a game with quickStart()).
-    bool openTitle(bool firstVisit = true, int cursor = -1);
+    bool openTitle(bool firstVisit = true, int cursor = -1, Title::Entry entry = Title::Entry::Normal);
     bool inTitle() const { return inTitle_; }
     const Title& title() const { return title_; }
     // The title's own screens: the Music Room and the score viewer (Result).
@@ -102,6 +103,20 @@ class Stage {
     bool hasSaveState() const {
         return save_ && save_->valid && save_->loadSerial == loadSerial_ && save_->generation == anm_.generation();
     }
+    // Replays: where replay/th6_NN.rpy live (empty: no saving, no replay list).
+    void setReplayDir(std::string dir) {
+        replayDir_ = std::move(dir);
+        title_.setReplayDir(replayDir_);
+    }
+    // Plays a replay file from stage index 0..6 (the demo: from the archives, without
+    // stage music or pause). False if the file is invalid or lacks that stage.
+    bool startReplay(std::span<const std::uint8_t> file, int stageIndex, bool demo = false);
+    bool replaying() const { return playback_ != nullptr; }
+    bool demoPlaying() const { return demo_; }
+    // The recording of the game in play (live games only).
+    const Replay* recording() const { return recording_.get(); }
+    // The game RNG's seed (the original takes the clock at start-up).
+    void seedRandom(std::uint16_t seed) { rng_.seed(seed); }
     // The launcher's mischief options (Mischief bits). Set before the first load().
     void setMischief(std::uint32_t bits) { state_.mischief = bits & 31u; }
 
@@ -257,6 +272,19 @@ class Stage {
     int toastTimer_ = 0;
     void renderToast(SpriteSink& sink);
     bool recordable_ = true;  // a full game without mischief: its scores are saved
+    // Replays: the recording of a live game, or the replay being watched.
+    std::string replayDir_;
+    std::unique_ptr<Replay> recording_;
+    ReplayRecorder recorder_;
+    std::unique_ptr<Replay> playback_;
+    ReplayCursor cursor_;
+    bool demo_ = false;
+    int demoTimer_ = 0;
+    InputState demoPrev_;
+    void tickPass(const InputState& raw);
+    void nextStage();
+    void endPlayback(bool toReplayList);
+    void stopRecordingStage();
     ResultScreen results_;
     bool inResults_ = false;
     Ending ending_;
