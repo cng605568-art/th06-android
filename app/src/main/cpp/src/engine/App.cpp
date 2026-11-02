@@ -6,10 +6,13 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <string>
 #include <thread>
 #include <vector>
 
 #include "core/Log.hpp"
+#include "platform/CrashHandler.hpp"
 #include "platform/DataMount.hpp"
 #if defined(__ANDROID__)
 #include "platform/AndroidStorage.hpp"
@@ -54,6 +57,15 @@ bool App::init(int argc, char** argv) {
         else if (a == "--scanlines") display_.scanlines = true;
     }
 #endif
+    // The session log and the crash report, kept in the app's storage for bug reports (the
+    // launcher's "Save a log").
+    if (char* pref = SDL_GetPrefPath("th06", "th06-android")) {
+        const std::string logs = std::string(pref) + "logs";
+        SDL_free(pref);
+        std::error_code ec;
+        std::filesystem::create_directories(logs, ec);
+        if (log::openFile(logs + "/session.log", logs + "/previous.log")) installCrashHandler(logs + "/crash.txt");
+    }
     SDL_SetHint(SDL_HINT_ORIENTATIONS, display_.portrait ? "Portrait PortraitUpsideDown" : "LandscapeLeft LandscapeRight");
     SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
     SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");

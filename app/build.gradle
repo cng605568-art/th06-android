@@ -27,7 +27,9 @@ android {
         minSdk = 24
         targetSdk = 36
         versionCode = (System.getenv('TH06_VERSION_CODE') ?: '1').toInteger()
-        versionName = System.getenv('TH06_VERSION_NAME') ?: '0.0.0-local'
+        // The version is kept in the VERSION file at the top of the repository; CI adds
+        // "-dev+<commit>" for branch builds and uses the tag's version for releases.
+        versionName = System.getenv('TH06_VERSION_NAME') ?: (rootProject.file('VERSION').text.trim() + '-local')
 
         ndk {
             abiFilters.addAll(abiList)

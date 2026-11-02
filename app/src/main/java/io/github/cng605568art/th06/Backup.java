@@ -1,0 +1,305 @@
+package io.github.cng605568art.th06;
+
+import android.content.Context;
+import android.content.SharedPreferences;
+
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.regex.Pattern;
+import java.util.zip.Deflater;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
+
+/**
+ * Backup and restore of everything the port keeps for the player, as one ZIP file they keep
+ * wherever they like: the high scores (score.dat), the game's options (th06.cfg), replays,
+ * the launcher's settings and, optionally, their replaced music. The game folder choice is
+ * left out (Android's access to a folder belongs to one install on one device).
+ */
+final class Backup {
+    static final String MANIFEST = "th06-backup.json";
+    private static final String SETTINGS = "settings.json";
+    private static final int FORMAT = 1;
+    /** Launcher settings that travel with a backup. */
+    private static final String[] PREF_FILES = {"th06_game_options"};
+    private static final long MAX_ENTRY = 512L << 20;
+    // Only these paths are ever written by a restore (no "..", no other folders).
+    private static final Pattern MUSIC = Pattern.compile("th06_\\d\\d\\.(wav|pos)");
+    private static final Pattern REPLAY = Pattern.compile("[A-Za-z0-9_\\-]{1,40}\\.rpy");
+
+    interface Progress {
+        void update(String message);
+    }
+
+    private Backup() {}
+
+    static String suggestedName() {
+        return "th06-backup-" + new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(new Date()) + ".zip";
+    }
+
+    /** Writes the backup; returns a one-line summary of what it holds. */
+    static String create(Context ctx, OutputStream target, boolean includeMusic, Progress progress) throws IOException {
+        File files = ctx.getFilesDir();
+        List<String> parts = new ArrayList<>();
+        try (ZipOutputStream zip = new ZipOutputStream(target)) {
+            zip.setLevel(Deflater.BEST_SPEED);
+            JSONObject manifest = new JSONObject();
+            try {
+                manifest.put("app", ctx.getPackageName());
+                manifest.put("format", FORMAT);
+                manifest.put("version", CrashReports.versionName(ctx));
+                manifest.put("created", new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.ROOT).format(new Date()));
+            } catch (JSONException e) {
+                throw new IOException(e);
+            }
+            putBytes(zip, MANIFEST, manifest.toString().getBytes(StandardCharsets.UTF_8));
+            if (putFile(zip, "files/score.dat", new File(files, "score.dat"))) parts.add("high scores");
+            if (putFile(zip, "files/th06.cfg", new File(files, "th06.cfg"))) parts.add("game options");
+            int replays = 0;
+            File[] rpy = new File(files, "replay").listFiles();
+            if (rpy != null) {
+                for (File f : rpy) {
+                    if (REPLAY.matcher(f.getName()).matches() && putFile(zip, "files/replay/" + f.getName(), f)) ++replays;
+                }
+            }
+            if (replays > 0) parts.add(replays + (replays == 1 ? " replay" : " replays"));
+            putBytes(zip, SETTINGS, exportSettings(ctx).getBytes(StandardCharsets.UTF_8));
+            parts.add("launcher settings");
+            if (includeMusic) {
+                int songs = 0;
+                File[] music = MusicReplacer.dir(ctx).listFiles();
+                if (music != null) {
+                    for (File f : music) {
+                        if (!MUSIC.matcher(f.getName()).matches()) continue;
+                        if (f.getName().endsWith(".wav")) {
+                            ++songs;
+                            if (progress != null) progress.update("Saving music: " + f.getName() + " ...");
+                        }
+                        putFile(zip, "files/music/" + f.getName(), f);
+                    }
+                }
+                if (songs > 0) parts.add(songs + (songs == 1 ? " replaced song" : " replaced songs"));
+            }
+            zip.finish();
+        }
+        return String.join(", ", parts);
+    }
+
+    /** Restores a backup over the current data; returns a one-line summary. */
+    static String restore(Context ctx, InputStream source, Progress progress) throws IOException {
+        File files = ctx.getFilesDir();
+        File staging = new File(ctx.getCacheDir(), "restore");
+        deleteTree(staging);
+        if (!staging.mkdirs()) throw new IOException("cannot prepare a temporary folder");
+        JSONObject manifest = null;
+        String settings = null;
+        boolean hasMusic = false;
+        try {
+            try (ZipInputStream zip = new ZipInputStream(source)) {
+                for (ZipEntry e; (e = zip.getNextEntry()) != null; ) {
+                    if (e.isDirectory()) continue;
+                    String name = e.getName();
+                    if (name.equals(MANIFEST)) {
+                        manifest = parse(new String(readLimited(zip, 1 << 16), StandardCharsets.UTF_8));
+                    } else if (name.equals(SETTINGS)) {
+                        settings = new String(readLimited(zip, 1 << 20), StandardCharsets.UTF_8);
+                    } else if (allowed(name)) {
+                        if (name.startsWith("files/music/")) {
+                            hasMusic = true;
+                            if (progress != null && name.endsWith(".wav")) progress.update("Reading music: " + name.substring(12) + " ...");
+                        }
+                        File out = new File(staging, name);
+                        File parent = out.getParentFile();
+                        if (parent != null && !parent.isDirectory() && !parent.mkdirs()) throw new IOException("cannot write " + name);
+                        try (OutputStream o = new FileOutputStream(out)) {
+                            copyLimited(zip, o);
+                        }
+                    }
+                    // Anything else is ignored.
+                }
+            }
+            if (manifest == null || !ctx.getPackageName().equals(manifest.optString("app"))) {
+                throw new IOException("this is not a TH06 port backup");
+            }
+            if (manifest.optInt("format", 0) > FORMAT) {
+                throw new IOException("this backup comes from a newer version of the app; update the app first");
+            }
+
+            // Everything was read: now replace.
+            List<String> parts = new ArrayList<>();
+            if (moveInto(new File(staging, "files/score.dat"), new File(files, "score.dat"))) parts.add("high scores");
+            if (moveInto(new File(staging, "files/th06.cfg"), new File(files, "th06.cfg"))) parts.add("game options");
+            File[] replays = new File(staging, "files/replay").listFiles();
+            if (replays != null && replays.length > 0) {
+                File dir = new File(files, "replay");
+                if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("cannot write the replays");
+                for (File f : replays) moveInto(f, new File(dir, f.getName()));
+                parts.add(replays.length + (replays.length == 1 ? " replay" : " replays"));
+            }
+            if (hasMusic) {
+                File dir = MusicReplacer.dir(ctx);
+                File[] old = dir.listFiles();
+                if (old != null) for (File f : old) if (MUSIC.matcher(f.getName()).matches()) deleteTree(f);
+                if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("cannot write the music");
+                int songs = 0;
+                File[] music = new File(staging, "files/music").listFiles();
+                if (music != null) {
+                    for (File f : music) {
+                        if (f.getName().endsWith(".wav")) ++songs;
+                        moveInto(f, new File(dir, f.getName()));
+                    }
+                }
+                parts.add(songs + (songs == 1 ? " replaced song" : " replaced songs"));
+            }
+            if (settings != null) {
+                importSettings(ctx, settings);
+                parts.add("launcher settings");
+            }
+            return parts.isEmpty() ? "nothing (the backup was empty)" : String.join(", ", parts);
+        } finally {
+            deleteTree(staging);
+        }
+    }
+
+    private static boolean allowed(String name) {
+        if (name.equals("files/score.dat") || name.equals("files/th06.cfg")) return true;
+        if (name.startsWith("files/music/")) return MUSIC.matcher(name.substring(12)).matches();
+        if (name.startsWith("files/replay/")) return REPLAY.matcher(name.substring(13)).matches();
+        return false;
+    }
+
+    // ---- settings ---------------------------------------------------------------------
+
+    private static String exportSettings(Context ctx) throws IOException {
+        JSONObject all = new JSONObject();
+        try {
+            for (String file : PREF_FILES) {
+                JSONObject values = new JSONObject();
+                for (Map.Entry<String, ?> e : ctx.getSharedPreferences(file, Context.MODE_PRIVATE).getAll().entrySet()) {
+                    Object v = e.getValue();
+                    String type = v instanceof Boolean ? "bool" : v instanceof Integer ? "int" : v instanceof Long ? "long"
+                            : v instanceof Float ? "float" : v instanceof String ? "string" : null;
+                    if (type == null) continue;  // (string sets are not used)
+                    JSONObject item = new JSONObject();
+                    item.put("type", type);
+                    item.put("value", v);
+                    values.put(e.getKey(), item);
+                }
+                all.put(file, values);
+            }
+            return all.toString(1);
+        } catch (JSONException e) {
+            throw new IOException(e);
+        }
+    }
+
+    private static void importSettings(Context ctx, String json) throws IOException {
+        JSONObject all = parse(json);
+        for (String file : PREF_FILES) {
+            JSONObject values = all.optJSONObject(file);
+            if (values == null) continue;
+            SharedPreferences.Editor edit = ctx.getSharedPreferences(file, Context.MODE_PRIVATE).edit().clear();
+            for (Iterator<String> it = values.keys(); it.hasNext(); ) {
+                String key = it.next();
+                JSONObject item = values.optJSONObject(key);
+                if (item == null) continue;
+                switch (item.optString("type")) {
+                    case "bool": edit.putBoolean(key, item.optBoolean("value")); break;
+                    case "int": edit.putInt(key, item.optInt("value")); break;
+                    case "long": edit.putLong(key, item.optLong("value")); break;
+                    case "float": edit.putFloat(key, (float) item.optDouble("value")); break;
+                    case "string": edit.putString(key, item.optString("value")); break;
+                    default: break;
+                }
+            }
+            edit.apply();
+        }
+    }
+
+    // ---- files ------------------------------------------------------------------------
+
+    private static JSONObject parse(String json) throws IOException {
+        try {
+            return new JSONObject(json);
+        } catch (JSONException e) {
+            throw new IOException("the backup is damaged (" + e.getMessage() + ")");
+        }
+    }
+
+    private static void putBytes(ZipOutputStream zip, String name, byte[] bytes) throws IOException {
+        zip.putNextEntry(new ZipEntry(name));
+        zip.write(bytes);
+        zip.closeEntry();
+    }
+
+    private static boolean putFile(ZipOutputStream zip, String name, File f) throws IOException {
+        if (!f.isFile()) return false;
+        ZipEntry e = new ZipEntry(name);
+        e.setTime(f.lastModified());
+        zip.putNextEntry(e);
+        try (InputStream in = new FileInputStream(f)) {
+            byte[] buf = new byte[1 << 16];
+            for (int n; (n = in.read(buf)) > 0; ) zip.write(buf, 0, n);
+        }
+        zip.closeEntry();
+        return true;
+    }
+
+    private static byte[] readLimited(InputStream in, int limit) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        byte[] buf = new byte[8192];
+        for (int n; (n = in.read(buf)) > 0; ) {
+            out.write(buf, 0, n);
+            if (out.size() > limit) throw new IOException("the backup is damaged (an entry is too large)");
+        }
+        return out.toByteArray();
+    }
+
+    private static void copyLimited(InputStream in, OutputStream out) throws IOException {
+        byte[] buf = new byte[1 << 16];
+        long total = 0;
+        for (int n; (n = in.read(buf)) > 0; ) {
+            total += n;
+            if (total > MAX_ENTRY) throw new IOException("the backup is damaged (a file is too large)");
+            out.write(buf, 0, n);
+        }
+    }
+
+    private static boolean moveInto(File from, File to) throws IOException {
+        if (!from.isFile()) return false;
+        if (to.exists() && !to.delete()) throw new IOException("cannot replace " + to.getName());
+        if (from.renameTo(to)) return true;
+        // (another file system: copy)
+        try (InputStream in = new FileInputStream(from); OutputStream out = new FileOutputStream(to)) {
+            byte[] buf = new byte[1 << 16];
+            for (int n; (n = in.read(buf)) > 0; ) out.write(buf, 0, n);
+        }
+        //noinspection ResultOfMethodCallIgnored
+        from.delete();
+        return true;
+    }
+
+    private static void deleteTree(File f) {
+        File[] children = f.listFiles();
+        if (children != null) for (File c : children) deleteTree(c);
+        //noinspection ResultOfMethodCallIgnored
+        f.delete();
+    }
+}

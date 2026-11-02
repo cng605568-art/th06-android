@@ -10,8 +10,12 @@
 
     <!-- SDL's Java glue references these for rumble and Bluetooth/USB controllers. -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Only for "Check for updates" (GitHub's release list) and, on request, downloads the
+         player starts themselves. -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
+        android:name=".Th06App"
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
