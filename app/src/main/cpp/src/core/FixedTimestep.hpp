@@ -41,6 +41,8 @@ class FixedTimestep {
         last_ = now;
         accumulator_ = Fine::zero();
     }
+    // Practice slow motion: game time runs at percent / 100 of real time.
+    void setSpeed(int percent) { speedPercent_ = std::clamp(percent, 10, 100); }
     void setDisplay(int refreshHz, bool vsync) {
         refreshHz_ = refreshHz;
         vsync_ = vsync;
@@ -60,6 +62,7 @@ class FixedTimestep {
     Fine accumulator_ = Fine::zero();
     int refreshHz_ = 60;
     bool vsync_ = false;
+    int speedPercent_ = 100;
 };
 
 
@@ -82,6 +85,7 @@ inline int FixedTimestep::advanceBy(Fine dt) {
             if (diff < kVsyncSnap) dt = snapped;
         }
     }
+    if (speedPercent_ != 100) dt = Fine(dt.count() * speedPercent_ / 100);
     accumulator_ += std::min(dt, kMaxFrameTime);
     int ticks = 0;
     while (accumulator_ > Fine::zero()) {

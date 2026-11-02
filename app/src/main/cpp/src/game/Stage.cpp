@@ -59,6 +59,7 @@ Stage::Stage(TextureLibrary& textures, const UiArt& ui, const Vfs* vfs, SoundPla
 
 bool Stage::load(int stageNumber, int difficulty) {
     ready_ = false;
+    ++loadSerial_;  // a save state from the previous stage no longer applies
     stageNumber_ = std::clamp(stageNumber, 1, 7);
     const int s = stageNumber_ - 1;
     if (!vfs_ || vfs_->fileCount() == 0) {
@@ -209,6 +210,15 @@ void Stage::tick(const InputState& raw) {
     // The game manager: the pause check, then the freeze.
     if (!menus_.frozen() && !state_.continueMenu && edges.menu) menus_.openPause();
     if (menus_.frozen()) return;
+    // Practice save states (F5 / F9, pad L3 / R3, the touch buttons).
+    if (saveStates_) {
+        if (in.saveState && !saveEdge_) saveState();
+        const bool loadNow = in.loadState && !loadEdge_;
+        saveEdge_ = in.saveState;
+        loadEdge_ = in.loadState;
+        if (loadNow && loadState()) return;
+    }
+    if (toastTimer_ > 0) --toastTimer_;
 
     ++state_.frame;
     if (state_.cheat(MischiefFullPower)) state_.power = GameState::kMaxPower;
@@ -266,11 +276,97 @@ void Stage::runMenus(const MenuInput& edges) {
     }
 }
 
+bool Stage::saveState() {
+    if (!ready_ || inMenus() || inResults_ || inEnding_ || state_.continueMenu) return false;
+    if (!save_) {
+        save_ = std::unique_ptr<SaveSlot>(new SaveSlot{false, 0, 0, state_, rng_, *bullets_, *enemies_, *items_, *player_, shake_,
+                                                       effects_, gui_, background_, {}, {}, 0, {}});
+    } else {
+        save_->state = state_;
+        save_->rng = rng_;
+        save_->bullets = *bullets_;
+        save_->enemies = *enemies_;
+        save_->items = *items_;
+        save_->player = *player_;
+        save_->shake = shake_;
+        save_->effects = effects_;
+        save_->gui = gui_;
+        save_->background = background_;
+    }
+    SaveSlot& s = *save_;
+    s.valid = true;
+    s.generation = anm_.generation();
+    s.loadSerial = loadSerial_;
+    s.ecl.assign(ecl_.bytes().begin(), ecl_.bytes().end());
+    s.clearTimer = clearTimer_;
+    s.song = music_ ? music_->current() : std::string();
+    s.text = Image();
+    if (const int t = anm_.fileTexture(kAnmFileText); t >= 0) {
+        if (const Image* px = textures_.pixels(static_cast<std::uint16_t>(t))) s.text = *px;
+    }
+    toast_ = "STATE SAVED";
+    toastTimer_ = 60;
+    return true;
+}
+
+bool Stage::loadState() {
+    if (!ready_ || inMenus() || inResults_ || inEnding_) return false;
+    if (!save_ || !save_->valid) {
+        toast_ = "NO STATE SAVED";
+        toastTimer_ = 60;
+        return false;
+    }
+    SaveSlot& s = *save_;
+    if (s.loadSerial != loadSerial_ || s.generation != anm_.generation() || !ecl_.restoreBytes(s.ecl)) {
+        s.valid = false;  // another stage (or reloaded art): the state no longer fits
+        toast_ = "STATE EXPIRED";
+        toastTimer_ = 60;
+        return false;
+    }
+    const std::uint32_t mischief = state_.mischief;
+    state_ = s.state;
+    state_.mischief = mischief;
+    rng_ = s.rng;
+    *bullets_ = s.bullets;
+    *enemies_ = s.enemies;
+    *items_ = s.items;
+    *player_ = s.player;
+    shake_ = s.shake;
+    effects_ = s.effects;
+    gui_ = s.gui;
+    background_ = s.background;
+    clearTimer_ = s.clearTimer;
+    if (const int t = anm_.fileTexture(kAnmFileText); t >= 0 && s.text.width > 0) {
+        if (Image* px = textures_.pixels(static_cast<std::uint16_t>(t)); px && px->width == s.text.width && px->height == s.text.height) {
+            *px = s.text;
+            textures_.touch(static_cast<std::uint16_t>(t));
+        }
+    }
+    if (music_ && !s.song.empty() && music_->current() != s.song) music_->play(s.song);
+    // Practice from here on: nothing from this game is saved.
+    recordable_ = false;
+    world_.scores = nullptr;
+    toolsUsed_ = true;
+    toast_ = "STATE LOADED";
+    toastTimer_ = 60;
+    return true;
+}
+
+void Stage::renderToast(SpriteSink& s) {
+    if (toastTimer_ <= 0 || toast_.empty()) return;
+    const auto a = static_cast<std::uint8_t>(std::min(255, toastTimer_ * 12));
+    const float w = textWidth(toast_, 2.0f) + 24.0f;
+    const float x = kGameRegionX + (kGameRegionWidth - w) * 0.5f, y = kGameRegionY + 56.0f;
+    s.fillRect(ui_.white, x, y, w, 30.0f, rgba(60, 0, 25, static_cast<std::uint8_t>(a * 0.75f)));
+    drawText(s, ui_, x + 12.0f, y + 8.0f, toast_, 2.0f, rgba(255, 210, 225, a));
+}
+
 // The first stage of a game: score.dat (the port's own, else the player's PC file) and the
 // HUD's hi-score (in practice, the stage's practice best).
 void Stage::startRun() {
     runStartStage_ = stageNumber_;
-    recordable_ = state_.mischief == 0 && !stageSelect_;
+    recordable_ = state_.mischief == 0 && !stageSelect_ && speedPercent_ >= 100;
+    toolsUsed_ = speedPercent_ < 100;
     if (!recordable_) world_.scores = nullptr;  // no spell history either
     loadScores();
     const std::uint32_t hi = practiceRun_ ? scores_.practice(state_.shotType, std::clamp(stageNumber_ - 1, 0, 5), std::min(state_.difficulty, 3))
@@ -642,6 +738,13 @@ void Stage::render(SpriteSink& s, float alpha, const HudInfo& hud) {
         player_->drawHits(world_, s, alpha);
         effects_.draw(world_, s, alpha);
         bullets_->draw(world_, s, alpha);
+        if (showHitbox_ && (player_->state == Player::Alive || player_->state == Player::Invulnerable)) {
+            // Practice: the ship's hitbox (the 2002 game never shows it).
+            const Vec3f p = lerp(player_->prevPosition, player_->positionCenter, alpha);
+            const float x = state_.playfieldX + p.x, y = state_.playfieldY + p.y;
+            s.drawRegion(ui_.disc, x, y, 7.0f / static_cast<float>(ui_.disc.width), rgba(200, 20, 40, 230));
+            s.drawRegion(ui_.disc, x, y, 3.5f / static_cast<float>(ui_.disc.width), rgba(255, 255, 255, 255));
+        }
         gui_.drawPopups(world_, s);
         if (!gui_.ready()) renderBombName(s);
     }
@@ -649,6 +752,7 @@ void Stage::render(SpriteSink& s, float alpha, const HudInfo& hud) {
         gui_.draw(world_, s, ui_.white, hud.fps);
         gui_.drawStrings(world_, s);
         renderDiagnostics(s);
+        renderToast(s);
         menus_.draw(anm_, s, state_.cheat(MischiefContinues) ? 9 : 3 - state_.continuesUsed, captureReady_);
         return;
     }
@@ -687,17 +791,21 @@ void Stage::renderBombName(SpriteSink& s) {
 // With the game's panel on screen, only the list of features the data used that are not
 // ported yet, small, at the bottom of the side panel.
 void Stage::renderDiagnostics(SpriteSink& s) {
-    if (state_.mischief != 0 || stageSelect_) {  // say so: these scores are not saved
+    if (state_.mischief != 0 || stageSelect_ || toolsUsed_) {  // say so: these scores are not saved
         std::string t;
         if (state_.cheat(MischiefLives)) t += " LIVES";
         if (state_.cheat(MischiefBombs)) t += " BOMBS";
         if (state_.cheat(MischiefInvincible)) t += " INVINCIBLE";
         if (state_.cheat(MischiefFullPower)) t += " POWER";
         if (state_.cheat(MischiefContinues)) t += " CONT";
+        if (speedPercent_ < 100) t = " SLOW " + std::to_string(speedPercent_) + "%" + t;
+        if (toolsUsed_ && speedPercent_ >= 100) t = " STATE LOADED" + t;
         if (stageSelect_) t = (runStartStage_ == 7 ? std::string(" FROM THE EXTRA STAGE") : " FROM STAGE " + std::to_string(runStartStage_)) + t;
         s.fillRect(ui_.white, 420.0f, 352.0f, 216.0f, 23.0f, rgba(60, 0, 40, 170));
-        drawText(s, ui_, 424.0f, 355.0f, stageSelect_ ? "STAGE SELECT (SCORES NOT SAVED):" : "MISCHIEF (SCORES NOT SAVED):", 1.0f,
-                 rgba(255, 140, 200));
+        const char* head = stageSelect_ ? "STAGE SELECT (SCORES NOT SAVED):"
+                           : state_.mischief != 0 ? "MISCHIEF (SCORES NOT SAVED):"
+                                                  : "PRACTICE (SCORES NOT SAVED):";
+        drawText(s, ui_, 424.0f, 355.0f, head, 1.0f, rgba(255, 140, 200));
         drawText(s, ui_, 424.0f, 365.0f, t.substr(1, 34), 1.0f, rgba(255, 190, 220));
     }
     if (unported_.counts().empty()) return;

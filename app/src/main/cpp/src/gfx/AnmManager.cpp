@@ -93,6 +93,7 @@ bool AnmManager::loadAnm(const Vfs& vfs, int fileSlot, std::string_view path, in
 
 bool AnmManager::loadAnmFromBytes(std::vector<std::uint8_t> bytes, std::uint16_t texture, int fileSlot,
                                   int offset, std::string* error) {
+    ++generation_;
     if (fileSlot < 0 || fileSlot >= kMaxFiles) {
         if (error) *error = "ANM file slot out of range";
         return false;
@@ -147,6 +148,7 @@ bool AnmManager::loadAnmFromBytes(std::vector<std::uint8_t> bytes, std::uint16_t
 
 void AnmManager::releaseAnm(int fileSlot) {
     if (fileSlot < 0 || fileSlot >= kMaxFiles) return;
+    ++generation_;
     for (AnmLoadedSprite& s : sprites_) {
         if (s.sourceFile == fileSlot) s = AnmLoadedSprite{};
     }

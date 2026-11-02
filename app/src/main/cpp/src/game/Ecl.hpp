@@ -144,6 +144,13 @@ class EclFile {
     bool load(std::vector<std::uint8_t> bytes, std::string* error);
 
     std::span<const std::uint8_t> bytes() const { return bytes_; }
+    // Puts back bytes saved earlier (scripts write into themselves); same size only, in place,
+    // so pointers into the script stay valid.
+    bool restoreBytes(std::span<const std::uint8_t> saved) {
+        if (saved.size() != bytes_.size()) return false;
+        std::copy(saved.begin(), saved.end(), bytes_.begin());
+        return true;
+    }
     int subCount() const { return static_cast<int>(subOffsets_.size()); }
     // Offset of a sub's first instruction, or 0 if the id is invalid.
     std::uint32_t subOffset(int subId) const;

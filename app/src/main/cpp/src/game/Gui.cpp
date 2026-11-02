@@ -120,7 +120,7 @@ std::uint32_t withAlpha(std::uint32_t rgb, std::uint32_t alpha) { return (rgb & 
 
 }  // namespace
 
-Gui::Gui(TextureLibrary& textures, TextRenderer* text) : textures_(textures), text_(text) {}
+Gui::Gui(TextureLibrary& textures, TextRenderer* text) : textures_(&textures), text_(text) {}
 
 bool Gui::loadRun(World& world, const Vfs& vfs, int character) {
     AnmManager& anm = *world.anm;
@@ -238,7 +238,7 @@ bool Gui::renderText(World& world, AnmVm& element, std::span<const std::uint8_t>
                      std::uint32_t rgb, Align align, std::uint32_t shadowRgb) {
     const AnmLoadedSprite* s = world.anm->sprite(element);
     if (!s || !text_) return false;
-    Image* img = textures_.pixels(s->texture);
+    Image* img = textures_->pixels(s->texture);
     if (!img) return false;
     const int w = img->width;
     const float n = static_cast<float>(sjis.size());
@@ -258,7 +258,7 @@ bool Gui::renderText(World& world, AnmVm& element, std::span<const std::uint8_t>
         if (top + y < 0 || top + y >= img->height) continue;
         std::memcpy(img->pixel(0, top + y), band.pixel(0, y), static_cast<std::size_t>(w) * 4);
     }
-    textures_.touch(s->texture);
+    textures_->touch(s->texture);
     element.visible = true;
     return true;
 }

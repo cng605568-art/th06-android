@@ -7,6 +7,8 @@
 // (th06 decompilation, BulletManager.cpp).
 
 #include <array>
+
+#include "core/HeapArray.hpp"
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -153,7 +155,7 @@ class BulletManager {
     void laserStars(World& world, const Laser& l);
 
     std::array<BulletTypeSprites, kBulletTypes> templates_{};
-    std::unique_ptr<std::array<Bullet, kMaxBullets>> bullets_ = std::make_unique<std::array<Bullet, kMaxBullets>>();
+    HeapArray<Bullet, kMaxBullets> bullets_;
     std::array<Laser, kMaxLasers> lasers_{};
     int nextBulletIndex_ = 0;
     int peak_ = 0;

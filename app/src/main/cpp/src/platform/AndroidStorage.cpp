@@ -154,6 +154,13 @@ ControlOptions readAndroidControlOptions() {
         out.autoFire = v[6] != 0;
         out.vibrate = v[7] != 0;
     }
+    if (n >= 11) {
+        jint p[3] = {};
+        a.env->GetIntArrayRegion(array, 8, 3, p);
+        out.speedPercent = p[0] < 10 || p[0] > 100 ? 100 : p[0];
+        out.showHitbox = p[1] != 0;
+        out.saveStates = p[2] != 0;
+    }
     a.env->DeleteLocalRef(array);
     return out;
 }

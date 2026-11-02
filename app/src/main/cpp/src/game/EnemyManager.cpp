@@ -55,7 +55,7 @@ void Enemy::clampPos() {
     else if (position.y > upperMoveLimitY) position.y = upperMoveLimitY;
 }
 
-EnemyManager::EnemyManager() : enemies_(std::make_unique<std::array<Enemy, kMaxEnemies>>()) {
+EnemyManager::EnemyManager() {
     // EnemyManager::Initialize: the enemy template.
     for (AnmVm& vm : template_.vms) vm.anmFileIndex = -1;
     template_.slotOccupied = true;

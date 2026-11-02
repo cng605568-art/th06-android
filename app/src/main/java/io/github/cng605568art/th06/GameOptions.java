@@ -65,7 +65,13 @@ final class GameOptions {
     static boolean controlFlag(Context ctx, String name, boolean fallback) { return prefs(ctx).getBoolean(KEY_CONTROLS + name, fallback); }
     static void setControlFlag(Context ctx, String name, boolean v) { prefs(ctx).edit().putBoolean(KEY_CONTROLS + name, v).apply(); }
 
-    /** {drag, sensitivity %, button size %, opacity %, left-handed, focus toggle, auto-fire, vibrate}. */
+    static final String[] SPEEDS = {"Normal speed", "75% (slow motion)", "50% (slow motion)"};
+    static final int[] SPEED_PCT = {100, 75, 50};
+
+    /**
+     * {drag, sensitivity %, button size %, opacity %, left-handed, focus toggle, auto-fire,
+     * vibrate, game speed %, show hitbox, save states}.
+     */
     static int[] controls(Context ctx) {
         int speed = clamp(controlChoice(ctx, "speed", 2), 0, DRAG_SPEED_PCT.length - 1);
         int size = clamp(controlChoice(ctx, "size", 1), 0, BUTTON_SIZE_PCT.length - 1);
@@ -74,6 +80,8 @@ final class GameOptions {
             controlChoice(ctx, "mode", 0) == 0 ? 1 : 0, DRAG_SPEED_PCT[speed], BUTTON_SIZE_PCT[size], OPACITY_PCT[opacity],
             controlFlag(ctx, "left", false) ? 1 : 0, controlFlag(ctx, "focusToggle", false) ? 1 : 0,
             controlFlag(ctx, "autoFire", false) ? 1 : 0, controlFlag(ctx, "vibrate", true) ? 1 : 0,
+            SPEED_PCT[clamp(controlChoice(ctx, "speed%", 0), 0, SPEED_PCT.length - 1)],
+            controlFlag(ctx, "hitbox", false) ? 1 : 0, controlFlag(ctx, "saveStates", false) ? 1 : 0,
         };
     }
 

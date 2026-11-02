@@ -182,7 +182,7 @@ class Gui {
         std::array<AnmVm, 2> intro{};
     };
 
-    TextureLibrary& textures_;
+    TextureLibrary* textures_;  // (a pointer, so the GUI can be copied for save states)
     TextRenderer* text_;
     bool ready_ = false;
     int character_ = -1;

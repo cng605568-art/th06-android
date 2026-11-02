@@ -150,6 +150,9 @@ class AnmManager {
     // does this first). VMs still running one of its scripts must be reset by the caller.
     void releaseAnm(int fileSlot);
     bool fileLoaded(int fileSlot) const;
+    // Goes up whenever a file is loaded or released (animations from before point into
+    // files that may be gone: a practice save state is only good while it stays put).
+    std::uint64_t generation() const { return generation_; }
     // TextureLibrary id of a loaded file's texture, -1 if the slot is empty.
     int fileTexture(int fileSlot) const {
         if (fileSlot < 0 || fileSlot >= kMaxFiles || !files_[static_cast<std::size_t>(fileSlot)].loaded) return -1;
@@ -203,6 +206,7 @@ class AnmManager {
     int lastSprite_ = -1;
     float lastU0_ = 0, lastV0_ = 0, lastU1_ = 0, lastV1_ = 0;
     int runawayWarnings_ = 0;
+    std::uint64_t generation_ = 0;
 };
 
 }  // namespace th06

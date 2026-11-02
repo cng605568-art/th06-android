@@ -39,7 +39,7 @@ constexpr PointValue kPointValues[5] = {
 
 }  // namespace
 
-ItemManager::ItemManager() : items_(std::make_unique<std::array<Item, kMaxItems>>()) {}
+ItemManager::ItemManager() = default;
 
 void ItemManager::reset() {
     items_->fill(Item{});

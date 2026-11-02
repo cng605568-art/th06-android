@@ -158,7 +158,7 @@ public class GameActivity extends SDLActivity {
     /** The launcher's touch-control settings, see GameOptions.controls(). */
     public static int[] getControlOptions() {
         Context ctx = SDL.getContext();
-        if (ctx == null) return new int[] {1, 150, 100, 100, 0, 0, 0, 1};
+        if (ctx == null) return new int[] {1, 150, 100, 100, 0, 0, 0, 1, 100, 0, 0};
         return GameOptions.controls(ctx);
     }
 

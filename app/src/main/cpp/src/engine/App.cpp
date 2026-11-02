@@ -100,6 +100,9 @@ bool App::init(int argc, char** argv) {
         else if (a == "--dpad") controls_.drag = false;
         else if (a == "--autofire") controls_.autoFire = true;
         else if (a == "--left-handed") controls_.leftHanded = true;
+        else if (a == "--slow" && next) controls_.speedPercent = std::atoi(argv[++i]);
+        else if (a == "--hitbox") controls_.showHitbox = true;
+        else if (a == "--savestates") controls_.saveStates = true;
         else if (a == "--keys" && next) parseDevKeys(argv[++i]);
         else if (a == "--mischief" && next) mischief_ = static_cast<std::uint32_t>(std::atoi(argv[++i]));
         else if (a == "--size" && next) std::sscanf(argv[++i], "%dx%d", &windowWidth_, &windowHeight_);
@@ -166,6 +169,7 @@ bool App::init(int argc, char** argv) {
     stage_->setShotType(shotType_);
     stage_->setMischief(mischief_);
     stage_->setAutoFire(controls_.autoFire);
+    stage_->setPracticeTools(controls_.speedPercent, controls_.showHitbox, controls_.saveStates);
     if (char* pref = SDL_GetPrefPath("th06", "th06-android")) {  // app storage on Android
         stage_->setScorePath(std::string(pref) + "score.dat");
         stage_->setConfigPath(std::string(pref) + "th06.cfg");
@@ -361,6 +365,10 @@ void App::loop() {
 
         // Physics: player movement, ECL, bullets and collision, in whole 1/60 s ticks.
         // Input is sampled once per rendered frame and applies to every tick it runs.
+        // Practice slow motion runs the stage in play only (not the title, menus or results).
+        const bool slow = stage_->ready() && !stage_->inMenus() && !stage_->inResults() && !stage_->inEnding() &&
+                          !stage_->menus().frozen();
+        clock_.setSpeed(slow ? controls_.speedPercent : 100);
         const int ticks = clock_.advance(now);
         if (ticks > 0) {
             InputState in = input_.sample();
@@ -531,6 +539,8 @@ void App::applyDevKeys(InputState& in) {
     else if (key == "bomb") in.bomb = true;
     else if (key == "pause") in.pause = true;
     else if (key == "quit") in.quit = true;
+    else if (key == "save") in.saveState = true;
+    else if (key == "load") in.loadState = true;
 }
 
 bool App::capturePlayfield() {

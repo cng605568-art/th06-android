@@ -128,6 +128,7 @@ public class ImportActivity extends Activity {
 
         addControlsSection(page);
         addDisplaySection(page);
+        addPracticeSection(page);
 
         // Mischief
         LinearLayout mischiefCard = ui.card(page, "Mischief",
@@ -281,6 +282,26 @@ public class ImportActivity extends Activity {
         CheckBox scan = ui.check("CRT scanlines", GameOptions.controlFlag(this, "scanlines", false));
         scan.setOnCheckedChangeListener((b, checked) -> GameOptions.setControlFlag(this, "scanlines", checked));
         card.addView(scan, LauncherUi.matchWrap());
+    }
+
+    /** Practice tools (not in the original): slow motion, a hitbox marker, save states. */
+    private void addPracticeSection(LinearLayout page) {
+        LinearLayout card = ui.card(page, "Practice tools",
+                "Not in the original game. Slow motion, or loading a save state, means that game's "
+                        + "scores are not saved; the hitbox marker changes nothing.");
+        card.addView(ui.caption("Game speed"), LauncherUi.matchWrap());
+        card.addView(ui.spinner(ui.adapter(GameOptions.SPEEDS), GameOptions.controlChoice(this, "speed%", 0),
+                v -> GameOptions.setControlChoice(this, "speed%", v)), LauncherUi.matchWrap());
+        String[][] flags = {
+            {"hitbox", "Show the ship's hitbox"},
+            {"saveStates", "Save states (SAVE / LOAD buttons; F5 / F9 on a keyboard, L3 / R3 on a gamepad)"},
+        };
+        for (String[] f : flags) {
+            final String key = f[0];
+            CheckBox box = ui.check(f[1], GameOptions.controlFlag(this, key, false));
+            box.setOnCheckedChangeListener((b, checked) -> GameOptions.setControlFlag(this, key, checked));
+            card.addView(box, LauncherUi.matchWrap());
+        }
     }
 
     private void updatePlayHint() {

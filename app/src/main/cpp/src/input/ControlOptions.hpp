@@ -13,6 +13,10 @@ struct ControlOptions {
     bool focusToggle = false;   // the Focus button latches instead of being held
     bool autoFire = false;      // Shot is held during play
     bool vibrate = true;        // a short vibration on a miss and on a bomb
+    // Practice tools (port extras).
+    int speedPercent = 100;     // slow motion (scores not saved below 100)
+    bool showHitbox = false;    // a marker on the ship's hitbox
+    bool saveStates = false;    // SAVE / LOAD (loading means the game's scores are not saved)
 };
 
 }  // namespace th06

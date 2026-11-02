@@ -32,6 +32,7 @@
 #include "game/Title.hpp"
 #include "game/World.hpp"
 #include "gfx/AnmManager.hpp"
+#include "gfx/Image.hpp"
 #include "gfx/ProceduralArt.hpp"
 #include "gfx/TextRenderer.hpp"
 #include "gfx/TextureLibrary.hpp"
@@ -87,6 +88,20 @@ class Stage {
     void setShotType(int shotType) { state_.shotType = shotType < 0 || shotType > 3 ? 0 : shotType; }
     // Touch option: Shot is held for the ship during play (the dialogue still takes taps).
     void setAutoFire(bool on) { autoFire_ = on; }
+    // Practice tools (port extras): slow motion (percent of normal speed; below 100 the
+    // game's scores are not saved), a hitbox marker, save states.
+    void setPracticeTools(int speedPercent, bool showHitbox, bool saveStates) {
+        speedPercent_ = speedPercent;
+        showHitbox_ = showHitbox;
+        saveStates_ = saveStates;
+    }
+    // A save state of the stage in play (false: nothing to save now). Loading one makes the
+    // game unrecordable; it is refused once the stage or its loaded files have changed.
+    bool saveState();
+    bool loadState();
+    bool hasSaveState() const {
+        return save_ && save_->valid && save_->loadSerial == loadSerial_ && save_->generation == anm_.generation();
+    }
     // The launcher's mischief options (Mischief bits). Set before the first load().
     void setMischief(std::uint32_t bits) { state_.mischief = bits & 31u; }
 
@@ -214,6 +229,33 @@ class Stage {
     bool practiceRun_ = false;
     bool stageSelect_ = false;  // started from the launcher's stage select: nothing is saved
     bool autoFire_ = false;
+    int speedPercent_ = 100;
+    bool saveEdge_ = false, loadEdge_ = false;
+    bool showHitbox_ = false, saveStates_ = false, toolsUsed_ = false;
+    // A practice save state: copies of everything that runs during a stage.
+    struct SaveSlot {
+        bool valid = false;
+        std::uint64_t generation = 0, loadSerial = 0;
+        GameState state;
+        ZunRng rng{0};
+        BulletManager bullets;
+        EnemyManager enemies;
+        ItemManager items;
+        Player player;
+        ScreenShake shake;
+        EffectManager effects;
+        Gui gui;
+        StageBackground background;
+        std::vector<std::uint8_t> ecl;
+        Image text;  // text.anm's rendered lines
+        int clearTimer = 0;
+        std::string song;
+    };
+    std::unique_ptr<SaveSlot> save_;
+    std::uint64_t loadSerial_ = 0;
+    std::string toast_;  // "STATE SAVED" ... shown for a second
+    int toastTimer_ = 0;
+    void renderToast(SpriteSink& sink);
     bool recordable_ = true;  // a full game without mischief: its scores are saved
     ResultScreen results_;
     bool inResults_ = false;
