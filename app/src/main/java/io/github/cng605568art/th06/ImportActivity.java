@@ -1,6 +1,7 @@
 package io.github.cng605568art.th06;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.UriPermission;
 import android.graphics.Color;
@@ -25,6 +26,8 @@ import android.widget.Spinner;
 import android.widget.TextView;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.List;
 import java.util.Locale;
 
@@ -36,6 +39,9 @@ import java.util.Locale;
 public class ImportActivity extends Activity {
     private static final int REQUEST_TREE = 6;
     private static final int REQUEST_AUDIO = 7;
+    private static final int REQUEST_BACKUP = 8;
+    private static final int REQUEST_RESTORE = 9;
+    private static final int REQUEST_LOG = 10;
 
     private LauncherUi ui;
     private TextView status;
@@ -53,6 +59,15 @@ public class ImportActivity extends Activity {
     private Button musicRestore;
     private TextView musicStatus;
     private volatile boolean converting;
+    // Banners, backup, help
+    private LinearLayout banners;
+    private CheckBox backupMusic;
+    private Button backupButton;
+    private Button restoreButton;
+    private TextView backupStatus;
+    private TextView updateStatus;
+    private Button updateButton;
+    private volatile boolean busy;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -75,6 +90,10 @@ public class ImportActivity extends Activity {
         playHint.setGravity(Gravity.CENTER_HORIZONTAL);
         playHint.setPadding(ui.dp(24), ui.dp(8), ui.dp(24), ui.dp(4));
         page.addView(playHint, LauncherUi.matchWrap());
+        // A crash last time, or a newer release: shown here, above everything else.
+        banners = new LinearLayout(this);
+        banners.setOrientation(LinearLayout.VERTICAL);
+        page.addView(banners, LauncherUi.matchWrap());
 
         // Game files
         LinearLayout files = ui.card(page, "Game files",
@@ -143,6 +162,8 @@ public class ImportActivity extends Activity {
         }
 
         addMusicSection(page);
+        addBackupSection(page);
+        addHelpSection(page);
 
         TextView footer = ui.body("A fan-made port for your own copy of 東方紅魔郷 ～ the Embodiment of "
                 + "Scarlet Devil (Team Shanghai Alice). No game files are included.\n"
@@ -178,6 +199,13 @@ public class ImportActivity extends Activity {
         });
 
         refresh();
+        if (UpdateChecker.due(this)) checkForUpdates(false);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        showBanners();
     }
 
     private void drawEdgeToEdge() {
@@ -304,6 +332,217 @@ public class ImportActivity extends Activity {
         }
     }
 
+    // ---- banners ----------------------------------------------------------------------
+
+    private void showBanners() {
+        if (banners == null) return;
+        banners.removeAllViews();
+        if (CrashReports.hasUnseenCrash(this)) {
+            LinearLayout card = ui.card(banners, "The game closed unexpectedly",
+                    "Sorry about that. A log of what happened was kept on this phone; you can save it and "
+                            + "attach it to a bug report on GitHub. Nothing is sent automatically.");
+            Button save = ui.primary("Save the log");
+            save.setOnClickListener(v -> saveLog());
+            card.addView(save, ui.matchWrap(12, 4));
+            Button dismiss = ui.secondary("Dismiss");
+            dismiss.setOnClickListener(v -> {
+                CrashReports.markSeen(this);
+                showBanners();
+            });
+            card.addView(dismiss, ui.matchWrap(0, 0));
+        }
+        UpdateChecker.Result update = UpdateChecker.cached(this);
+        if (update != null && update.newer) {
+            LinearLayout card = ui.card(banners, "Version " + update.latest + " is available",
+                    "You have " + CrashReports.versionName(this) + ". Download the new APK from its release page "
+                            + "and install it over this one (your scores and settings stay).");
+            Button open = ui.primary("Open the release page");
+            open.setOnClickListener(v -> openPage(update.page));
+            card.addView(open, ui.matchWrap(12, 0));
+        }
+    }
+
+    private void openPage(String url) {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+        } catch (android.content.ActivityNotFoundException e) {
+            if (updateStatus != null) updateStatus.setText("No browser found to open " + url);
+        }
+    }
+
+    // ---- backup -----------------------------------------------------------------------
+
+    /** Backup and restore of scores, options, replays, launcher settings and replaced music. */
+    private void addBackupSection(LinearLayout page) {
+        LinearLayout card = ui.card(page, "Backup",
+                "Keep your high scores, game options, replays and launcher settings in one file (in "
+                        + "Downloads, a cloud drive …), and bring them back after reinstalling or on a new phone.");
+        backupMusic = ui.check("Include replaced music (bigger file)", true);
+        card.addView(backupMusic, ui.matchWrap(4, 0));
+        backupButton = ui.primary("Back up to a file");
+        backupButton.setOnClickListener(v -> {
+            Intent create = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            create.addCategory(Intent.CATEGORY_OPENABLE);
+            create.setType("application/zip");
+            create.putExtra(Intent.EXTRA_TITLE, Backup.suggestedName());
+            startActivityForResult(create, REQUEST_BACKUP);
+        });
+        card.addView(backupButton, ui.matchWrap(10, 4));
+        restoreButton = ui.secondary("Restore from a backup");
+        restoreButton.setOnClickListener(v -> {
+            Intent open = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            open.addCategory(Intent.CATEGORY_OPENABLE);
+            open.setType("*/*");
+            open.putExtra(Intent.EXTRA_MIME_TYPES, new String[] {"application/zip", "application/x-zip-compressed", "application/octet-stream"});
+            startActivityForResult(open, REQUEST_RESTORE);
+        });
+        card.addView(restoreButton, ui.matchWrap(0, 0));
+        backupStatus = ui.body("", 14, LauncherUi.INK);
+        backupStatus.setPadding(ui.dp(4), ui.dp(10), ui.dp(4), 0);
+        card.addView(backupStatus, LauncherUi.matchWrap());
+    }
+
+    private void setBusy(boolean on) {
+        busy = on;
+        backupButton.setEnabled(!on);
+        restoreButton.setEnabled(!on);
+        playButton.setEnabled(!on && !scanning);
+    }
+
+    private void backUp(Uri target) {
+        final boolean music = backupMusic.isChecked();
+        setBusy(true);
+        backupStatus.setText("Saving …");
+        new Thread(() -> {
+            String message;
+            try (OutputStream out = getContentResolver().openOutputStream(target, "wt")) {
+                if (out == null) throw new IOException("cannot write there");
+                message = "Saved: " + Backup.create(this, out, music,
+                        m -> runOnUiThread(() -> backupStatus.setText(m))) + ".";
+            } catch (IOException | RuntimeException e) {
+                message = "Could not save the backup: " + e.getMessage();
+            }
+            final String result = message;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                setBusy(false);
+                backupStatus.setText(result);
+            });
+        }, "th06-backup").start();
+    }
+
+    private void confirmRestore(Uri source) {
+        new AlertDialog.Builder(this)
+                .setTitle("Restore this backup?")
+                .setMessage("Your current high scores, game options and launcher settings are replaced by the "
+                        + "backup's (and your replaced music too, if the backup has music).")
+                .setPositiveButton("Restore", (d, w) -> restore(source))
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void restore(Uri source) {
+        setBusy(true);
+        backupStatus.setText("Restoring …");
+        new Thread(() -> {
+            String message;
+            boolean ok = false;
+            try (InputStream in = getContentResolver().openInputStream(source)) {
+                if (in == null) throw new IOException("cannot read that file");
+                message = "Restored: " + Backup.restore(this, in, m -> runOnUiThread(() -> backupStatus.setText(m))) + ".";
+                ok = true;
+            } catch (IOException | RuntimeException e) {
+                message = "Could not restore: " + e.getMessage();
+            }
+            final String result = message;
+            final boolean restored = ok;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                setBusy(false);
+                if (restored) {
+                    // The launcher's settings changed under its controls: rebuild the page.
+                    getIntent().putExtra("restored", result);
+                    recreate();
+                } else {
+                    backupStatus.setText(result);
+                }
+            });
+        }, "th06-restore").start();
+    }
+
+    // ---- help & updates -------------------------------------------------------------------
+
+    private void addHelpSection(LinearLayout page) {
+        LinearLayout card = ui.card(page, "Help & updates",
+                "Version " + CrashReports.versionName(this) + " (build " + CrashReports.versionCode(this) + ").");
+        CheckBox auto = ui.check("Check for a new version once a day", UpdateChecker.autoCheck(this));
+        auto.setOnCheckedChangeListener((b, checked) -> UpdateChecker.setAutoCheck(this, checked));
+        card.addView(auto, ui.matchWrap(4, 0));
+        updateButton = ui.secondary("Check for updates now");
+        updateButton.setOnClickListener(v -> checkForUpdates(true));
+        card.addView(updateButton, ui.matchWrap(6, 4));
+        updateStatus = ui.body("", 14, LauncherUi.INK);
+        updateStatus.setPadding(ui.dp(4), ui.dp(4), ui.dp(4), ui.dp(6));
+        card.addView(updateStatus, LauncherUi.matchWrap());
+        card.addView(ui.caption("Found a bug? Save the log (it stays on your phone until you share it) and attach "
+                + "it to an issue on GitHub."), LauncherUi.matchWrap());
+        Button log = ui.secondary("Save a log for a bug report");
+        log.setOnClickListener(v -> saveLog());
+        card.addView(log, ui.matchWrap(4, 4));
+        Button issues = ui.secondary("Report a problem on GitHub");
+        issues.setOnClickListener(v -> openPage(UpdateChecker.ISSUES_PAGE));
+        card.addView(issues, ui.matchWrap(0, 0));
+        String restored = getIntent().getStringExtra("restored");
+        if (restored != null) {
+            backupStatus.setText(restored);
+            getIntent().removeExtra("restored");
+        }
+    }
+
+    private void checkForUpdates(boolean manual) {
+        updateButton.setEnabled(false);
+        if (manual) updateStatus.setText("Checking …");
+        new Thread(() -> {
+            String message;
+            try {
+                UpdateChecker.Result r = UpdateChecker.check(this);
+                if (r.latest == null) message = "No release has been published yet.";
+                else if (r.newer) message = "Version " + r.latest + " is available (see the top of this page).";
+                else message = "You have the newest version (" + r.latest + " is the latest release).";
+            } catch (IOException | RuntimeException e) {
+                message = "Could not check: " + e.getMessage();
+            }
+            final String result = message;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                updateButton.setEnabled(true);
+                if (manual || UpdateChecker.cached(this) != null) updateStatus.setText(result);
+                showBanners();
+            });
+        }, "th06-update").start();
+    }
+
+    private void saveLog() {
+        Intent create = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        create.addCategory(Intent.CATEGORY_OPENABLE);
+        create.setType("text/plain");
+        create.putExtra(Intent.EXTRA_TITLE, "th06-log-" + new java.text.SimpleDateFormat("yyyy-MM-dd-HHmm", Locale.ROOT)
+                .format(new java.util.Date()) + ".txt");
+        startActivityForResult(create, REQUEST_LOG);
+    }
+
+    private void writeLog(Uri target) {
+        try (OutputStream out = getContentResolver().openOutputStream(target, "wt")) {
+            if (out == null) throw new IOException("cannot write there");
+            CrashReports.writeReport(this, out);
+            CrashReports.markSeen(this);
+            showBanners();
+            if (updateStatus != null) updateStatus.setText("Log saved. Attach it to your bug report.");
+        } catch (IOException | RuntimeException e) {
+            if (updateStatus != null) updateStatus.setText("Could not save the log: " + e.getMessage());
+        }
+    }
+
     private void updatePlayHint() {
         if (playHint == null) return;
         if (DataSources.load(this).isEmpty()) {
@@ -418,8 +657,21 @@ public class ImportActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        final Uri picked = resultCode == RESULT_OK && data != null ? data.getData() : null;
         if (requestCode == REQUEST_AUDIO) {
-            if (resultCode == RESULT_OK && data != null && data.getData() != null) convert(data.getData());
+            if (picked != null) convert(picked);
+            return;
+        }
+        if (requestCode == REQUEST_BACKUP) {
+            if (picked != null && !busy) backUp(picked);
+            return;
+        }
+        if (requestCode == REQUEST_RESTORE) {
+            if (picked != null && !busy) confirmRestore(picked);
+            return;
+        }
+        if (requestCode == REQUEST_LOG) {
+            if (picked != null) writeLog(picked);
             return;
         }
         if (requestCode != REQUEST_TREE || resultCode != RESULT_OK || data == null
@@ -482,7 +734,7 @@ public class ImportActivity extends Activity {
         if (scanning) return;
         status.setText("");
         appendCurrent();
-        playButton.setEnabled(true);
+        playButton.setEnabled(!busy);
     }
 
     private void appendCurrent() {

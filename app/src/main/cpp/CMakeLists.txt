@@ -39,6 +39,7 @@ set(TH06_ENGINE_SOURCES
   src/gfx/GpuTextures.cpp
   src/gfx/RenderTarget.cpp
   src/gfx/SpriteBatch.cpp
+  src/platform/CrashHandler.cpp
   src/platform/DataMount.cpp)
 
 if(ANDROID)

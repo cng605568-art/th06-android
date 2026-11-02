@@ -26,6 +26,7 @@
 #include "audio/SoundPlayer.hpp"
 #include "core/FixedTimestep.hpp"
 #include "core/HeapArray.hpp"
+#include "core/Log.hpp"
 #include "core/Math.hpp"
 #include "core/Sha256.hpp"
 #include "core/ZunMath.hpp"
@@ -5722,6 +5723,29 @@ static void testPracticeTools() {
     }
 }
 
+// The session log file for bug reports: lines with their level, the previous run kept.
+static void testLogFile() {
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "th06_log_test";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    const std::string session = (dir / "session.log").string(), previous = (dir / "previous.log").string();
+    auto slurp = [](const std::string& path) {
+        std::ifstream in(path, std::ios::binary);
+        return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    };
+    CHECK(log::openFile(session, previous));
+    log::warn("first run {}", 1);
+    CHECK(log::openFile(session, previous));
+    log::error("second run");
+    log::closeFile();
+    log::info("not in the file");
+    const std::string now = slurp(session), before = slurp(previous);
+    CHECK(now.find("[E] second run") != std::string::npos && now.find("first run") == std::string::npos);
+    CHECK(before.find("[W] first run 1") != std::string::npos);
+    CHECK(now.find("not in the file") == std::string::npos);
+    std::filesystem::remove_all(dir);
+}
+
 // Drag-to-move: the touch pad's travel, and the ship following it at its normal speed.
 static void testDragControls() {
     DragPad pad;
@@ -6002,6 +6026,7 @@ int main() {
         {"stage select: unsaved games from any stage", testStageSelect},
         {"touch: drag-to-move pad and ship", testDragControls},
         {"practice: save states, slow motion, hitbox", testPracticeTools},
+        {"session log file", testLogFile},
     };
     for (const Test& t : tests) {
         const int before = g_failures;

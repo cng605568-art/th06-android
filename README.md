@@ -37,6 +37,7 @@ Built entirely by GitHub Actions: no Android Studio, no local SDK.
 | Display | Landscape (the whole 640×480 picture, letterboxed) or **portrait**: hold the phone upright and, in play, the 384×448 playfield fills the width (a strip kept clear for the camera cut-out) with the score rows of the side panel below it and the touch controls underneath; title, menus, results and story screens stay whole at the top. Scaling: smooth, sharp pixels, or pixel-perfect whole multiples; optional CRT scanlines. |
 | Main loop | `std::chrono` fixed timestep of exactly 1/60 s (rational arithmetic, no drift), rendering once per display refresh with positions interpolated to the present instant (60/90/120/144 Hz), vsync-jitter snapping, max 4 ticks per frame |
 | Practice tools (port extra) | Launcher options not in the original: **game speed** 75% or 50% (slow motion: game time runs slower, the music does not), a **hitbox marker** on the ship (red ring, white centre), and **save states**: SAVE / LOAD touch buttons beside the pause button (F5 / F9 on a keyboard, L3 / R3 on a gamepad) keep one copy of the whole stage in play (enemies, bullets, items, effects, the player, the HUD, the script, the RNG) and put it back; the state expires when another stage loads. Slow motion or loading a state makes that game practice: the HUD says so and its scores are not saved. The marker changes nothing. |
+| Backup, logs, updates | **Backup** (launcher): one ZIP with your high scores (`score.dat`), game options (`th06.cfg`), replays, launcher settings and, if you like, your replaced music, saved wherever you choose; **Restore** brings it back (after reinstalling, or on another phone). **Help & updates**: the app's version, a daily check for a newer release on GitHub (only the release's name and page are fetched; you install it yourself), **Save a log for a bug report** (the game's session log, the previous run's log and the last crash report, as one text file you can attach to an issue) and a link to the issue tracker. If the game crashed, the launcher says so next time and offers the log. Nothing is ever sent automatically. |
 | Mischief (port extra) | Launcher switches not in the original: infinite lives, infinite bombs, invincible, power always MAX, unlimited continues. While any is on, the HUD says so and the game's scores, clear progress and spell history are not saved (the result screen still shows the statistics). |
 | Controls | Touch controls registered as an **SDL virtual game controller** (physical gamepads and keyboards use the same path). **Drag anywhere** (default): a finger off the buttons steers like a touchpad, the ship following your finger's travel at its normal speed (the anchor slides along the walls, so dragging back responds at once); the same drag is a floating 8-way stick in menus. Or the classic 8-way **D-pad**. Launcher options: drag speed, button size and opacity, left-handed layout, a latching Focus button, auto-fire, and a short vibration on a miss and on a bomb. |
 
@@ -75,9 +76,16 @@ is not bit-identical to the x87 code of 2002, so long runs can drift from real r
 
 * **Every push to `main`:** open the **Actions** tab → the latest run → download the APK
   artifact at the bottom of the page.
-* **A release:** **Releases → Draft a new release → Choose a tag →** type e.g. `v0.1.0-beta`
-  → **Publish**. The workflow builds, signs and attaches the APK and `SHA256SUMS.txt`.
-  Tags with a `-` (like `-beta`) become pre-releases.
+* **A release:** **Releases → Draft a new release → Choose a tag →** type `v` + the version
+  in the `VERSION` file (e.g. `v0.9.0`, or `v0.9.0-beta` for a pre-release) → **Publish**.
+  The workflow builds, signs and attaches the APK and `SHA256SUMS.txt` (a tag that does not
+  match `VERSION` is refused). Tags with a `-` become pre-releases. The launcher's
+  **Check for updates** compares its own version with the newest full release.
+
+Versions: `VERSION` holds the next release's number; branch builds are named
+`<VERSION>-dev+<commit>` (shown in the launcher's *Help & updates*). Each run also keeps
+`debug-symbols-…` (the unstripped `libmain.so`) for 30 days, to decode the addresses in a
+player's crash log.
 
 Without the keystore secrets, branch builds are signed with a throwaway debug key (file name
 ends in `-debugsigned`); they install for testing but cannot update each other. Tag builds
@@ -111,7 +119,8 @@ screen). Advanced: archives placed in `Android/data/io.github.cng605568art.th06/
 
 Shrine red (primary) and sakura pink (accent) on warm paper: a red header with the app's
 picture and 東方紅魔郷 in brush script, a big Play button, and white cards for Game files,
-Stage select, Controls, Display, Practice tools, Mischief and Replace music. Titles and buttons use **Yuji Syuku** (brush) and
+Stage select, Controls, Display, Practice tools, Mischief, Replace music, Backup and Help &
+updates. Titles and buttons use **Yuji Syuku** (brush) and
 text uses **Zen Antique** (antique Mincho), both SIL Open Font License 1.1, bundled as
 subsets with their licences in `app/src/main/assets/fonts/`. The app icon is an adaptive
 icon (the picture over shrine red) with round and square fallbacks for older launchers.

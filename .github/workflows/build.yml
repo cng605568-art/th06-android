@@ -129,10 +129,16 @@ jobs:
 
       - name: Compute version
         run: |
+          base="$(tr -d '[:space:]' < VERSION)"
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             name="${GITHUB_REF_NAME#v}"
+            # A release tag must match the VERSION file (so the app knows its own version).
+            if [[ "${name%%-*}" != "$base" ]]; then
+              echo "::error::Tag $GITHUB_REF_NAME does not match VERSION ($base)"
+              exit 1
+            fi
           else
-            name="0.0.0-dev+${GITHUB_SHA::7}"
+            name="${base}-dev+${GITHUB_SHA::7}"
           fi
           echo "TH06_VERSION_NAME=$name" >> "$GITHUB_ENV"
           echo "TH06_VERSION_CODE=$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
@@ -175,6 +181,28 @@ jobs:
           cp "$apk" "dist/${APK_BASENAME}${suffix}.apk"
           (cd dist && sha256sum *.apk > SHA256SUMS.txt && cat SHA256SUMS.txt)
           rm -f "$RUNNER_TEMP/release.jks"
+
+      # Unstripped native libraries, to turn the addresses in a player's crash log
+      # (libmain.so+0x...) back into function names and lines.
+      - name: Stage native debug symbols
+        run: |
+          mkdir -p symbols
+          for abi in ${ABIS//,/ }; do
+            lib=$(find app/build/intermediates -path "*merged_native_libs*" -path "*/$abi/*" -name libmain.so | head -n 1)
+            if [ -n "$lib" ]; then
+              mkdir -p "symbols/$abi" && cp "$lib" "symbols/$abi/libmain.so"
+            else
+              echo "::warning::No unstripped libmain.so found for $abi"
+            fi
+          done
+
+      - name: Upload native debug symbols
+        uses: actions/upload-artifact@v7
+        with:
+          name: debug-symbols-${{ env.APK_BASENAME }}
+          path: symbols/
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v7
