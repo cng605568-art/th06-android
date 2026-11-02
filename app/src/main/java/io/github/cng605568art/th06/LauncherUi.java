@@ -50,8 +50,15 @@ final class LauncherUi {
 
     LauncherUi(Context ctx) {
         this.ctx = ctx;
-        this.brush = load(ctx, "fonts/YujiSyuku-Subset.ttf", Typeface.SERIF);
-        this.serif = load(ctx, "fonts/ZenAntique-Subset.ttf", Typeface.SERIF);
+        if (Lang.isChinese(ctx)) {
+            // The bundled faces are Japanese (and subset to the launcher's Japanese, English
+            // and Malay text): Chinese uses the system's CJK faces instead of mixing styles.
+            this.brush = Typeface.create(Typeface.SERIF, Typeface.BOLD);
+            this.serif = Typeface.SERIF;
+        } else {
+            this.brush = load(ctx, "fonts/YujiSyuku-Subset.ttf", Typeface.SERIF);
+            this.serif = load(ctx, "fonts/ZenAntique-Subset.ttf", Typeface.SERIF);
+        }
     }
 
     private static Typeface load(Context ctx, String asset, Typeface fallback) {

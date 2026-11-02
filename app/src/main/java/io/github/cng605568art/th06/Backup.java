@@ -70,8 +70,8 @@ final class Backup {
                 throw new IOException(e);
             }
             putBytes(zip, MANIFEST, manifest.toString().getBytes(StandardCharsets.UTF_8));
-            if (putFile(zip, "files/score.dat", new File(files, "score.dat"))) parts.add("high scores");
-            if (putFile(zip, "files/th06.cfg", new File(files, "th06.cfg"))) parts.add("game options");
+            if (putFile(zip, "files/score.dat", new File(files, "score.dat"))) parts.add(ctx.getString(R.string.backup_part_scores));
+            if (putFile(zip, "files/th06.cfg", new File(files, "th06.cfg"))) parts.add(ctx.getString(R.string.backup_part_options));
             int replays = 0;
             File[] rpy = new File(files, "replay").listFiles();
             if (rpy != null) {
@@ -79,9 +79,9 @@ final class Backup {
                     if (REPLAY.matcher(f.getName()).matches() && putFile(zip, "files/replay/" + f.getName(), f)) ++replays;
                 }
             }
-            if (replays > 0) parts.add(replays + (replays == 1 ? " replay" : " replays"));
+            if (replays > 0) parts.add(ctx.getResources().getQuantityString(R.plurals.backup_part_replays, replays, replays));
             putBytes(zip, SETTINGS, exportSettings(ctx).getBytes(StandardCharsets.UTF_8));
-            parts.add("launcher settings");
+            parts.add(ctx.getString(R.string.backup_part_settings));
             if (includeMusic) {
                 int songs = 0;
                 File[] music = MusicReplacer.dir(ctx).listFiles();
@@ -90,16 +90,16 @@ final class Backup {
                         if (!MUSIC.matcher(f.getName()).matches()) continue;
                         if (f.getName().endsWith(".wav")) {
                             ++songs;
-                            if (progress != null) progress.update("Saving music: " + f.getName() + " ...");
+                            if (progress != null) progress.update(ctx.getString(R.string.backup_saving_music, f.getName()));
                         }
                         putFile(zip, "files/music/" + f.getName(), f);
                     }
                 }
-                if (songs > 0) parts.add(songs + (songs == 1 ? " replaced song" : " replaced songs"));
+                if (songs > 0) parts.add(ctx.getResources().getQuantityString(R.plurals.backup_part_songs, songs, songs));
             }
             zip.finish();
         }
-        return String.join(", ", parts);
+        return String.join(ctx.getString(R.string.list_separator), parts);
     }
 
     /** Restores a backup over the current data; returns a one-line summary. */
@@ -117,41 +117,41 @@ final class Backup {
                     if (e.isDirectory()) continue;
                     String name = e.getName();
                     if (name.equals(MANIFEST)) {
-                        manifest = parse(new String(readLimited(zip, 1 << 16), StandardCharsets.UTF_8));
+                        manifest = parse(ctx, new String(readLimited(ctx, zip, 1 << 16), StandardCharsets.UTF_8));
                     } else if (name.equals(SETTINGS)) {
-                        settings = new String(readLimited(zip, 1 << 20), StandardCharsets.UTF_8);
+                        settings = new String(readLimited(ctx, zip, 1 << 20), StandardCharsets.UTF_8);
                     } else if (allowed(name)) {
                         if (name.startsWith("files/music/")) {
                             hasMusic = true;
-                            if (progress != null && name.endsWith(".wav")) progress.update("Reading music: " + name.substring(12) + " ...");
+                            if (progress != null && name.endsWith(".wav")) progress.update(ctx.getString(R.string.backup_reading_music, name.substring(12)));
                         }
                         File out = new File(staging, name);
                         File parent = out.getParentFile();
                         if (parent != null && !parent.isDirectory() && !parent.mkdirs()) throw new IOException("cannot write " + name);
                         try (OutputStream o = new FileOutputStream(out)) {
-                            copyLimited(zip, o);
+                            copyLimited(ctx, zip, o);
                         }
                     }
                     // Anything else is ignored.
                 }
             }
             if (manifest == null || !ctx.getPackageName().equals(manifest.optString("app"))) {
-                throw new IOException("this is not a TH06 port backup");
+                throw new IOException(ctx.getString(R.string.backup_err_not_backup));
             }
             if (manifest.optInt("format", 0) > FORMAT) {
-                throw new IOException("this backup comes from a newer version of the app; update the app first");
+                throw new IOException(ctx.getString(R.string.backup_err_newer));
             }
 
             // Everything was read: now replace.
             List<String> parts = new ArrayList<>();
-            if (moveInto(new File(staging, "files/score.dat"), new File(files, "score.dat"))) parts.add("high scores");
-            if (moveInto(new File(staging, "files/th06.cfg"), new File(files, "th06.cfg"))) parts.add("game options");
+            if (moveInto(new File(staging, "files/score.dat"), new File(files, "score.dat"))) parts.add(ctx.getString(R.string.backup_part_scores));
+            if (moveInto(new File(staging, "files/th06.cfg"), new File(files, "th06.cfg"))) parts.add(ctx.getString(R.string.backup_part_options));
             File[] replays = new File(staging, "files/replay").listFiles();
             if (replays != null && replays.length > 0) {
                 File dir = new File(files, "replay");
                 if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("cannot write the replays");
                 for (File f : replays) moveInto(f, new File(dir, f.getName()));
-                parts.add(replays.length + (replays.length == 1 ? " replay" : " replays"));
+                parts.add(ctx.getResources().getQuantityString(R.plurals.backup_part_replays, replays.length, replays.length));
             }
             if (hasMusic) {
                 File dir = MusicReplacer.dir(ctx);
@@ -166,13 +166,13 @@ final class Backup {
                         moveInto(f, new File(dir, f.getName()));
                     }
                 }
-                parts.add(songs + (songs == 1 ? " replaced song" : " replaced songs"));
+                parts.add(ctx.getResources().getQuantityString(R.plurals.backup_part_songs, songs, songs));
             }
             if (settings != null) {
                 importSettings(ctx, settings);
-                parts.add("launcher settings");
+                parts.add(ctx.getString(R.string.backup_part_settings));
             }
-            return parts.isEmpty() ? "nothing (the backup was empty)" : String.join(", ", parts);
+            return parts.isEmpty() ? ctx.getString(R.string.backup_empty) : String.join(ctx.getString(R.string.list_separator), parts);
         } finally {
             deleteTree(staging);
         }
@@ -211,7 +211,7 @@ final class Backup {
     }
 
     private static void importSettings(Context ctx, String json) throws IOException {
-        JSONObject all = parse(json);
+        JSONObject all = parse(ctx, json);
         for (String file : PREF_FILES) {
             JSONObject values = all.optJSONObject(file);
             if (values == null) continue;
@@ -235,11 +235,11 @@ final class Backup {
 
     // ---- files ------------------------------------------------------------------------
 
-    private static JSONObject parse(String json) throws IOException {
+    private static JSONObject parse(Context ctx, String json) throws IOException {
         try {
             return new JSONObject(json);
         } catch (JSONException e) {
-            throw new IOException("the backup is damaged (" + e.getMessage() + ")");
+            throw new IOException(ctx.getString(R.string.backup_err_damaged) + " (" + e.getMessage() + ")");
         }
     }
 
@@ -262,22 +262,22 @@ final class Backup {
         return true;
     }
 
-    private static byte[] readLimited(InputStream in, int limit) throws IOException {
+    private static byte[] readLimited(Context ctx, InputStream in, int limit) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         byte[] buf = new byte[8192];
         for (int n; (n = in.read(buf)) > 0; ) {
             out.write(buf, 0, n);
-            if (out.size() > limit) throw new IOException("the backup is damaged (an entry is too large)");
+            if (out.size() > limit) throw new IOException(ctx.getString(R.string.backup_err_damaged));
         }
         return out.toByteArray();
     }
 
-    private static void copyLimited(InputStream in, OutputStream out) throws IOException {
+    private static void copyLimited(Context ctx, InputStream in, OutputStream out) throws IOException {
         byte[] buf = new byte[1 << 16];
         long total = 0;
         for (int n; (n = in.read(buf)) > 0; ) {
             total += n;
-            if (total > MAX_ENTRY) throw new IOException("the backup is damaged (a file is too large)");
+            if (total > MAX_ENTRY) throw new IOException(ctx.getString(R.string.backup_err_damaged));
             out.write(buf, 0, n);
         }
     }

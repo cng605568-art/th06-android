@@ -70,6 +70,11 @@ public class ImportActivity extends Activity {
     private volatile boolean busy;
 
     @Override
+    protected void attachBaseContext(android.content.Context base) {
+        super.attachBaseContext(Lang.wrap(base));
+    }
+
+    @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         ui = new LauncherUi(this);
@@ -81,7 +86,7 @@ public class ImportActivity extends Activity {
         page.addView(header, LauncherUi.matchWrap());
 
         // Play, floating over the header's edge, with a line saying what it will do.
-        playButton = ui.hero("Play");
+        playButton = ui.hero(getString(R.string.play));
         playButton.setOnClickListener(v -> startActivity(new Intent(this, GameActivity.class)));
         LinearLayout.LayoutParams playLp = LauncherUi.matchWrap();
         playLp.setMargins(ui.dp(28), -ui.dp(32), ui.dp(28), 0);
@@ -95,14 +100,13 @@ public class ImportActivity extends Activity {
         banners.setOrientation(LinearLayout.VERTICAL);
         page.addView(banners, LauncherUi.matchWrap());
 
+        addLanguageSection(page);
+
         // Game files
-        LinearLayout files = ui.card(page, "Game files",
-                "Copy your own game folder to the phone (the 2002 original with its 紅魔郷**.DAT / "
-                        + "KOUMAKYO_**.dat files, or the New Classic data folder with th06**.dat), then "
-                        + "choose it here. The files are read in place; nothing is copied.");
+        LinearLayout files = ui.card(page, getString(R.string.files_title), getString(R.string.files_body));
         status = ui.statusBox();
         files.addView(status, ui.matchWrap(12, 12));
-        chooseButton = ui.primary("Choose game folder");
+        chooseButton = ui.primary(getString(R.string.files_choose));
         chooseButton.setOnClickListener(v -> {
             Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
             pick.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -110,7 +114,7 @@ public class ImportActivity extends Activity {
             startActivityForResult(pick, REQUEST_TREE);
         });
         files.addView(chooseButton, ui.matchWrap(2, 4));
-        preferNewClassic = ui.check("If both versions are found, prefer New Classic assets",
+        preferNewClassic = ui.check(getString(R.string.files_prefer_nc),
                 DataSources.preferNewClassic(this));
         preferNewClassic.setOnCheckedChangeListener(
                 (b, checked) -> DataSources.setPreferNewClassic(this, checked));
@@ -119,21 +123,19 @@ public class ImportActivity extends Activity {
         // Stage select: skip the title and start at any stage chosen here, as practice. The
         // game plays on from there, and nothing from it (high scores, clear progress, spell
         // cards) is saved.
-        LinearLayout select = ui.card(page, "Stage select",
-                "Skip the title screen and start at any stage. Practice only: nothing from these "
-                        + "games is saved.");
-        quick = ui.check("Start at any stage (scores not saved)", GameOptions.quickStart(this));
+        LinearLayout select = ui.card(page, getString(R.string.select_title), getString(R.string.select_body));
+        quick = ui.check(getString(R.string.select_check), GameOptions.quickStart(this));
         select.addView(quick, ui.matchWrap(6, 0));
         LinearLayout quickOptions = new LinearLayout(this);
         quickOptions.setOrientation(LinearLayout.VERTICAL);
-        quickOptions.addView(ui.caption("Shot type"), LauncherUi.matchWrap());
-        quickOptions.addView(ui.spinner(ui.adapter(GameOptions.SHOT_TYPES), GameOptions.shotType(this),
+        quickOptions.addView(ui.caption(getString(R.string.select_shot)), LauncherUi.matchWrap());
+        quickOptions.addView(ui.spinner(ui.adapter(getResources().getStringArray(R.array.shot_types)), GameOptions.shotType(this),
                 v -> GameOptions.setShotType(this, v)), LauncherUi.matchWrap());
-        quickOptions.addView(ui.caption("Difficulty"), LauncherUi.matchWrap());
-        quickOptions.addView(ui.spinner(ui.adapter(GameOptions.DIFFICULTIES), GameOptions.difficulty(this),
+        quickOptions.addView(ui.caption(getString(R.string.select_difficulty)), LauncherUi.matchWrap());
+        quickOptions.addView(ui.spinner(ui.adapter(getResources().getStringArray(R.array.difficulties)), GameOptions.difficulty(this),
                 v -> GameOptions.setDifficulty(this, v)), LauncherUi.matchWrap());
-        quickOptions.addView(ui.caption("Start at (Extra uses its own difficulty)"), LauncherUi.matchWrap());
-        quickOptions.addView(ui.spinner(ui.adapter(GameOptions.STAGES), GameOptions.stage(this) - 1, v -> {
+        quickOptions.addView(ui.caption(getString(R.string.select_start)), LauncherUi.matchWrap());
+        quickOptions.addView(ui.spinner(ui.adapter(getResources().getStringArray(R.array.stages)), GameOptions.stage(this) - 1, v -> {
             GameOptions.setStage(this, v + 1);
             updatePlayHint();
         }), LauncherUi.matchWrap());
@@ -150,13 +152,12 @@ public class ImportActivity extends Activity {
         addPracticeSection(page);
 
         // Mischief
-        LinearLayout mischiefCard = ui.card(page, "Mischief",
-                "Not in the original game. While any of these is on, scores, clears and spell cards "
-                        + "are not saved.");
+        LinearLayout mischiefCard = ui.card(page, getString(R.string.mischief_title), getString(R.string.mischief_body));
         int mischief = GameOptions.mischief(this);
-        for (int i = 0; i < GameOptions.MISCHIEF.length; ++i) {
+        String[] mischiefNames = getResources().getStringArray(R.array.mischief);
+        for (int i = 0; i < mischiefNames.length; ++i) {
             final int bit = i;
-            CheckBox box = ui.check(GameOptions.MISCHIEF[i], (mischief & (1 << i)) != 0);
+            CheckBox box = ui.check(mischiefNames[i], (mischief & (1 << i)) != 0);
             box.setOnCheckedChangeListener((b, checked) -> GameOptions.setMischief(this, bit, checked));
             mischiefCard.addView(box, LauncherUi.matchWrap());
         }
@@ -165,9 +166,7 @@ public class ImportActivity extends Activity {
         addBackupSection(page);
         addHelpSection(page);
 
-        TextView footer = ui.body("A fan-made port for your own copy of 東方紅魔郷 ～ the Embodiment of "
-                + "Scarlet Devil (Team Shanghai Alice). No game files are included.\n"
-                + "Fonts: Yuji Syuku and Zen Antique (SIL Open Font License 1.1).", 12, LauncherUi.MUTED);
+        TextView footer = ui.body(getString(R.string.footer), 12, LauncherUi.MUTED);
         footer.setGravity(Gravity.CENTER_HORIZONTAL);
         footer.setPadding(ui.dp(28), ui.dp(10), ui.dp(28), ui.dp(8));
         page.addView(footer, LauncherUi.matchWrap());
@@ -254,7 +253,7 @@ public class ImportActivity extends Activity {
         TextView subtitle = ui.title("the Embodiment of Scarlet Devil", 18, LauncherUi.PINK_SOFT);
         subtitle.setPadding(0, ui.dp(8), 0, 0);
         header.addView(subtitle);
-        TextView tag = ui.body("Android port  ·  plays your own 2002 game files", 13, 0xFFFFC2D2);
+        TextView tag = ui.body(getString(R.string.header_tag), 13, 0xFFFFC2D2);
         tag.setPadding(0, ui.dp(8), 0, 0);
         header.addView(tag);
         return header;
@@ -262,31 +261,30 @@ public class ImportActivity extends Activity {
 
     /** Touch controls: drag-to-move or the D-pad, and how the buttons look and behave. */
     private void addControlsSection(LinearLayout page) {
-        LinearLayout card = ui.card(page, "Controls",
-                "Touch controls for the game (a Bluetooth or USB gamepad works too).");
-        card.addView(ui.caption("Movement"), LauncherUi.matchWrap());
+        LinearLayout card = ui.card(page, getString(R.string.controls_title), getString(R.string.controls_body));
+        card.addView(ui.caption(getString(R.string.controls_movement)), LauncherUi.matchWrap());
         LinearLayout dragOnly = new LinearLayout(this);
         dragOnly.setOrientation(LinearLayout.VERTICAL);
-        card.addView(ui.spinner(ui.adapter(GameOptions.MOVE_MODES), GameOptions.controlChoice(this, "mode", 0), v -> {
+        card.addView(ui.spinner(ui.adapter(getResources().getStringArray(R.array.move_modes)), GameOptions.controlChoice(this, "mode", 0), v -> {
             GameOptions.setControlChoice(this, "mode", v);
             dragOnly.setVisibility(v == 0 ? View.VISIBLE : View.GONE);
         }), LauncherUi.matchWrap());
-        dragOnly.addView(ui.caption("Drag speed (how far the ship moves for your finger's travel)"), LauncherUi.matchWrap());
+        dragOnly.addView(ui.caption(getString(R.string.controls_drag_speed)), LauncherUi.matchWrap());
         dragOnly.addView(ui.spinner(ui.adapter(GameOptions.DRAG_SPEEDS), GameOptions.controlChoice(this, "speed", 2),
                 v -> GameOptions.setControlChoice(this, "speed", v)), LauncherUi.matchWrap());
         dragOnly.setVisibility(GameOptions.controlChoice(this, "mode", 0) == 0 ? View.VISIBLE : View.GONE);
         card.addView(dragOnly, LauncherUi.matchWrap());
-        card.addView(ui.caption("Button size"), LauncherUi.matchWrap());
-        card.addView(ui.spinner(ui.adapter(GameOptions.BUTTON_SIZES), GameOptions.controlChoice(this, "size", 1),
+        card.addView(ui.caption(getString(R.string.controls_button_size)), LauncherUi.matchWrap());
+        card.addView(ui.spinner(ui.adapter(getResources().getStringArray(R.array.button_sizes)), GameOptions.controlChoice(this, "size", 1),
                 v -> GameOptions.setControlChoice(this, "size", v)), LauncherUi.matchWrap());
-        card.addView(ui.caption("Button opacity"), LauncherUi.matchWrap());
-        card.addView(ui.spinner(ui.adapter(GameOptions.OPACITIES), GameOptions.controlChoice(this, "opacity", 3),
+        card.addView(ui.caption(getString(R.string.controls_opacity)), LauncherUi.matchWrap());
+        card.addView(ui.spinner(ui.adapter(getResources().getStringArray(R.array.opacities)), GameOptions.controlChoice(this, "opacity", 3),
                 v -> GameOptions.setControlChoice(this, "opacity", v)), LauncherUi.matchWrap());
         String[][] flags = {
-            {"autoFire", "Auto-fire (Shot is always held while you play)"},
-            {"focusToggle", "Focus button toggles (tap on, tap off)"},
-            {"left", "Left-handed (buttons on the left)"},
-            {"vibrate", "Vibrate on a miss and on a bomb"},
+            {"autoFire", getString(R.string.controls_autofire)},
+            {"focusToggle", getString(R.string.controls_focus_toggle)},
+            {"left", getString(R.string.controls_left)},
+            {"vibrate", getString(R.string.controls_vibrate)},
         };
         for (String[] f : flags) {
             final String key = f[0];
@@ -298,31 +296,27 @@ public class ImportActivity extends Activity {
 
     /** How the game is shown: sideways or upright, smooth or sharp pixels, scanlines. */
     private void addDisplaySection(LinearLayout page) {
-        LinearLayout card = ui.card(page, "Display",
-                "Upright play puts the playfield across the whole width with the score below it and "
-                        + "the controls underneath; menus and story screens stay whole.");
-        card.addView(ui.caption("Screen"), LauncherUi.matchWrap());
-        card.addView(ui.spinner(ui.adapter(GameOptions.LAYOUTS), GameOptions.controlChoice(this, "layout", 0),
+        LinearLayout card = ui.card(page, getString(R.string.display_title), getString(R.string.display_body));
+        card.addView(ui.caption(getString(R.string.display_screen)), LauncherUi.matchWrap());
+        card.addView(ui.spinner(ui.adapter(getResources().getStringArray(R.array.layouts)), GameOptions.controlChoice(this, "layout", 0),
                 v -> GameOptions.setControlChoice(this, "layout", v)), LauncherUi.matchWrap());
-        card.addView(ui.caption("Scaling"), LauncherUi.matchWrap());
-        card.addView(ui.spinner(ui.adapter(GameOptions.SCALINGS), GameOptions.controlChoice(this, "scaling", 0),
+        card.addView(ui.caption(getString(R.string.display_scaling)), LauncherUi.matchWrap());
+        card.addView(ui.spinner(ui.adapter(getResources().getStringArray(R.array.scalings)), GameOptions.controlChoice(this, "scaling", 0),
                 v -> GameOptions.setControlChoice(this, "scaling", v)), LauncherUi.matchWrap());
-        CheckBox scan = ui.check("CRT scanlines", GameOptions.controlFlag(this, "scanlines", false));
+        CheckBox scan = ui.check(getString(R.string.display_scanlines), GameOptions.controlFlag(this, "scanlines", false));
         scan.setOnCheckedChangeListener((b, checked) -> GameOptions.setControlFlag(this, "scanlines", checked));
         card.addView(scan, LauncherUi.matchWrap());
     }
 
     /** Practice tools (not in the original): slow motion, a hitbox marker, save states. */
     private void addPracticeSection(LinearLayout page) {
-        LinearLayout card = ui.card(page, "Practice tools",
-                "Not in the original game. Slow motion, or loading a save state, means that game's "
-                        + "scores are not saved; the hitbox marker changes nothing.");
-        card.addView(ui.caption("Game speed"), LauncherUi.matchWrap());
-        card.addView(ui.spinner(ui.adapter(GameOptions.SPEEDS), GameOptions.controlChoice(this, "speed%", 0),
+        LinearLayout card = ui.card(page, getString(R.string.practice_title), getString(R.string.practice_body));
+        card.addView(ui.caption(getString(R.string.practice_speed)), LauncherUi.matchWrap());
+        card.addView(ui.spinner(ui.adapter(getResources().getStringArray(R.array.speeds)), GameOptions.controlChoice(this, "speed%", 0),
                 v -> GameOptions.setControlChoice(this, "speed%", v)), LauncherUi.matchWrap());
         String[][] flags = {
-            {"hitbox", "Show the ship's hitbox"},
-            {"saveStates", "Save states (SAVE / LOAD buttons; F5 / F9 on a keyboard, L3 / R3 on a gamepad)"},
+            {"hitbox", getString(R.string.practice_hitbox)},
+            {"saveStates", getString(R.string.practice_states)},
         };
         for (String[] f : flags) {
             final String key = f[0];
@@ -332,19 +326,32 @@ public class ImportActivity extends Activity {
         }
     }
 
+    // ---- language ---------------------------------------------------------------------
+
+    /** The language picker: the launcher's text now, the game's text when it starts. */
+    private void addLanguageSection(LinearLayout page) {
+        String heading = getString(R.string.lang_title);
+        if (!heading.equals("Language")) heading += "  ·  Language";  // findable in any language
+        LinearLayout card = ui.card(page, heading, getString(R.string.lang_body));
+        final int current = Lang.chosenIndex(this);
+        card.addView(ui.spinner(ui.adapter(Lang.labels(this)), current, v -> {
+            if (v == Lang.chosenIndex(this)) return;
+            Lang.choose(this, v);
+            recreate();  // every text on the page in the new language
+        }), ui.matchWrap(8, 0));
+    }
+
     // ---- banners ----------------------------------------------------------------------
 
     private void showBanners() {
         if (banners == null) return;
         banners.removeAllViews();
         if (CrashReports.hasUnseenCrash(this)) {
-            LinearLayout card = ui.card(banners, "The game closed unexpectedly",
-                    "Sorry about that. A log of what happened was kept on this phone; you can save it and "
-                            + "attach it to a bug report on GitHub. Nothing is sent automatically.");
-            Button save = ui.primary("Save the log");
+            LinearLayout card = ui.card(banners, getString(R.string.crash_title), getString(R.string.crash_body));
+            Button save = ui.primary(getString(R.string.crash_save));
             save.setOnClickListener(v -> saveLog());
             card.addView(save, ui.matchWrap(12, 4));
-            Button dismiss = ui.secondary("Dismiss");
+            Button dismiss = ui.secondary(getString(R.string.crash_dismiss));
             dismiss.setOnClickListener(v -> {
                 CrashReports.markSeen(this);
                 showBanners();
@@ -353,10 +360,9 @@ public class ImportActivity extends Activity {
         }
         UpdateChecker.Result update = UpdateChecker.cached(this);
         if (update != null && update.newer) {
-            LinearLayout card = ui.card(banners, "Version " + update.latest + " is available",
-                    "You have " + CrashReports.versionName(this) + ". Download the new APK from its release page "
-                            + "and install it over this one (your scores and settings stay).");
-            Button open = ui.primary("Open the release page");
+            LinearLayout card = ui.card(banners, getString(R.string.update_title, update.latest),
+                    getString(R.string.update_body, CrashReports.versionName(this)));
+            Button open = ui.primary(getString(R.string.update_open));
             open.setOnClickListener(v -> openPage(update.page));
             card.addView(open, ui.matchWrap(12, 0));
         }
@@ -366,7 +372,7 @@ public class ImportActivity extends Activity {
         try {
             startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
         } catch (android.content.ActivityNotFoundException e) {
-            if (updateStatus != null) updateStatus.setText("No browser found to open " + url);
+            if (updateStatus != null) updateStatus.setText(getString(R.string.no_browser, url));
         }
     }
 
@@ -374,12 +380,10 @@ public class ImportActivity extends Activity {
 
     /** Backup and restore of scores, options, replays, launcher settings and replaced music. */
     private void addBackupSection(LinearLayout page) {
-        LinearLayout card = ui.card(page, "Backup",
-                "Keep your high scores, game options, replays and launcher settings in one file (in "
-                        + "Downloads, a cloud drive …), and bring them back after reinstalling or on a new phone.");
-        backupMusic = ui.check("Include replaced music (bigger file)", true);
+        LinearLayout card = ui.card(page, getString(R.string.backup_title), getString(R.string.backup_body));
+        backupMusic = ui.check(getString(R.string.backup_music), true);
         card.addView(backupMusic, ui.matchWrap(4, 0));
-        backupButton = ui.primary("Back up to a file");
+        backupButton = ui.primary(getString(R.string.backup_save));
         backupButton.setOnClickListener(v -> {
             Intent create = new Intent(Intent.ACTION_CREATE_DOCUMENT);
             create.addCategory(Intent.CATEGORY_OPENABLE);
@@ -388,7 +392,7 @@ public class ImportActivity extends Activity {
             startActivityForResult(create, REQUEST_BACKUP);
         });
         card.addView(backupButton, ui.matchWrap(10, 4));
-        restoreButton = ui.secondary("Restore from a backup");
+        restoreButton = ui.secondary(getString(R.string.backup_restore));
         restoreButton.setOnClickListener(v -> {
             Intent open = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             open.addCategory(Intent.CATEGORY_OPENABLE);
@@ -412,15 +416,15 @@ public class ImportActivity extends Activity {
     private void backUp(Uri target) {
         final boolean music = backupMusic.isChecked();
         setBusy(true);
-        backupStatus.setText("Saving …");
+        backupStatus.setText(getString(R.string.backup_saving));
         new Thread(() -> {
             String message;
             try (OutputStream out = getContentResolver().openOutputStream(target, "wt")) {
-                if (out == null) throw new IOException("cannot write there");
-                message = "Saved: " + Backup.create(this, out, music,
-                        m -> runOnUiThread(() -> backupStatus.setText(m))) + ".";
+                if (out == null) throw new IOException(getString(R.string.err_cannot_write));
+                message = getString(R.string.backup_saved, Backup.create(this, out, music,
+                        m -> runOnUiThread(() -> backupStatus.setText(m))));
             } catch (IOException | RuntimeException e) {
-                message = "Could not save the backup: " + e.getMessage();
+                message = getString(R.string.backup_save_failed, e.getMessage());
             }
             final String result = message;
             runOnUiThread(() -> {
@@ -433,26 +437,25 @@ public class ImportActivity extends Activity {
 
     private void confirmRestore(Uri source) {
         new AlertDialog.Builder(this)
-                .setTitle("Restore this backup?")
-                .setMessage("Your current high scores, game options and launcher settings are replaced by the "
-                        + "backup's (and your replaced music too, if the backup has music).")
-                .setPositiveButton("Restore", (d, w) -> restore(source))
-                .setNegativeButton("Cancel", null)
+                .setTitle(R.string.backup_confirm_title)
+                .setMessage(R.string.backup_confirm_body)
+                .setPositiveButton(R.string.backup_confirm_ok, (d, w) -> restore(source))
+                .setNegativeButton(R.string.cancel, null)
                 .show();
     }
 
     private void restore(Uri source) {
         setBusy(true);
-        backupStatus.setText("Restoring …");
+        backupStatus.setText(getString(R.string.backup_restoring));
         new Thread(() -> {
             String message;
             boolean ok = false;
             try (InputStream in = getContentResolver().openInputStream(source)) {
-                if (in == null) throw new IOException("cannot read that file");
-                message = "Restored: " + Backup.restore(this, in, m -> runOnUiThread(() -> backupStatus.setText(m))) + ".";
+                if (in == null) throw new IOException(getString(R.string.err_cannot_read));
+                message = getString(R.string.backup_restored, Backup.restore(this, in, m -> runOnUiThread(() -> backupStatus.setText(m))));
                 ok = true;
             } catch (IOException | RuntimeException e) {
-                message = "Could not restore: " + e.getMessage();
+                message = getString(R.string.backup_restore_failed, e.getMessage());
             }
             final String result = message;
             final boolean restored = ok;
@@ -473,23 +476,22 @@ public class ImportActivity extends Activity {
     // ---- help & updates -------------------------------------------------------------------
 
     private void addHelpSection(LinearLayout page) {
-        LinearLayout card = ui.card(page, "Help & updates",
-                "Version " + CrashReports.versionName(this) + " (build " + CrashReports.versionCode(this) + ").");
-        CheckBox auto = ui.check("Check for a new version once a day", UpdateChecker.autoCheck(this));
+        LinearLayout card = ui.card(page, getString(R.string.help_title),
+                getString(R.string.help_version, CrashReports.versionName(this), CrashReports.versionCode(this)));
+        CheckBox auto = ui.check(getString(R.string.help_auto), UpdateChecker.autoCheck(this));
         auto.setOnCheckedChangeListener((b, checked) -> UpdateChecker.setAutoCheck(this, checked));
         card.addView(auto, ui.matchWrap(4, 0));
-        updateButton = ui.secondary("Check for updates now");
+        updateButton = ui.secondary(getString(R.string.help_check));
         updateButton.setOnClickListener(v -> checkForUpdates(true));
         card.addView(updateButton, ui.matchWrap(6, 4));
         updateStatus = ui.body("", 14, LauncherUi.INK);
         updateStatus.setPadding(ui.dp(4), ui.dp(4), ui.dp(4), ui.dp(6));
         card.addView(updateStatus, LauncherUi.matchWrap());
-        card.addView(ui.caption("Found a bug? Save the log (it stays on your phone until you share it) and attach "
-                + "it to an issue on GitHub."), LauncherUi.matchWrap());
-        Button log = ui.secondary("Save a log for a bug report");
+        card.addView(ui.caption(getString(R.string.help_bug)), LauncherUi.matchWrap());
+        Button log = ui.secondary(getString(R.string.help_save_log));
         log.setOnClickListener(v -> saveLog());
         card.addView(log, ui.matchWrap(4, 4));
-        Button issues = ui.secondary("Report a problem on GitHub");
+        Button issues = ui.secondary(getString(R.string.help_report));
         issues.setOnClickListener(v -> openPage(UpdateChecker.ISSUES_PAGE));
         card.addView(issues, ui.matchWrap(0, 0));
         String restored = getIntent().getStringExtra("restored");
@@ -501,16 +503,16 @@ public class ImportActivity extends Activity {
 
     private void checkForUpdates(boolean manual) {
         updateButton.setEnabled(false);
-        if (manual) updateStatus.setText("Checking …");
+        if (manual) updateStatus.setText(getString(R.string.help_checking));
         new Thread(() -> {
             String message;
             try {
                 UpdateChecker.Result r = UpdateChecker.check(this);
-                if (r.latest == null) message = "No release has been published yet.";
-                else if (r.newer) message = "Version " + r.latest + " is available (see the top of this page).";
-                else message = "You have the newest version (" + r.latest + " is the latest release).";
+                if (r.latest == null) message = getString(R.string.help_none_published);
+                else if (r.newer) message = getString(R.string.help_newer, r.latest);
+                else message = getString(R.string.help_latest, r.latest);
             } catch (IOException | RuntimeException e) {
-                message = "Could not check: " + e.getMessage();
+                message = getString(R.string.help_check_failed, e.getMessage());
             }
             final String result = message;
             runOnUiThread(() -> {
@@ -533,26 +535,25 @@ public class ImportActivity extends Activity {
 
     private void writeLog(Uri target) {
         try (OutputStream out = getContentResolver().openOutputStream(target, "wt")) {
-            if (out == null) throw new IOException("cannot write there");
+            if (out == null) throw new IOException(getString(R.string.err_cannot_write));
             CrashReports.writeReport(this, out);
             CrashReports.markSeen(this);
             showBanners();
-            if (updateStatus != null) updateStatus.setText("Log saved. Attach it to your bug report.");
+            if (updateStatus != null) updateStatus.setText(getString(R.string.help_log_saved));
         } catch (IOException | RuntimeException e) {
-            if (updateStatus != null) updateStatus.setText("Could not save the log: " + e.getMessage());
+            if (updateStatus != null) updateStatus.setText(getString(R.string.help_log_failed, e.getMessage()));
         }
     }
 
     private void updatePlayHint() {
         if (playHint == null) return;
         if (DataSources.load(this).isEmpty()) {
-            playHint.setText("Choose your game folder first (Game files, below).");
+            playHint.setText(R.string.hint_choose_folder);
         } else if (quick != null && quick.isChecked()) {
             int st = GameOptions.stage(this);
-            playHint.setText((st == 7 ? "Starts at the Extra stage" : "Starts at stage " + st)
-                    + "  ·  practice, nothing is saved");
+            playHint.setText(st == 7 ? getString(R.string.hint_extra) : getString(R.string.hint_stage, st));
         } else {
-            playHint.setText("Opens the game's title screen");
+            playHint.setText(R.string.hint_title);
         }
     }
 
@@ -562,17 +563,15 @@ public class ImportActivity extends Activity {
      * that song's place. The game folder is not touched; "Restore" puts the original back.
      */
     private void addMusicSection(LinearLayout page) {
-        LinearLayout card = ui.card(page, "Replace music",
-                "Play your own audio file (MP3, AAC, OGG, FLAC, WAV …) in place of one of the game's "
-                        + "songs. It is converted to WAV (44,100 Hz, stereo) and loops like the game's music.");
-        card.addView(ui.caption("Song"), LauncherUi.matchWrap());
+        LinearLayout card = ui.card(page, getString(R.string.music_title), getString(R.string.music_body));
+        card.addView(ui.caption(getString(R.string.music_song)), LauncherUi.matchWrap());
         musicTracks = ui.adapter(trackLabels());
         musicTrack = ui.spinner(musicTracks, 0, position -> showMusicStatus(null));
         card.addView(musicTrack, LauncherUi.matchWrap());
-        card.addView(ui.caption("Loop from (seconds into your song; empty or 0 = the whole song)"), LauncherUi.matchWrap());
+        card.addView(ui.caption(getString(R.string.music_loop)), LauncherUi.matchWrap());
         loopFrom = ui.field("0", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
         card.addView(loopFrom, LauncherUi.matchWrap());
-        musicPick = ui.primary("Choose audio file");
+        musicPick = ui.primary(getString(R.string.music_choose));
         musicPick.setOnClickListener(v -> {
             Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             pick.addCategory(Intent.CATEGORY_OPENABLE);
@@ -582,11 +581,11 @@ public class ImportActivity extends Activity {
             startActivityForResult(pick, REQUEST_AUDIO);
         });
         card.addView(musicPick, ui.matchWrap(16, 8));
-        musicRestore = ui.secondary("Restore the game's song");
+        musicRestore = ui.secondary(getString(R.string.music_restore));
         musicRestore.setOnClickListener(v -> {
             MusicReplacer.restore(this, musicTrack.getSelectedItemPosition());
             refreshTracks();
-            showMusicStatus("Restored: the game's own song plays again.");
+            showMusicStatus(getString(R.string.music_restored));
         });
         card.addView(musicRestore, ui.matchWrap(0, 4));
         musicStatus = ui.body("", 14, LauncherUi.INK);
@@ -596,9 +595,10 @@ public class ImportActivity extends Activity {
     }
 
     private String[] trackLabels() {
-        String[] labels = new String[MusicReplacer.TRACKS.length];
+        String[] labels = new String[MusicReplacer.TRACK_COUNT];
         for (int t = 0; t < labels.length; ++t) {
-            labels[t] = MusicReplacer.TRACKS[t] + (MusicReplacer.isReplaced(this, t) ? "   (replaced)" : "");
+            labels[t] = MusicReplacer.trackLabel(this, t)
+                    + (MusicReplacer.isReplaced(this, t) ? "   " + getString(R.string.music_replaced_mark) : "");
         }
         return labels;
     }
@@ -614,7 +614,7 @@ public class ImportActivity extends Activity {
     private void showMusicStatus(String message) {
         int track = musicTrack.getSelectedItemPosition();
         String now = MusicReplacer.describe(this, track);
-        String state = now != null ? "Now: your music (" + now + ")" : "Now: the game's own song";
+        String state = now != null ? getString(R.string.music_now_yours, now) : getString(R.string.music_now_game);
         musicStatus.setText(message != null ? message + "\n" + state : state);
         musicRestore.setEnabled(!converting && now != null);
         musicPick.setEnabled(!converting);
@@ -628,20 +628,20 @@ public class ImportActivity extends Activity {
             String text = loopFrom.getText().toString().trim();
             if (!text.isEmpty()) loop = Double.parseDouble(text);
         } catch (NumberFormatException e) {
-            showMusicStatus("The loop point must be a number of seconds.");
+            showMusicStatus(getString(R.string.music_loop_nan));
             return;
         }
         final double loopSeconds = loop;
         converting = true;
-        showMusicStatus("Reading your file...");
+        showMusicStatus(getString(R.string.music_reading));
         new Thread(() -> {
             String result;
             try {
                 String summary = MusicReplacer.replace(this, audio, track, loopSeconds,
                         message -> runOnUiThread(() -> musicStatus.setText(message)));
-                result = "Done: " + MusicReplacer.TRACKS[track].substring(4) + " now plays your music (" + summary + ").";
+                result = getString(R.string.music_done, MusicReplacer.trackName(this, track), summary);
             } catch (IOException | RuntimeException e) {
-                result = "Could not use that file: " + e.getMessage();
+                result = getString(R.string.music_failed, e.getMessage());
             }
             final String message = result;
             runOnUiThread(() -> {
@@ -683,7 +683,7 @@ public class ImportActivity extends Activity {
             getContentResolver().takePersistableUriPermission(tree,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION);
         } catch (SecurityException e) {
-            status.setText("Android did not grant lasting access to that folder: " + e.getMessage());
+            status.setText(getString(R.string.files_denied, e.getMessage()));
             return;
         }
         scan(tree);
@@ -693,10 +693,10 @@ public class ImportActivity extends Activity {
         scanning = true;
         chooseButton.setEnabled(false);
         playButton.setEnabled(false);
-        status.setText("Scanning…");
+        status.setText(R.string.files_scanning);
         new Thread(() -> {
             List<DataSources.Entry> found = DataSources.scanTree(this, tree,
-                    path -> runOnUiThread(() -> status.setText("Scanning " + path)));
+                    path -> runOnUiThread(() -> status.setText(getString(R.string.files_scanning_path, path))));
             if (!found.isEmpty()) {
                 DataSources.save(this, tree, found);
                 releaseOtherGrants(tree);
@@ -705,8 +705,7 @@ public class ImportActivity extends Activity {
                 scanning = false;
                 chooseButton.setEnabled(true);
                 if (found.isEmpty()) {
-                    status.setText("No game archives (.dat files starting with PBG3 or PKGL) "
-                            + "were found in that folder or its subfolders.\n\n");
+                    status.setText(getString(R.string.files_none_found) + "\n\n");
                     playButton.setEnabled(true);
                     appendCurrent();
                 } else {
@@ -741,15 +740,13 @@ public class ImportActivity extends Activity {
         List<DataSources.Entry> entries = DataSources.load(this);
         StringBuilder sb = new StringBuilder(status.getText());
         if (entries.isEmpty()) {
-            sb.append("No game data selected yet. Choose the folder of the 2002 game"
-                    + " (\u7d05\u9b54\u90f7CM.DAT, \u7d05\u9b54\u90f7ST.DAT ... or KOUMAKYO_*.dat).");
-            playButton.setText("Play");
+            sb.append(getString(R.string.files_none_selected));
         } else {
             boolean classic = false;
             int tracks = 0;
             long musicBytes = 0;
             boolean hasScores = false;
-            sb.append(String.format(Locale.ROOT, "%d file(s) in use:%n", entries.size()));
+            sb.append(getResources().getQuantityString(R.plurals.files_in_use, entries.size(), entries.size())).append('\n');
             for (DataSources.Entry e : entries) {
                 if (DataSources.FORMAT_WAV.equals(e.format)) {
                     ++tracks;
@@ -762,26 +759,23 @@ public class ImportActivity extends Activity {
                 }
                 boolean isClassic = DataSources.FORMAT_PBG3.equals(e.format);
                 classic |= isClassic;
-                String kind = isClassic ? "Classic"
-                        : DataSources.FORMAT_EXE.equals(e.format) ? "Program" : "New Classic";
+                String kind = getString(isClassic ? R.string.files_kind_classic
+                        : DataSources.FORMAT_EXE.equals(e.format) ? R.string.files_kind_program : R.string.files_kind_nc);
                 sb.append(String.format(Locale.ROOT, "  %-18s %-11s %6.1f MB%n",
                         e.name, kind, e.size / 1048576.0));
             }
-            sb.append(tracks > 0
-                    ? String.format(Locale.ROOT, "  Music: %d tracks from bgm/ (%.0f MB)%n", tracks, musicBytes / 1048576.0)
-                    : String.format(Locale.ROOT, "  Music: none (copy the game's bgm folder too for music)%n"));
+            sb.append("  ").append(tracks > 0 ? getString(R.string.files_music, tracks, musicBytes / 1048576.0)
+                    : getString(R.string.files_music_none)).append('\n');
             int replaced = MusicReplacer.replacedCount(this);
             if (replaced > 0) {
-                sb.append(String.format(Locale.ROOT, "  Replaced music: %d track(s) (see below)%n", replaced));
+                sb.append("  ").append(getString(R.string.files_replaced, replaced)).append('\n');
             }
             if (hasScores) {
-                sb.append(String.format(Locale.ROOT, "  High scores: score.dat from your PC (new scores are saved in the app)%n"));
+                sb.append("  ").append(getString(R.string.files_scores)).append('\n');
             }
             if (!classic) {
-                sb.append(String.format(Locale.ROOT, "%nThe stage engine runs the 2002 data files;"
-                        + " New Classic archives alone cannot start a stage yet.%n"));
+                sb.append('\n').append(getString(R.string.files_nc_only)).append('\n');
             }
-            playButton.setText("Play");
         }
         status.setText(sb.toString().trim());
         updatePlayHint();

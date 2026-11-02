@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generated: launcher text in five languages (keep the files in step). -->
+<resources>
+    <string name="header_tag">Android 移植版  ·  使用你自己的 2002 年版遊戲檔案</string>
+    <string name="play">開始遊戲</string>
+    <string name="hint_choose_folder">請先選擇遊戲資料夾（見下方「遊戲檔案」）。</string>
+    <string name="hint_extra">從 Extra 關卡開始  ·  練習模式，不儲存任何紀錄</string>
+    <string name="hint_stage">從第 %1$d 面開始  ·  練習模式，不儲存任何紀錄</string>
+    <string name="hint_title">開啟遊戲的標題畫面</string>
+    <string name="lang_title">語言</string>
+    <string name="lang_body">用於本啟動器以及遊戲內的文字（劇情對話、符卡名稱、音樂評論）。</string>
+    <string name="lang_system">跟隨系統</string>
+    <string name="files_title">遊戲檔案</string>
+    <string name="files_body">把你自己的遊戲資料夾複製到手機上（2002 年原版的 紅魔郷**.DAT / KOUMAKYO_**.dat，或 New Classic 中含有 th06**.dat 的 data 資料夾），然後在這裡選擇它。檔案會直接讀取，不會被複製。</string>
+    <string name="files_choose">選擇遊戲資料夾</string>
+    <string name="files_prefer_nc">如果兩個版本都找到，優先使用 New Classic 的素材</string>
+    <string name="files_denied">Android 未授予對該資料夾的持久存取權限：%1$s</string>
+    <string name="files_scanning">正在掃描…</string>
+    <string name="files_scanning_path">正在掃描 %1$s</string>
+    <string name="files_none_found">在該資料夾及其子資料夾中沒有找到遊戲封存檔（以 PBG3 或 PKGL 開頭的 .dat 檔案）。</string>
+    <string name="files_none_selected">尚未選擇遊戲資料。請選擇 2002 年版遊戲的資料夾（紅魔郷CM.DAT、紅魔郷ST.DAT … 或 KOUMAKYO_*.dat）。</string>
+    <string name="files_kind_classic">Classic</string>
+    <string name="files_kind_program">程式</string>
+    <string name="files_kind_nc">New Classic</string>
+    <string name="files_music">音樂：bgm/ 中的 %1$d 首（%2$.0f MB）</string>
+    <string name="files_music_none">音樂：無（如需音樂，請一併複製 bgm 資料夾）</string>
+    <string name="files_replaced">已替換的音樂：%1$d 首（見下方）</string>
+    <string name="files_scores">最高分：來自電腦的 score.dat（新的分數儲存在應用程式內）</string>
+    <string name="files_nc_only">關卡引擎使用 2002 年版的資料檔；僅有 New Classic 封存檔暫時無法開始關卡。</string>
+    <string name="select_title">選關</string>
+    <string name="select_body">跳過標題畫面，從任意關卡開始。僅供練習：這些遊戲的任何紀錄都不會儲存。</string>
+    <string name="select_check">從任意關卡開始（不儲存分數）</string>
+    <string name="select_shot">機體</string>
+    <string name="select_difficulty">難度</string>
+    <string name="select_start">起始關卡（Extra 使用其專屬難度）</string>
+    <string name="controls_title">操作</string>
+    <string name="controls_body">遊戲的觸控操作（也可以使用藍牙或 USB 手把）。</string>
+    <string name="controls_movement">移動</string>
+    <string name="controls_drag_speed">拖曳速度（手指移動時自機移動的距離）</string>
+    <string name="controls_button_size">按鈕大小</string>
+    <string name="controls_opacity">按鈕不透明度</string>
+    <string name="controls_autofire">自動射擊（遊戲中始終按住射擊）</string>
+    <string name="controls_focus_toggle">低速按鈕改為切換式（點一下開，再點一下關）</string>
+    <string name="controls_left">左手模式（按鈕在左側）</string>
+    <string name="controls_vibrate">中彈和使用炸彈時震動</string>
+    <string name="display_title">顯示</string>
+    <string name="display_body">直向遊玩時，遊戲區域佔滿整個寬度，下方是分數，再下方是操作按鈕；選單和劇情畫面保持完整顯示。</string>
+    <string name="display_screen">螢幕方向</string>
+    <string name="display_scaling">縮放方式</string>
+    <string name="display_scanlines">CRT 掃描線</string>
+    <string name="practice_title">練習工具</string>
+    <string name="practice_body">原作中沒有的功能。使用慢動作或讀取即時存檔後，該局的分數不會儲存；顯示判定點則沒有任何影響。</string>
+    <string name="practice_speed">遊戲速度</string>
+    <string name="practice_hitbox">顯示自機的判定點</string>
+    <string name="practice_states">即時存檔（SAVE / LOAD 按鈕；鍵盤為 F5 / F9，手把為 L3 / R3）</string>
+    <string name="mischief_title">惡作劇</string>
+    <string name="mischief_body">原作中沒有的功能。只要開啟其中任意一項，分數、通關紀錄和符卡紀錄都不會儲存。</string>
+    <string name="music_title">替換音樂</string>
+    <string name="music_body">用你自己的音訊檔（MP3、AAC、OGG、FLAC、WAV 等）替換遊戲中的某首曲子。它會被轉換為 WAV（44,100 Hz，立體聲），並像遊戲音樂一樣循環播放。</string>
+    <string name="music_song">曲目</string>
+    <string name="music_replaced_mark">（已替換）</string>
+    <string name="music_loop">循環起點（從曲子開頭算起的秒數；留空或 0 = 整首循環）</string>
+    <string name="music_choose">選擇音訊檔</string>
+    <string name="music_restore">恢復遊戲原曲</string>
+    <string name="music_restored">已恢復：重新播放遊戲原曲。</string>
+    <string name="music_now_yours">目前：你的音樂（%1$s）</string>
+    <string name="music_now_game">目前：遊戲原曲</string>
+    <string name="music_loop_nan">循環起點必須是秒數。</string>
+    <string name="music_reading">正在讀取檔案…</string>
+    <string name="music_done">完成：%1$s 現在播放你的音樂（%2$s）。</string>
+    <string name="music_failed">無法使用該檔案：%1$s</string>
+    <string name="music_converting">正在轉換為 WAV（44,100 Hz，立體聲）…</string>
+    <string name="music_converting_pct">正在轉換… %1$d%%</string>
+    <string name="music_decoding_pct">正在解碼… %1$d%%</string>
+    <string name="music_describe">%1$s，從 %2$s 開始循環，%3$.1f MB</string>
+    <string name="music_err_no_audio">該檔案沒有音軌</string>
+    <string name="music_err_nothing">無法從該檔案解碼出任何內容</string>
+    <string name="music_err_cannot">無法解碼此檔案：%1$s</string>
+    <string name="backup_title">備份</string>
+    <string name="backup_body">把最高分、遊戲設定、錄像和啟動器設定儲存到一個檔案中（下載資料夾、雲端硬碟等），重新安裝後或在新手機上可以還原。</string>
+    <string name="backup_music">包括替換的音樂（檔案更大）</string>
+    <string name="backup_save">備份到檔案</string>
+    <string name="backup_restore">從備份還原</string>
+    <string name="backup_saving">正在儲存…</string>
+    <string name="backup_saved">已儲存：%1$s。</string>
+    <string name="backup_save_failed">無法儲存備份：%1$s</string>
+    <string name="backup_confirm_title">要還原此備份嗎？</string>
+    <string name="backup_confirm_body">目前的最高分、遊戲設定和啟動器設定將被備份中的內容取代（如果備份含有音樂，替換的音樂也會被取代）。</string>
+    <string name="backup_confirm_ok">還原</string>
+    <string name="cancel">取消</string>
+    <string name="backup_restoring">正在還原…</string>
+    <string name="backup_restored">已還原：%1$s。</string>
+    <string name="backup_restore_failed">無法還原：%1$s</string>
+    <string name="backup_part_scores">最高分</string>
+    <string name="backup_part_options">遊戲設定</string>
+    <string name="backup_part_settings">啟動器設定</string>
+    <string name="backup_empty">無（備份是空的）</string>
+    <string name="backup_saving_music">正在儲存音樂：%1$s…</string>
+    <string name="backup_reading_music">正在讀取音樂：%1$s…</string>
+    <string name="err_cannot_write">無法寫入該位置</string>
+    <string name="err_cannot_read">無法讀取該檔案</string>
+    <string name="backup_err_not_backup">這不是 TH06 移植版的備份</string>
+    <string name="backup_err_newer">此備份來自較新版本的應用程式，請先更新應用程式</string>
+    <string name="backup_err_damaged">備份已損毀</string>
+    <string name="list_separator">、</string>
+    <string name="crash_title">遊戲意外關閉</string>
+    <string name="crash_body">很抱歉。發生情況的日誌已保存在這支手機上；你可以儲存它並附加到 GitHub 上的錯誤回報中。不會自動傳送任何內容。</string>
+    <string name="crash_save">儲存日誌</string>
+    <string name="crash_dismiss">關閉</string>
+    <string name="update_title">版本 %1$s 已發布</string>
+    <string name="update_body">你目前的版本是 %1$s。請從發布頁面下載新的 APK 並覆蓋安裝（分數和設定會保留）。</string>
+    <string name="update_open">開啟發布頁面</string>
+    <string name="no_browser">找不到可開啟 %1$s 的瀏覽器</string>
+    <string name="help_title">說明與更新</string>
+    <string name="help_version">版本 %1$s（組建 %2$d）。</string>
+    <string name="help_auto">每天檢查一次新版本</string>
+    <string name="help_check">立即檢查更新</string>
+    <string name="help_checking">正在檢查…</string>
+    <string name="help_none_published">尚未發布任何正式版本。</string>
+    <string name="help_newer">版本 %1$s 已發布（見本頁頂部）。</string>
+    <string name="help_latest">已是最新版本（最新發布為 %1$s）。</string>
+    <string name="help_check_failed">無法檢查：%1$s</string>
+    <string name="help_bug">發現錯誤？儲存日誌（在你分享之前它只保存在你的手機上），並將其附加到 GitHub 的 Issue 中。</string>
+    <string name="help_save_log">儲存用於錯誤回報的日誌</string>
+    <string name="help_report">在 GitHub 上回報問題</string>
+    <string name="help_log_saved">日誌已儲存。請將其附加到你的錯誤回報中。</string>
+    <string name="help_log_failed">無法儲存日誌：%1$s</string>
+    <string name="footer">供你使用自己擁有的《東方紅魔郷 ～ the Embodiment of Scarlet Devil》（上海愛麗絲幻樂團）遊玩的同人移植版。不包含任何遊戲檔案。\n字型：Yuji Syuku、Zen Antique（SIL Open Font License 1.1）。</string>
+    <string-array name="shot_types">
+        <item>靈夢A（追蹤符札）</item>
+        <item>靈夢B（封魔針）</item>
+        <item>魔理沙A（魔法飛彈）</item>
+        <item>魔理沙B（雷射）</item>
+    </string-array>
+    <string-array name="stages">
+        <item>1 面</item>
+        <item>2 面</item>
+        <item>3 面</item>
+        <item>4 面</item>
+        <item>5 面</item>
+        <item>6 面</item>
+        <item>Extra</item>
+    </string-array>
+    <string-array name="mischief">
+        <item>無限殘機</item>
+        <item>無限炸彈</item>
+        <item>無敵（不會被任何東西擊中）</item>
+        <item>火力始終 MAX</item>
+        <item>無限接關</item>
+    </string-array>
+    <string-array name="move_modes">
+        <item>任意位置拖曳（觸控板式）</item>
+        <item>方向鍵</item>
+    </string-array>
+    <string-array name="button_sizes">
+        <item>小</item>
+        <item>標準</item>
+        <item>大</item>
+        <item>特大</item>
+    </string-array>
+    <string-array name="opacities">
+        <item>很淡</item>
+        <item>較淡</item>
+        <item>標準</item>
+        <item>不透明</item>
+    </string-array>
+    <string-array name="speeds">
+        <item>正常速度</item>
+        <item formatted="false">75%（慢動作）</item>
+        <item formatted="false">50%（慢動作）</item>
+    </string-array>
+    <string-array name="layouts">
+        <item>橫向</item>
+        <item>直向（遊戲區域佔滿寬度）</item>
+    </string-array>
+    <string-array name="scalings">
+        <item>平滑</item>
+        <item>銳利像素</item>
+        <item>像素完美（整數倍）</item>
+    </string-array>
+    <string-array name="track_names">
+        <item>標題畫面</item>
+        <item>1 面</item>
+        <item>1 面 Boss</item>
+        <item>2 面</item>
+        <item>2 面 Boss</item>
+        <item>3 面</item>
+        <item>3 面 Boss</item>
+        <item>4 面</item>
+        <item>4 面 Boss</item>
+        <item>5 面</item>
+        <item>5 面 Boss</item>
+        <item>6 面</item>
+        <item>6 面 Boss</item>
+        <item>Extra 關卡</item>
+        <item>Extra Boss</item>
+        <item>結局</item>
+        <item>製作人員名單</item>
+    </string-array>
+    <plurals name="files_in_use">
+        <item quantity="other">正在使用的檔案：%d 個</item>
+    </plurals>
+    <plurals name="backup_part_replays">
+        <item quantity="other">%d 個錄像</item>
+    </plurals>
+    <plurals name="backup_part_songs">
+        <item quantity="other">%d 首替換的音樂</item>
+    </plurals>
+</resources>

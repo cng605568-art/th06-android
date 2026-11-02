@@ -115,6 +115,14 @@ app also pauses. A Bluetooth/USB gamepad works too (the touch overlay hides itse
 screen). Advanced: archives placed in `Android/data/io.github.cng605568art.th06/files/gamedata/`
 (e.g. with `adb push`) are also loaded.
 
+## Languages
+
+The launcher speaks English, 日本語, 简体中文, 繁體中文 and Bahasa Melayu (the **Language**
+card at the top; "Phone setting" follows Android's language). All its text lives in
+`app/src/main/res/values*/strings.xml`, one file per language with the same keys. Chinese
+uses the system's CJK fonts; the other languages use the bundled brush and Mincho faces,
+subset to exactly the characters the launcher needs.
+
 ## Launcher look
 
 Shrine red (primary) and sakura pink (accent) on warm paper: a red header with the app's

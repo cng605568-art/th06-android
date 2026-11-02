@@ -10,11 +10,6 @@ import android.content.SharedPreferences;
  * GameActivity.
  */
 final class GameOptions {
-    static final String[] SHOT_TYPES = {"Reimu A (homing amulets)", "Reimu B (needles)",
-            "Marisa A (missiles)", "Marisa B (laser)"};
-    static final String[] DIFFICULTIES = {"Easy", "Normal", "Hard", "Lunatic"};
-    static final String[] STAGES = {"Stage 1", "Stage 2", "Stage 3", "Stage 4", "Stage 5",
-            "Stage 6", "Extra"};
 
     private static final String PREFS = "th06_game_options";
     private static final String KEY_SHOT = "shot_type";
@@ -25,8 +20,6 @@ final class GameOptions {
     private static final String KEY_CONTROLS = "controls_";
 
     /** Mischief options (bits, same order as the engine's): not in the original game. */
-    static final String[] MISCHIEF = {"Infinite lives", "Infinite bombs", "Invincible (nothing hits you)",
-            "Power always MAX", "Unlimited continues"};
 
     private GameOptions() {}
 
@@ -52,12 +45,9 @@ final class GameOptions {
     }
 
     // Touch controls (read by the engine as getControlOptions()).
-    static final String[] MOVE_MODES = {"Drag anywhere (touchpad)", "D-pad"};
     static final String[] DRAG_SPEEDS = {"1×", "1.25×", "1.5×", "2×", "2.5×", "3×"};
     static final int[] DRAG_SPEED_PCT = {100, 125, 150, 200, 250, 300};
-    static final String[] BUTTON_SIZES = {"Small", "Normal", "Large", "Extra large"};
     static final int[] BUTTON_SIZE_PCT = {80, 100, 120, 140};
-    static final String[] OPACITIES = {"Faint", "Light", "Normal", "Solid"};
     static final int[] OPACITY_PCT = {40, 60, 80, 100};
 
     static int controlChoice(Context ctx, String name, int fallback) { return prefs(ctx).getInt(KEY_CONTROLS + name, fallback); }
@@ -65,7 +55,6 @@ final class GameOptions {
     static boolean controlFlag(Context ctx, String name, boolean fallback) { return prefs(ctx).getBoolean(KEY_CONTROLS + name, fallback); }
     static void setControlFlag(Context ctx, String name, boolean v) { prefs(ctx).edit().putBoolean(KEY_CONTROLS + name, v).apply(); }
 
-    static final String[] SPEEDS = {"Normal speed", "75% (slow motion)", "50% (slow motion)"};
     static final int[] SPEED_PCT = {100, 75, 50};
 
     /**
@@ -86,8 +75,6 @@ final class GameOptions {
     }
 
     // Display (read by the engine as getDisplayOptions()).
-    static final String[] LAYOUTS = {"Landscape (sideways)", "Portrait (upright; playfield fills the width)"};
-    static final String[] SCALINGS = {"Smooth", "Sharp pixels", "Pixel-perfect (whole multiples)"};
 
     /** {portrait, scaling (0 smooth, 1 sharp, 2 pixel-perfect), scanlines}. */
     static int[] display(Context ctx) {
