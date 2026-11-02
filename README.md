@@ -36,7 +36,7 @@ Built entirely by GitHub Actions: no Android Studio, no local SDK.
 | Sound | SoundIdx → wav + DirectSound volume table, 3-entry per-frame queue with de-duplication, played once per frame |
 | Main loop | `std::chrono` fixed timestep of exactly 1/60 s (rational arithmetic, no drift), rendering once per display refresh with positions interpolated to the present instant (60/90/120/144 Hz), vsync-jitter snapping, max 4 ticks per frame |
 | Mischief (port extra) | Launcher switches not in the original: infinite lives, infinite bombs, invincible, power always MAX, unlimited continues. While any is on, the HUD says so and the game's scores, clear progress and spell history are not saved (the result screen still shows the statistics). |
-| Controls | Touch D-pad + Shot/Bomb/Focus/Pause registered as an **SDL virtual game controller**; physical gamepads and keyboards use the same path |
+| Controls | Touch controls registered as an **SDL virtual game controller** (physical gamepads and keyboards use the same path). **Drag anywhere** (default): a finger off the buttons steers like a touchpad, the ship following your finger's travel at its normal speed (the anchor slides along the walls, so dragging back responds at once); the same drag is a floating 8-way stick in menus. Or the classic 8-way **D-pad**. Launcher options: drag speed, button size and opacity, left-handed layout, a latching Focus button, auto-fire, and a short vibration on a miss and on a bomb. |
 
 **Not ported yet** (shown live under *NOT PORTED YET* in the HUD whenever the game data uses
 them): replays and the attract demo (the result screen skips the save-replay prompt), Key

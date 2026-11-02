@@ -100,6 +100,7 @@ void Player::reset(World& world) {
     state = Spawning;
     counter_ = 120;  // the first update resolves the spawn at once (no spawn-in at a stage start)
     previousSpeedX_ = 0.0f;
+    dragId_ = 0;
     bullets_ = {};
     fireTimer_ = -1;
     laserTimers_ = {};
@@ -213,7 +214,25 @@ void Player::move(World& world, const InputState& in) {
     const float ortho = (focused ? type.speedFocus : type.speed) * bomb_.moveMultiplier();
     const float diag = ortho / std::sqrt(2.0f);
     float speedX, speedY;
-    if (dx != 0 && dy != 0) {
+    if (in.drag) {
+        // Drag-to-move (port extra): the ship heads for where the finger's travel points,
+        // at no more than its normal speed. The anchor follows the target along the walls,
+        // so dragging back moves the ship at once.
+        if (in.dragId != dragId_) {
+            dragId_ = in.dragId;
+            dragAnchor_ = {positionCenter.x, positionCenter.y, 0.0f};
+        }
+        const float tx = std::clamp(dragAnchor_.x + in.dragX, kMoveLeft, kMoveLeft + kMoveWidth);
+        const float ty = std::clamp(dragAnchor_.y + in.dragY, kMoveTop, kMoveTop + kMoveHeight);
+        dragAnchor_ = {tx - in.dragX, ty - in.dragY, 0.0f};
+        speedX = tx - positionCenter.x;
+        speedY = ty - positionCenter.y;
+        const float len = std::hypot(speedX, speedY);
+        if (len > ortho && len > 0.0f) {
+            speedX *= ortho / len;
+            speedY *= ortho / len;
+        }
+    } else if (dx != 0 && dy != 0) {
         speedX = static_cast<float>(dx) * diag;
         speedY = static_cast<float>(dy) * diag;
     } else {
@@ -221,11 +240,13 @@ void Player::move(World& world, const InputState& in) {
         speedY = static_cast<float>(dy) * ortho;
     }
 
-    if (speedX < 0.0f && previousSpeedX_ >= 0.0f) world.anm->setAndExecuteScript(sprite_, kScriptMovingLeft);
-    else if (speedX == 0.0f && previousSpeedX_ < 0.0f) world.anm->setAndExecuteScript(sprite_, kScriptStoppingLeft);
-    if (speedX > 0.0f && previousSpeedX_ <= 0.0f) world.anm->setAndExecuteScript(sprite_, kScriptMovingRight);
-    else if (speedX == 0.0f && previousSpeedX_ > 0.0f) world.anm->setAndExecuteScript(sprite_, kScriptStoppingRight);
-    previousSpeedX_ = speedX;
+    // The lean animation (a small dead band keeps a resting finger from flickering it).
+    const float leanX = in.drag && std::fabs(speedX) < 0.5f ? 0.0f : speedX;
+    if (leanX < 0.0f && previousSpeedX_ >= 0.0f) world.anm->setAndExecuteScript(sprite_, kScriptMovingLeft);
+    else if (leanX == 0.0f && previousSpeedX_ < 0.0f) world.anm->setAndExecuteScript(sprite_, kScriptStoppingLeft);
+    if (leanX > 0.0f && previousSpeedX_ <= 0.0f) world.anm->setAndExecuteScript(sprite_, kScriptMovingRight);
+    else if (leanX == 0.0f && previousSpeedX_ > 0.0f) world.anm->setAndExecuteScript(sprite_, kScriptStoppingRight);
+    previousSpeedX_ = leanX;
 
     positionCenter.x += speedX;
     positionCenter.y += speedY;
@@ -476,6 +497,7 @@ void Player::fadeOut(World& world) {
 void Player::respawn(World& world) {
     GameState& gs = *world.state;
     state = Spawning;
+    dragId_ = 0;  // a finger still down re-anchors at the respawn point
     positionCenter = {kGameRegionWidth / 2.0f, kGameRegionHeight - 64.0f, 0.2f};
     prevPosition = positionCenter;  // the hitbox stays at the hit point until the spawn ends
     counter_ = 0;

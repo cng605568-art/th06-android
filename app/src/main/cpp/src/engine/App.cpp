@@ -86,6 +86,9 @@ bool App::init(int argc, char** argv) {
         else if (a == "--difficulty" && next) startDifficulty_ = std::atoi(argv[++i]), quickStart_ = true;
         else if (a == "--shot" && next) shotType_ = std::atoi(argv[++i]), quickStart_ = true;
         else if (a == "--quick") quickStart_ = true;
+        else if (a == "--dpad") controls_.drag = false;
+        else if (a == "--autofire") controls_.autoFire = true;
+        else if (a == "--left-handed") controls_.leftHanded = true;
         else if (a == "--keys" && next) parseDevKeys(argv[++i]);
         else if (a == "--mischief" && next) mischief_ = static_cast<std::uint32_t>(std::atoi(argv[++i]));
         else if (a == "--size" && next) std::sscanf(argv[++i], "%dx%d", &windowWidth_, &windowHeight_);
@@ -146,10 +149,12 @@ bool App::init(int argc, char** argv) {
         startDifficulty_ = o.stage == 7 ? Extra : o.difficulty;
         mischief_ = o.mischief;
         quickStart_ = o.quickStart;
+        controls_ = readAndroidControlOptions();
     }
 #endif
     stage_->setShotType(shotType_);
     stage_->setMischief(mischief_);
+    stage_->setAutoFire(controls_.autoFire);
     if (char* pref = SDL_GetPrefPath("th06", "th06-android")) {  // app storage on Android
         stage_->setScorePath(std::string(pref) + "score.dat");
         stage_->setConfigPath(std::string(pref) + "th06.cfg");
@@ -169,6 +174,7 @@ bool App::init(int argc, char** argv) {
     }
 
     if (!touch_.attach(&err)) log::warn("Touch controls unavailable: {}", err);
+    touch_.setOptions(controls_);
 #if defined(__ANDROID__)
     touch_.setVisible(true);
 #else
@@ -313,12 +319,14 @@ void App::loop() {
         const int ticks = clock_.advance(now);
         if (ticks > 0) {
             InputState in = input_.sample();
+            touch_.fillDrag(in);
             applyDevKeys(in);
             for (int i = 0; i < ticks && !stage_->quitRequested(); ++i) {
                 stage_->tick(in);
                 ++tickCount_;
             }
         }
+        haptics();
         if (stage_->quitRequested()) {  // Quit in the pause menu, or game over: to the launcher
             running_ = false;
             break;
@@ -350,6 +358,21 @@ void App::loop() {
             logStart = now;
         }
     }
+}
+
+// A short vibration when the player is hit (after the deathbomb window) or bombs.
+void App::haptics() {
+    if (!stage_->ready() || stage_->inMenus()) return;
+    const GameState& gs = stage_->state();
+    const bool missed = gs.deaths > lastDeaths_, bombed = gs.bombsUsed > lastBombs_;
+    lastDeaths_ = gs.deaths;
+    lastBombs_ = gs.bombsUsed;
+    if (!controls_.vibrate || !(missed || bombed)) return;
+#if defined(__ANDROID__)
+    androidVibrate(missed ? 80 : 35);
+#else
+    log::info("(vibrate {} ms)", missed ? 80 : 35);
+#endif
 }
 
 void App::logStats() const {

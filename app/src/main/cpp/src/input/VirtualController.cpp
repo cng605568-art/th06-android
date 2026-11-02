@@ -59,10 +59,33 @@ SDL_JoystickID VirtualController::joystickId() const {
     return joystick_ ? SDL_JoystickInstanceID(joystick_) : -1;
 }
 
+void VirtualController::setOptions(const ControlOptions& options) {
+    options_ = options;
+    focusLatched_ = false;
+    releaseAll();
+    relayout();
+}
+
+void VirtualController::relayout() {
+    if (screenW_ > 0) layout(screenW_, screenH_, gameX_, gameY_, gameW_, gameH_);
+}
+
+void VirtualController::fillDrag(InputState& in) const {
+    if (!options_.drag || !pad_.active()) return;
+    in.drag = true;
+    in.dragId = pad_.id();
+    in.dragX = pad_.offsetX();
+    in.dragY = pad_.offsetY();
+}
+
 void VirtualController::layout(int screenWidth, int screenHeight, float gameX, float gameY,
                                float gameW, float gameH) {
-    (void)gameY;
-    (void)gameH;
+    screenW_ = screenWidth;
+    screenH_ = screenHeight;
+    gameX_ = gameX;
+    gameY_ = gameY;
+    gameW_ = gameW;
+    gameH_ = gameH;
     const float w = static_cast<float>(screenWidth);
     const float h = static_cast<float>(screenHeight);
     const float unit = std::min(w, h);
@@ -126,12 +149,23 @@ void VirtualController::layout(int screenWidth, int screenHeight, float gameX, f
     pause.label = "II";
     pause.color = rgba(180, 180, 190);
     dpad.color = rgba(220, 220, 235);
+    focus.label = options_.focusToggle ? "FOCUS*" : "FOCUS";
+
+    // Options: button size (the pause button keeps its size), left-handed mirroring.
+    const float scale = std::clamp(options_.buttonScale, 0.6f, 1.6f);
+    for (int i = kShoot; i < kPause; ++i) controls_[i].r *= scale;
+    dpad.r *= scale;
+    if (options_.leftHanded) {
+        for (int i = kDpad; i < kPause; ++i) controls_[i].x = w - controls_[i].x;
+    }
+    // Drag: playfield pixels per screen pixel of travel; menus need a short swipe.
+    pad_.configure(640.0f / std::max(gameW, 1.0f) * options_.sensitivity, unit * 0.045f);
 }
 
 VirtualController::Control VirtualController::hitTest(float x, float y, bool buttonsOnly) const {
     Control best = kNone;
     float bestScore = 1e30f;
-    for (int i = buttonsOnly ? kShoot : kDpad; i < kControlCount; ++i) {
+    for (int i = buttonsOnly || options_.drag ? kShoot : kDpad; i < kControlCount; ++i) {
         const Button& b = controls_[i];
         const float slack = i == kDpad ? 1.3f : 1.25f;  // generous targets for thumbs
         const float d = std::hypot(x - b.x, y - b.y);
@@ -158,7 +192,11 @@ bool VirtualController::handleEvent(const SDL_Event& e, int screenWidth, int scr
     bool consumed = false;
     if (e.type == SDL_FINGERDOWN) {
         visible_ = true;  // touching the screen brings the overlay back
-        const Control c = hitTest(x, y, false);
+        Control c = hitTest(x, y, false);
+        if (c == kNone && options_.drag && !pad_.active()) {  // anywhere else: drag
+            c = kDpad;
+            pad_.down(x, y);
+        }
         if (c != kNone) {
             for (Finger& f : fingers_) {
                 if (!f.active) {
@@ -171,9 +209,11 @@ bool VirtualController::handleEvent(const SDL_Event& e, int screenWidth, int scr
     } else if (Finger* f = find(e.tfinger.fingerId)) {
         if (e.type == SDL_FINGERUP) {
             f->active = false;
+            if (f->control == kDpad && options_.drag) pad_.up();
         } else {
             f->x = x;
             f->y = y;
+            if (f->control == kDpad && options_.drag) pad_.move(x, y);
             // A D-pad finger keeps steering wherever it goes; a button finger can slide
             // from one button onto another (or off, releasing it).
             if (f->control != kDpad) f->control = hitTest(x, y, true);
@@ -193,7 +233,7 @@ void VirtualController::recompute() {
     for (const Finger& f : fingers_) {
         if (!f.active || f.control == kNone) continue;
         held[f.control] = true;
-        if (f.control != kDpad) continue;
+        if (f.control != kDpad || options_.drag) continue;
         const float dx = f.x - dpad.x, dy = f.y - dpad.y;
         const float len = std::hypot(dx, dy);
         knobActive_ = true;
@@ -207,9 +247,16 @@ void VirtualController::recompute() {
         dirs[3] = dirs[3] || dx / len > kAxisThreshold;
     }
 
+    if (options_.drag) pad_.directions(dirs);  // the floating stick (menus)
+    // A latching Focus button flips on each new press.
+    if (options_.focusToggle) {
+        if (held[kFocus] && !focusWasHeld_) focusLatched_ = !focusLatched_;
+        focusWasHeld_ = held[kFocus];
+    }
     for (int i = kShoot; i < kControlCount; ++i) {
-        controls_[i].down = held[i];
-        push(controls_[i].button, held[i]);
+        const bool down = i == kFocus && options_.focusToggle ? focusLatched_ : held[i];
+        controls_[i].down = down;
+        push(controls_[i].button, down);
     }
     std::copy(std::begin(dirs), std::end(dirs), dirs_);
     push(SDL_CONTROLLER_BUTTON_DPAD_UP, dirs[0]);
@@ -226,6 +273,8 @@ void VirtualController::push(SDL_GameControllerButton button, bool down) {
 
 void VirtualController::releaseAll() {
     for (Finger& f : fingers_) f.active = false;
+    pad_.up();
+    focusWasHeld_ = false;
     recompute();
 }
 
@@ -256,11 +305,27 @@ bool VirtualController::locate(SDL_GameControllerButton button, float& x, float&
 
 void VirtualController::draw(SpriteSink& sink, const UiArt& ui) const {
     if (!visible_) return;
-    const std::uint8_t base = overlay_ ? 70 : 110;
-    const std::uint8_t lit = overlay_ ? 150 : 200;
-
-    // D-pad: ring, four direction chevrons, and a knob following the thumb.
+    const float o = std::clamp(options_.opacity, 0.2f, 1.0f);
+    const auto a = [o](int v) { return static_cast<std::uint8_t>(std::clamp(static_cast<float>(v) * o, 0.0f, 255.0f)); };
+    const std::uint8_t base = a(overlay_ ? 70 : 110);
+    const std::uint8_t lit = a(overlay_ ? 150 : 200);
     const Button& d = controls_[kDpad];
+
+    if (options_.drag) {
+        // Drag: a ring where the finger touched down and a dot under it; idle, a faint hint
+        // where the D-pad would be.
+        if (pad_.active()) {
+            const float r = std::min(static_cast<float>(screenW_), static_cast<float>(screenH_)) * 0.07f;
+            sink.drawRegion(ui.ring, pad_.startX(), pad_.startY(), r * 2 / ui.ring.width, rgba(255, 210, 225, lit));
+            sink.drawRegion(ui.disc, pad_.x(), pad_.y(), r * 0.9f / ui.disc.width, rgba(255, 255, 255, lit));
+        } else {
+            sink.drawRegion(ui.ring, d.x, d.y, d.r * 2 / ui.ring.width, rgba(220, 220, 235, a(overlay_ ? 45 : 80)));
+            const float scale = std::max(1.0f, std::floor(d.r / 22.0f));
+            const char* hint = "DRAG";
+            drawText(sink, ui, d.x - textWidth(hint, scale) * 0.5f, d.y - 3.5f * scale, hint, scale, rgba(255, 255, 255, a(overlay_ ? 70 : 120)));
+        }
+    } else {
+    // D-pad: ring, four direction chevrons, and a knob following the thumb.
     sink.drawRegion(ui.disc, d.x, d.y, d.r * 2 / ui.disc.width, rgba(30, 30, 45, base));
     sink.drawRegion(ui.ring, d.x, d.y, d.r * 2 / ui.ring.width, rgba(220, 220, 235, lit));
     const float arrowScale = d.r * 0.42f / ui.chevron.width;
@@ -276,6 +341,7 @@ void VirtualController::draw(SpriteSink& sink, const UiArt& ui) const {
     if (knobActive_) {
         sink.drawRegion(ui.disc, knobX_, knobY_, d.r * 0.55f / ui.disc.width, rgba(255, 255, 255, lit));
     }
+    }
 
     for (int i = kShoot; i < kControlCount; ++i) {
         const Button& b = controls_[i];
@@ -287,7 +353,7 @@ void VirtualController::draw(SpriteSink& sink, const UiArt& ui) const {
         const float scale = std::max(1.0f, std::floor(b.r / 16.0f));
         const float tw = textWidth(b.label, scale);
         drawText(sink, ui, b.x - tw * 0.5f, b.y - 3.5f * scale, b.label, scale,
-                 rgba(255, 255, 255, b.down ? 255 : 220));
+                 rgba(255, 255, 255, a(b.down ? 255 : 220)));
     }
 }
 

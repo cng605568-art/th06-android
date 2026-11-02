@@ -132,6 +132,8 @@ class Player {
     Vec3f hitboxSize{1.25f, 1.25f, 5.0f};
     Vec3f hitboxTopLeft, hitboxBottomRight;
     float previousSpeedX_ = 0.0f;
+    unsigned dragId_ = 0;  // the touch the drag anchor belongs to (0: re-anchor)
+    Vec3f dragAnchor_;
     // Death progress (Dead, counts up), spawn progress (Spawning, counts up) or
     // invulnerability left (Invulnerable, counts down); counts up while Alive too.
     std::int32_t counter_ = 0;

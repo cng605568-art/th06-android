@@ -126,6 +126,8 @@ public class ImportActivity extends Activity {
         });
         select.addView(quickOptions, LauncherUi.matchWrap());
 
+        addControlsSection(page);
+
         // Mischief
         LinearLayout mischiefCard = ui.card(page, "Mischief",
                 "Not in the original game. While any of these is on, scores, clears and spell cards "
@@ -226,6 +228,42 @@ public class ImportActivity extends Activity {
         tag.setPadding(0, ui.dp(8), 0, 0);
         header.addView(tag);
         return header;
+    }
+
+    /** Touch controls: drag-to-move or the D-pad, and how the buttons look and behave. */
+    private void addControlsSection(LinearLayout page) {
+        LinearLayout card = ui.card(page, "Controls",
+                "Touch controls for the game (a Bluetooth or USB gamepad works too).");
+        card.addView(ui.caption("Movement"), LauncherUi.matchWrap());
+        LinearLayout dragOnly = new LinearLayout(this);
+        dragOnly.setOrientation(LinearLayout.VERTICAL);
+        card.addView(ui.spinner(ui.adapter(GameOptions.MOVE_MODES), GameOptions.controlChoice(this, "mode", 0), v -> {
+            GameOptions.setControlChoice(this, "mode", v);
+            dragOnly.setVisibility(v == 0 ? View.VISIBLE : View.GONE);
+        }), LauncherUi.matchWrap());
+        dragOnly.addView(ui.caption("Drag speed (how far the ship moves for your finger's travel)"), LauncherUi.matchWrap());
+        dragOnly.addView(ui.spinner(ui.adapter(GameOptions.DRAG_SPEEDS), GameOptions.controlChoice(this, "speed", 2),
+                v -> GameOptions.setControlChoice(this, "speed", v)), LauncherUi.matchWrap());
+        dragOnly.setVisibility(GameOptions.controlChoice(this, "mode", 0) == 0 ? View.VISIBLE : View.GONE);
+        card.addView(dragOnly, LauncherUi.matchWrap());
+        card.addView(ui.caption("Button size"), LauncherUi.matchWrap());
+        card.addView(ui.spinner(ui.adapter(GameOptions.BUTTON_SIZES), GameOptions.controlChoice(this, "size", 1),
+                v -> GameOptions.setControlChoice(this, "size", v)), LauncherUi.matchWrap());
+        card.addView(ui.caption("Button opacity"), LauncherUi.matchWrap());
+        card.addView(ui.spinner(ui.adapter(GameOptions.OPACITIES), GameOptions.controlChoice(this, "opacity", 3),
+                v -> GameOptions.setControlChoice(this, "opacity", v)), LauncherUi.matchWrap());
+        String[][] flags = {
+            {"autoFire", "Auto-fire (Shot is always held while you play)"},
+            {"focusToggle", "Focus button toggles (tap on, tap off)"},
+            {"left", "Left-handed (buttons on the left)"},
+            {"vibrate", "Vibrate on a miss and on a bomb"},
+        };
+        for (String[] f : flags) {
+            final String key = f[0];
+            CheckBox box = ui.check(f[1], GameOptions.controlFlag(this, key, key.equals("vibrate")));
+            box.setOnCheckedChangeListener((b, checked) -> GameOptions.setControlFlag(this, key, checked));
+            card.addView(box, LauncherUi.matchWrap());
+        }
     }
 
     private void updatePlayHint() {

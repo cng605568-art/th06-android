@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+#include "input/ControlOptions.hpp"
+
 #include "gfx/TextRenderer.hpp"
 
 namespace th06 {
@@ -29,6 +31,11 @@ struct AndroidGameOptions {
 };
 // Calls GameActivity.getGameOptions() (the launcher's choices).
 AndroidGameOptions readAndroidGameOptions();
+
+// Calls GameActivity.getControlOptions() (the launcher's touch-control settings).
+ControlOptions readAndroidControlOptions();
+// A short vibration (GameActivity.vibrate).
+void androidVibrate(int milliseconds);
 
 // Renders the game's Shift-JIS strings with the system's CJK font through
 // GameActivity.renderText().

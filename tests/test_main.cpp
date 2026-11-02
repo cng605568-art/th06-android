@@ -48,6 +48,7 @@
 #include "game/GameConfig.hpp"
 #include "game/Title.hpp"
 #include "game/MusicRoom.hpp"
+#include "input/DragPad.hpp"
 #include "gfx/Anm.hpp"
 #include "gfx/AnmManager.hpp"
 #include "gfx/Image.hpp"
@@ -5602,6 +5603,73 @@ static void testStageSelect() {
     std::filesystem::remove_all(dir);
 }
 
+// Drag-to-move: the touch pad's travel, and the ship following it at its normal speed.
+static void testDragControls() {
+    DragPad pad;
+    pad.configure(0.5f, 20.0f);
+    CHECK(!pad.active() && pad.offsetX() == 0.0f && pad.id() == 0);
+    pad.down(100.0f, 200.0f);
+    CHECK(pad.active() && pad.id() == 1);
+    pad.move(160.0f, 190.0f);
+    CHECK(near(pad.offsetX(), 30.0f) && near(pad.offsetY(), -5.0f));
+    bool dirs[4];
+    pad.directions(dirs);
+    CHECK(!dirs[0] && !dirs[1] && !dirs[2] && dirs[3]);  // mostly right
+    pad.move(110.0f, 205.0f);  // inside the dead zone: no direction (menus)
+    pad.directions(dirs);
+    CHECK(!dirs[0] && !dirs[1] && !dirs[2] && !dirs[3]);
+    pad.up();
+    pad.down(0, 0);
+    CHECK(pad.id() == 2 && pad.offsetX() == 0.0f);
+
+    TestWorld tw;
+    CHECK(tw.ok);
+    if (!tw.ok) return;
+    RecordingSound sound;
+    tw.world.sound = &sound;
+    ShotData data = testShotData();
+    tw.world.shots = &data;
+    Player& pl = tw.player;
+    tw.state.shotType = 2;  // speed 5 (focused 2.5 in the test table)
+    pl.reset(tw.world);
+    InputState idle;
+    pl.update(tw.world, idle);
+    const float x0 = pl.positionCenter.x, y0 = pl.positionCenter.y;
+    InputState drag;
+    drag.drag = true;
+    drag.dragId = 7;
+    drag.dragX = 12.0f;
+    drag.dragY = -4.0f;
+    pl.update(tw.world, drag);  // at most 5 px a frame towards the target
+    CHECK(near(std::hypot(pl.positionCenter.x - x0, pl.positionCenter.y - y0), 5.0f, 1e-3f));
+    for (int i = 0; i < 5; ++i) pl.update(tw.world, drag);
+    CHECK(near(pl.positionCenter.x, x0 + 12.0f) && near(pl.positionCenter.y, y0 - 4.0f));  // arrived, and stays
+    drag.right = true;  // a pad direction does not move the ship while dragging
+    pl.update(tw.world, drag);
+    CHECK(near(pl.positionCenter.x, x0 + 12.0f));
+    drag.right = false;
+    // Against a wall the anchor slides along, so dragging back moves at once.
+    drag.dragX = 1000.0f;
+    for (int i = 0; i < 80; ++i) pl.update(tw.world, drag);
+    const float wall = pl.positionCenter.x;
+    CHECK(wall > 360.0f);
+    drag.dragX = 990.0f;
+    pl.update(tw.world, drag);
+    CHECK(near(pl.positionCenter.x, wall - 5.0f));
+    // A new touch re-anchors where the ship is.
+    drag.dragId = 8;
+    drag.dragX = 0.0f;
+    drag.dragY = 0.0f;
+    const float x1 = pl.positionCenter.x;
+    pl.update(tw.world, drag);
+    CHECK(near(pl.positionCenter.x, x1));
+    drag.focus = true;  // focused: the slower speed caps it
+    drag.dragX = -50.0f;
+    pl.update(tw.world, drag);
+    CHECK(near(pl.positionCenter.x, x1 - 2.5f));
+    tw.state.shotType = 0;
+}
+
 static void testMischief() {
     // Player level: bombs, lives, invincibility.
     {
@@ -5813,6 +5881,7 @@ int main() {
         {"music room: musiccmt.txt parsing", testMusicRoomParse},
         {"title screens: music room, score viewer", testTitleScreens},
         {"stage select: unsaved games from any stage", testStageSelect},
+        {"touch: drag-to-move pad and ship", testDragControls},
     };
     for (const Test& t : tests) {
         const int before = g_failures;

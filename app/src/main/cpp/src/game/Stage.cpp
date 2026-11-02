@@ -214,7 +214,9 @@ void Stage::tick(const InputState& raw) {
     if (state_.cheat(MischiefFullPower)) state_.power = GameState::kMaxPower;
     rollScore(world_);
     background_.update(world_);
-    player_->update(world_, in);
+    InputState play = in;
+    if (autoFire_) play.shoot = true;
+    player_->update(world_, play);
     enemies_->update(world_);
     effects_.update(world_);
     bullets_->update(world_);

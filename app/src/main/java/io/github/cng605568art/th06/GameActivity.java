@@ -9,6 +9,8 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.util.Log;
 import android.view.Display;
 import android.view.WindowManager;
@@ -142,6 +144,27 @@ public class GameActivity extends SDLActivity {
     }
 
     /** Launcher choices: {shot type 0..3, difficulty 0..3, stage 1..7 (7 = Extra)}. */
+    /** The launcher's touch-control settings, see GameOptions.controls(). */
+    public static int[] getControlOptions() {
+        Context ctx = SDL.getContext();
+        if (ctx == null) return new int[] {1, 150, 100, 100, 0, 0, 0, 1};
+        return GameOptions.controls(ctx);
+    }
+
+    /** A short vibration (a miss or a bomb), if the device has a vibrator. */
+    @SuppressWarnings("deprecation")
+    public static void vibrate(int milliseconds) {
+        Context ctx = SDL.getContext();
+        if (ctx == null) return;
+        Vibrator v = (Vibrator) ctx.getSystemService(Context.VIBRATOR_SERVICE);
+        if (v == null || !v.hasVibrator()) return;
+        if (Build.VERSION.SDK_INT >= 26) {
+            v.vibrate(VibrationEffect.createOneShot(Math.max(1, milliseconds), VibrationEffect.DEFAULT_AMPLITUDE));
+        } else {
+            v.vibrate(Math.max(1, milliseconds));
+        }
+    }
+
     public static int[] getGameOptions() {
         Context ctx = SDL.getContext();
         if (ctx == null) return new int[] {0, 1, 1, 0, 0};

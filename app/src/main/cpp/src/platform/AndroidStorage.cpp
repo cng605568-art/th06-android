@@ -134,6 +134,38 @@ class AndroidTextRenderer final : public TextRenderer {
 
 std::unique_ptr<TextRenderer> makeAndroidTextRenderer() { return std::make_unique<AndroidTextRenderer>(); }
 
+ControlOptions readAndroidControlOptions() {
+    ControlOptions out;
+    ActivityClass a;
+    const jmethodID mid = a.method("getControlOptions", "()[I");
+    if (!mid) return out;
+    auto array = static_cast<jintArray>(a.env->CallStaticObjectMethod(a.cls, mid));
+    if (a.clearException() || !array) return out;
+    const jsize n = a.env->GetArrayLength(array);
+    if (n >= 8) {
+        jint v[8] = {};
+        a.env->GetIntArrayRegion(array, 0, 8, v);
+        out.drag = v[0] != 0;
+        out.sensitivity = static_cast<float>(v[1]) / 100.0f;
+        out.buttonScale = static_cast<float>(v[2]) / 100.0f;
+        out.opacity = static_cast<float>(v[3]) / 100.0f;
+        out.leftHanded = v[4] != 0;
+        out.focusToggle = v[5] != 0;
+        out.autoFire = v[6] != 0;
+        out.vibrate = v[7] != 0;
+    }
+    a.env->DeleteLocalRef(array);
+    return out;
+}
+
+void androidVibrate(int milliseconds) {
+    ActivityClass a;
+    const jmethodID mid = a.method("vibrate", "(I)V");
+    if (!mid) return;
+    a.env->CallStaticVoidMethod(a.cls, mid, static_cast<jint>(milliseconds));
+    a.clearException();
+}
+
 AndroidGameOptions readAndroidGameOptions() {
     AndroidGameOptions out;
     ActivityClass a;

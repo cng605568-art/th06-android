@@ -22,6 +22,7 @@ final class GameOptions {
     private static final String KEY_STAGE = "stage";
     private static final String KEY_MISCHIEF = "mischief";
     private static final String KEY_QUICK_START = "quick_start";
+    private static final String KEY_CONTROLS = "controls_";
 
     /** Mischief options (bits, same order as the engine's): not in the original game. */
     static final String[] MISCHIEF = {"Infinite lives", "Infinite bombs", "Invincible (nothing hits you)",
@@ -48,6 +49,32 @@ final class GameOptions {
         int v = mischief(ctx);
         v = on ? (v | (1 << bit)) : (v & ~(1 << bit));
         prefs(ctx).edit().putInt(KEY_MISCHIEF, v).apply();
+    }
+
+    // Touch controls (read by the engine as getControlOptions()).
+    static final String[] MOVE_MODES = {"Drag anywhere (touchpad)", "D-pad"};
+    static final String[] DRAG_SPEEDS = {"1×", "1.25×", "1.5×", "2×", "2.5×", "3×"};
+    static final int[] DRAG_SPEED_PCT = {100, 125, 150, 200, 250, 300};
+    static final String[] BUTTON_SIZES = {"Small", "Normal", "Large", "Extra large"};
+    static final int[] BUTTON_SIZE_PCT = {80, 100, 120, 140};
+    static final String[] OPACITIES = {"Faint", "Light", "Normal", "Solid"};
+    static final int[] OPACITY_PCT = {40, 60, 80, 100};
+
+    static int controlChoice(Context ctx, String name, int fallback) { return prefs(ctx).getInt(KEY_CONTROLS + name, fallback); }
+    static void setControlChoice(Context ctx, String name, int v) { prefs(ctx).edit().putInt(KEY_CONTROLS + name, v).apply(); }
+    static boolean controlFlag(Context ctx, String name, boolean fallback) { return prefs(ctx).getBoolean(KEY_CONTROLS + name, fallback); }
+    static void setControlFlag(Context ctx, String name, boolean v) { prefs(ctx).edit().putBoolean(KEY_CONTROLS + name, v).apply(); }
+
+    /** {drag, sensitivity %, button size %, opacity %, left-handed, focus toggle, auto-fire, vibrate}. */
+    static int[] controls(Context ctx) {
+        int speed = clamp(controlChoice(ctx, "speed", 2), 0, DRAG_SPEED_PCT.length - 1);
+        int size = clamp(controlChoice(ctx, "size", 1), 0, BUTTON_SIZE_PCT.length - 1);
+        int opacity = clamp(controlChoice(ctx, "opacity", 3), 0, OPACITY_PCT.length - 1);
+        return new int[] {
+            controlChoice(ctx, "mode", 0) == 0 ? 1 : 0, DRAG_SPEED_PCT[speed], BUTTON_SIZE_PCT[size], OPACITY_PCT[opacity],
+            controlFlag(ctx, "left", false) ? 1 : 0, controlFlag(ctx, "focusToggle", false) ? 1 : 0,
+            controlFlag(ctx, "autoFire", false) ? 1 : 0, controlFlag(ctx, "vibrate", true) ? 1 : 0,
+        };
     }
 
     private static int clamp(int v, int lo, int hi) { return Math.max(lo, Math.min(hi, v)); }
