@@ -85,6 +85,8 @@ class Stage {
     }
 
     void setShotType(int shotType) { state_.shotType = shotType < 0 || shotType > 3 ? 0 : shotType; }
+    // Touch option: Shot is held for the ship during play (the dialogue still takes taps).
+    void setAutoFire(bool on) { autoFire_ = on; }
     // The launcher's mischief options (Mischief bits). Set before the first load().
     void setMischief(std::uint32_t bits) { state_.mischief = bits & 31u; }
 
@@ -211,6 +213,7 @@ class Stage {
     int runStartStage_ = 0;  // 0 until the first stage of the game is loaded
     bool practiceRun_ = false;
     bool stageSelect_ = false;  // started from the launcher's stage select: nothing is saved
+    bool autoFire_ = false;
     bool recordable_ = true;  // a full game without mischief: its scores are saved
     ResultScreen results_;
     bool inResults_ = false;

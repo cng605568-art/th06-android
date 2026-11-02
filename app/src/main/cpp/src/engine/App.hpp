@@ -72,6 +72,9 @@ class App {
     int devClearFrame_ = -1;     // --demo-clear N: clears the game on frame N (ending)
     std::unique_ptr<TextRenderer> text_;  // platform text (null: built-in fallback); outlives stage_
     bool quickStart_ = false;
+    ControlOptions controls_;  // the launcher's touch settings (desktop: --dpad, --autofire)
+    std::uint32_t lastDeaths_ = 0, lastBombs_ = 0;  // for the vibration on a miss / bomb
+    void haptics();
     struct DevKey {
         std::uint64_t tick;
         std::string key;
