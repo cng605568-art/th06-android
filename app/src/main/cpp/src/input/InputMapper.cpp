@@ -53,6 +53,8 @@ InputState InputMapper::sample() const {
     s.pause = keys[SDL_SCANCODE_ESCAPE] || keys[SDL_SCANCODE_P];
     s.skip = keys[SDL_SCANCODE_LCTRL] || keys[SDL_SCANCODE_RCTRL];
     s.quit = keys[SDL_SCANCODE_Q];  // the pause menu's hidden quick quit
+    s.saveState = keys[SDL_SCANCODE_F5];
+    s.loadState = keys[SDL_SCANCODE_F9];
 
     for (SDL_GameController* c : controllers_) {
         auto button = [c](SDL_GameControllerButton b) { return SDL_GameControllerGetButton(c, b) != 0; };
@@ -68,6 +70,8 @@ InputState InputMapper::sample() const {
                   SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_TRIGGERLEFT) > kTriggerThreshold;
         s.pause = s.pause || button(SDL_CONTROLLER_BUTTON_START);
         s.skip = s.skip || button(SDL_CONTROLLER_BUTTON_Y);
+        s.saveState = s.saveState || button(SDL_CONTROLLER_BUTTON_LEFTSTICK);
+        s.loadState = s.loadState || button(SDL_CONTROLLER_BUTTON_RIGHTSTICK);
     }
     return s;
 }

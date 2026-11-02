@@ -7,6 +7,8 @@
 // 0x215..0x21B; items above the top edge are drawn as an indicator pinned to the edge.
 
 #include <array>
+
+#include "core/HeapArray.hpp"
 #include <cstdint>
 #include <memory>
 
@@ -78,7 +80,7 @@ class ItemManager {
     void collect(World& world, Item& item);
     void fullPowerReached(World& world);
 
-    std::unique_ptr<std::array<Item, kMaxItems>> items_;
+    HeapArray<Item, kMaxItems> items_;
     int next_ = 0;
     std::uint64_t collectedTotal_ = 0;
 };

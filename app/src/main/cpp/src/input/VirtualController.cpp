@@ -152,6 +152,26 @@ void VirtualController::layout(int screenWidth, int screenHeight, float gameX, f
     pause.color = rgba(180, 180, 190);
     dpad.color = rgba(220, 220, 235);
     focus.label = options_.focusToggle ? "FOCUS*" : "FOCUS";
+    // Practice save states: two small buttons beside the pause button (pad L3 / R3).
+    Button& save = controls_[kSave];
+    Button& load = controls_[kLoad];
+    save.button = SDL_CONTROLLER_BUTTON_LEFTSTICK;
+    save.label = "SAVE";
+    save.color = rgba(255, 92, 141);
+    load.button = SDL_CONTROLLER_BUTTON_RIGHTSTICK;
+    load.label = "LOAD";
+    load.color = rgba(255, 150, 190);
+    save.r = load.r = options_.saveStates ? pause.r * 1.15f : 0.0f;
+    const float dirX = pause.x > w * 0.5f ? -1.0f : 1.0f;  // away from the screen edge
+    if (!overlay_) {  // side bar: under the pause button
+        save.x = pause.x - pause.r * 1.35f;
+        load.x = pause.x + pause.r * 1.35f;
+        save.y = load.y = pause.y + pause.r * 2.6f;
+    } else {
+        save.x = pause.x + dirX * pause.r * 2.6f;
+        load.x = pause.x + dirX * pause.r * 5.2f;
+        save.y = load.y = pause.y;
+    }
 
     // Options: button size (the pause button keeps its size), left-handed mirroring.
     const float scale = std::clamp(options_.buttonScale, 0.6f, 1.6f);
@@ -171,6 +191,7 @@ VirtualController::Control VirtualController::hitTest(float x, float y, bool but
     for (int i = buttonsOnly || options_.drag ? kShoot : kDpad; i < kControlCount; ++i) {
         const Button& b = controls_[i];
         const float slack = i == kDpad ? 1.3f : 1.25f;  // generous targets for thumbs
+        if (b.r <= 0.0f) continue;  // (hidden)
         const float d = std::hypot(x - b.x, y - b.y);
         if (d <= b.r * slack && d / b.r < bestScore) {
             bestScore = d / b.r;
@@ -348,6 +369,7 @@ void VirtualController::draw(SpriteSink& sink, const UiArt& ui) const {
 
     for (int i = kShoot; i < kControlCount; ++i) {
         const Button& b = controls_[i];
+        if (b.r <= 0.0f) continue;
         const std::uint32_t c = b.color;
         const auto r = static_cast<std::uint8_t>(c), g = static_cast<std::uint8_t>(c >> 8),
                    bl = static_cast<std::uint8_t>(c >> 16);

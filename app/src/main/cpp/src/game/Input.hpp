@@ -17,6 +17,7 @@ struct InputState {
     bool quit = false;  // Q: quits from the pause menu without asking (keyboard only)
     // Drag-to-move (touch): the finger's offset from where it touched down, in playfield
     // pixels (sensitivity applied). A new dragId means a new touch: the ship re-anchors.
+    bool saveState = false, loadState = false;  // practice save states (F5 / F9, pad L3 / R3, touch)
     bool drag = false;
     unsigned dragId = 0;
     float dragX = 0.0f, dragY = 0.0f;

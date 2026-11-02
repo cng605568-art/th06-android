@@ -36,6 +36,7 @@ Built entirely by GitHub Actions: no Android Studio, no local SDK.
 | Sound | SoundIdx → wav + DirectSound volume table, 3-entry per-frame queue with de-duplication, played once per frame |
 | Display | Landscape (the whole 640×480 picture, letterboxed) or **portrait**: hold the phone upright and, in play, the 384×448 playfield fills the width (a strip kept clear for the camera cut-out) with the score rows of the side panel below it and the touch controls underneath; title, menus, results and story screens stay whole at the top. Scaling: smooth, sharp pixels, or pixel-perfect whole multiples; optional CRT scanlines. |
 | Main loop | `std::chrono` fixed timestep of exactly 1/60 s (rational arithmetic, no drift), rendering once per display refresh with positions interpolated to the present instant (60/90/120/144 Hz), vsync-jitter snapping, max 4 ticks per frame |
+| Practice tools (port extra) | Launcher options not in the original: **game speed** 75% or 50% (slow motion: game time runs slower, the music does not), a **hitbox marker** on the ship (red ring, white centre), and **save states**: SAVE / LOAD touch buttons beside the pause button (F5 / F9 on a keyboard, L3 / R3 on a gamepad) keep one copy of the whole stage in play (enemies, bullets, items, effects, the player, the HUD, the script, the RNG) and put it back; the state expires when another stage loads. Slow motion or loading a state makes that game practice: the HUD says so and its scores are not saved. The marker changes nothing. |
 | Mischief (port extra) | Launcher switches not in the original: infinite lives, infinite bombs, invincible, power always MAX, unlimited continues. While any is on, the HUD says so and the game's scores, clear progress and spell history are not saved (the result screen still shows the statistics). |
 | Controls | Touch controls registered as an **SDL virtual game controller** (physical gamepads and keyboards use the same path). **Drag anywhere** (default): a finger off the buttons steers like a touchpad, the ship following your finger's travel at its normal speed (the anchor slides along the walls, so dragging back responds at once); the same drag is a floating 8-way stick in menus. Or the classic 8-way **D-pad**. Launcher options: drag speed, button size and opacity, left-handed layout, a latching Focus button, auto-fire, and a short vibration on a miss and on a bomb. |
 
@@ -110,7 +111,7 @@ screen). Advanced: archives placed in `Android/data/io.github.cng605568art.th06/
 
 Shrine red (primary) and sakura pink (accent) on warm paper: a red header with the app's
 picture and 東方紅魔郷 in brush script, a big Play button, and white cards for Game files,
-Stage select, Mischief and Replace music. Titles and buttons use **Yuji Syuku** (brush) and
+Stage select, Controls, Display, Practice tools, Mischief and Replace music. Titles and buttons use **Yuji Syuku** (brush) and
 text uses **Zen Antique** (antique Mincho), both SIL Open Font License 1.1, bundled as
 subsets with their licences in `app/src/main/assets/fonts/`. The app icon is an adaptive
 icon (the picture over shrine red) with round and square fallbacks for older launchers.

@@ -25,6 +25,7 @@
 #include "audio/MusicPlayer.hpp"
 #include "audio/SoundPlayer.hpp"
 #include "core/FixedTimestep.hpp"
+#include "core/HeapArray.hpp"
 #include "core/Math.hpp"
 #include "core/Sha256.hpp"
 #include "core/ZunMath.hpp"
@@ -5603,6 +5604,124 @@ static void testStageSelect() {
     std::filesystem::remove_all(dir);
 }
 
+// Practice tools: save states (a copy of the whole stage), slow motion, unsaved scores.
+namespace {
+struct StageFingerprint {
+    std::uint32_t frame, score;
+    std::int32_t power, lives, bombs;
+    std::uint32_t grazes;
+    float x, y;
+    int bullets, enemies, items;
+    std::uint16_t seed;
+    std::uint32_t draws;
+    bool operator==(const StageFingerprint&) const = default;
+};
+StageFingerprint fingerprint(Stage& st) {
+    const World& w = st.world();
+    return {st.state().frame, st.state().score, st.state().power, st.state().livesRemaining, st.state().bombs,
+            st.state().grazes, st.player().positionCenter.x, st.player().positionCenter.y, w.bullets->activeCount(),
+            w.enemies->activeCount(), w.items->activeCount(), w.rng->currentSeed(), w.rng->generations()};
+}
+}  // namespace
+
+static void testPracticeTools() {
+    {
+        HeapArray<int, 4> a;
+        (*a)[2] = 7;
+        HeapArray<int, 4> b = a;
+        (*b)[2] = 9;
+        CHECK((*a)[2] == 7 && (*b)[2] == 9);
+        const int* storage = a->data();
+        a = b;  // assignment keeps the storage (pointers into a pool stay valid)
+        CHECK((*a)[2] == 9 && a->data() == storage);
+    }
+    {
+        using FT = FixedTimestep;
+        FT slow;
+        slow.setDisplay(60, true);
+        slow.setSpeed(50);
+        int ticks = 0;
+        for (int f = 0; f < 120; ++f) ticks += slow.advanceBy(FT::Tick(1));
+        CHECK(ticks == 60);
+        slow.setSpeed(75);
+        ticks = 0;
+        for (int f = 0; f < 120; ++f) ticks += slow.advanceBy(FT::Tick(1));
+        CHECK(ticks == 90);
+        slow.setSpeed(100);
+        ticks = 0;
+        for (int f = 0; f < 60; ++f) ticks += slow.advanceBy(FT::Tick(1));
+        CHECK(ticks == 60);
+    }
+
+    const Bytes archive = syntheticStageArchive();
+    Vfs vfs;
+    vfs.mount(open("SYNTH_ST.DAT", archive));
+    TextureLibrary lib;
+    const UiArt ui = registerUiArt(lib);
+    RecordingBackend backend;
+    SoundPlayer sound(&backend);
+    InputState idle, play, save, load;
+    play.shoot = true;
+    play.left = true;
+    save.saveState = true;
+    load.loadState = true;
+    {
+        Stage st(lib, ui, &vfs, &sound);
+        CHECK(!st.loadState() && !st.saveState());  // nothing in play yet
+        st.setPracticeTools(100, true, true);
+        CHECK(st.quickStart(1, Normal, false) && st.recordable());
+        for (int i = 0; i < 30; ++i) st.tick(play);
+        CHECK(!st.loadState() && !st.hasSaveState());  // "NO STATE SAVED"
+        const StageFingerprint saved = fingerprint(st);
+        CHECK(st.saveState() && st.hasSaveState() && st.recordable());  // saving alone changes nothing
+        // The same 90 frames twice, from the state: the second run must match the first.
+        auto run = [&] {
+            for (int i = 0; i < 90; ++i) {
+                InputState in = play;
+                in.left = (i / 20) % 2 == 0;
+                in.right = !in.left;
+                st.tick(in);
+            }
+            return fingerprint(st);
+        };
+        const StageFingerprint first = run();
+        CHECK(first.frame == saved.frame + 90 && !(first == saved));
+        CHECK(st.loadState());
+        CHECK(fingerprint(st) == saved && !st.recordable() && st.world().scores == nullptr);
+        const StageFingerprint second = run();
+        CHECK(second == first);
+        // The buttons: holding one saves (or loads) once, not every frame.
+        st.tick(save);  // saves this frame, then plays it
+        st.tick(save);
+        st.tick(idle);
+        st.tick(load);
+        CHECK(fingerprint(st) == second);
+        st.tick(load);
+        CHECK(st.state().frame == second.frame + 1);
+        // A save state belongs to its stage load: once a stage (even the same one) loads
+        // again, it has expired.
+        CHECK(st.quickStart(1, Normal, false) && !st.hasSaveState() && !st.loadState());
+        // The hitbox marker draws during play.
+        for (int i = 0; i < 60; ++i) st.tick(idle);
+        RecordingSink with, without;
+        st.render(with, 1.0f, HudInfo{60.0f, 1});
+        st.setPracticeTools(100, false, true);
+        st.render(without, 1.0f, HudInfo{60.0f, 1});
+        CHECK(with.items.size() == without.items.size() + 2);
+    }
+    {
+        Stage st(lib, ui, &vfs, &sound);
+        st.setPracticeTools(100, false, false);  // save states off: the buttons do nothing
+        CHECK(st.quickStart(1, Normal, false));
+        st.tick(save);
+        CHECK(!st.hasSaveState());
+        st.setPracticeTools(75, false, false);  // slow motion: scores are not saved
+        CHECK(st.quickStart(1, Normal, false) && !st.recordable());
+        st.setPracticeTools(100, false, false);
+        CHECK(st.quickStart(1, Normal, false) && st.recordable());
+    }
+}
+
 // Drag-to-move: the touch pad's travel, and the ship following it at its normal speed.
 static void testDragControls() {
     DragPad pad;
@@ -5882,6 +6001,7 @@ int main() {
         {"title screens: music room, score viewer", testTitleScreens},
         {"stage select: unsaved games from any stage", testStageSelect},
         {"touch: drag-to-move pad and ship", testDragControls},
+        {"practice: save states, slow motion, hitbox", testPracticeTools},
     };
     for (const Test& t : tests) {
         const int before = g_failures;

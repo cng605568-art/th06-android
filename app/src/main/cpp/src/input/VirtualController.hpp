@@ -56,7 +56,7 @@ class VirtualController {
     void setVisible(bool visible);
 
   private:
-    enum Control : int { kNone = -1, kDpad = 0, kShoot, kBomb, kFocus, kPause, kControlCount };
+    enum Control : int { kNone = -1, kDpad = 0, kShoot, kBomb, kFocus, kPause, kSave, kLoad, kControlCount };
 
     struct Button {
         SDL_GameControllerButton button = SDL_CONTROLLER_BUTTON_A;

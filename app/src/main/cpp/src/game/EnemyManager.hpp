@@ -16,6 +16,8 @@
 #include <cstdint>
 #include <memory>
 
+#include "core/HeapArray.hpp"
+
 #include "core/ZunMath.hpp"
 #include "game/BulletManager.hpp"
 #include "game/Ecl.hpp"
@@ -207,7 +209,7 @@ class EnemyManager {
     void exDaggerArcs(World& world, Enemy& e);
     void batTransformation(World& world, Enemy& e);
 
-    std::unique_ptr<std::array<Enemy, kMaxEnemies>> enemies_;
+    HeapArray<Enemy, kMaxEnemies> enemies_;
     Enemy template_;
     std::array<Enemy*, 4> bosses_{};
     std::uint32_t timelineInstr_ = 0;
