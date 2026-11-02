@@ -126,6 +126,21 @@
     <string name="help_log_saved">ログを保存しました。不具合報告に添付してください。</string>
     <string name="help_log_failed">ログを保存できませんでした: %1$s</string>
     <string name="footer">お手持ちの『東方紅魔郷 ～ the Embodiment of Scarlet Devil』（上海アリス幻樂団）で遊ぶための、ファンによる移植版です。ゲームのファイルは含まれていません。\nフォント: Yuji Syuku、Zen Antique（SIL Open Font License 1.1）。</string>
+    <string name="gametext_caption">ゲーム内のテキスト（会話・スペルカード・曲）</string>
+    <string name="gametext_same">アプリと同じ</string>
+    <string name="gametext_original">ゲームの元の日本語テキストです。</string>
+    <string name="gametext_not_installed">Touhou Patch Center（thpatch.net）から翻訳をダウンロードします。取得するのはゲームのテキストファイルだけです（小さなサイズ）。</string>
+    <string name="gametext_installed">インストール済み: %1$d ファイル、全 7 ステージ中 %2$d ステージの会話、%3$s 更新。</string>
+    <string name="gametext_download">翻訳をダウンロード</string>
+    <string name="gametext_update">新しい翻訳を確認</string>
+    <string name="gametext_remove">翻訳を削除</string>
+    <string name="gametext_connecting">thpatch.net に接続中…</string>
+    <string name="gametext_downloading">%1$s をダウンロード中: %3$d 個中 %2$d 個目…</string>
+    <string name="gametext_done">完了しました（新しいファイル %1$d 個）。次回ゲームを起動したときから翻訳が使われます。</string>
+    <string name="gametext_failed">ダウンロードできませんでした: %1$s</string>
+    <string name="gametext_unavailable">Touhou Patch Center にはこの言語のゲームテキスト翻訳がまだないため、日本語のままになります。</string>
+    <string name="gametext_removed">削除しました。ゲームは元の日本語テキストを表示します。</string>
+    <string name="gametext_credit">ゲームテキストの翻訳: Touhou Patch Center の協力者の皆さん（thpatch.net）、CC BY-SA 3.0。ゲーム内の画像は変更されません。</string>
     <string-array name="shot_types">
         <item>霊夢A（ホーミングアミュレット）</item>
         <item>霊夢B（封魔針）</item>

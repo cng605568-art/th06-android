@@ -147,6 +147,51 @@ public class GameActivity extends SDLActivity {
         return pixels;
     }
 
+    private static Paint utf8Paint;
+
+    /**
+     * Renders translated (UTF-8) game text: a proportional bold face (condensed for Latin
+     * text, the system's CJK face for Chinese and Japanese, in the game-text language's
+     * glyph style), aligned in [left, left + room) and narrowed to fit; the black shadow as
+     * in renderText. The last int is the width drawn x 256.
+     */
+    public static synchronized int[] renderTextUtf8(byte[] utf8, int fontSize, int rgb, int shadow, float left, float room,
+                                                    int align, int width, int height) {
+        String text = new String(utf8, java.nio.charset.StandardCharsets.UTF_8);
+        if (utf8Paint == null) utf8Paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        Paint p = utf8Paint;
+        boolean cjk = false;
+        for (int i = 0; i < text.length() && !cjk; ++i) cjk = text.charAt(i) >= 0x2e80;
+        p.setTypeface(cjk ? Typeface.create(Typeface.DEFAULT, Typeface.BOLD) : Typeface.create("sans-serif-condensed", Typeface.BOLD));
+        p.setTextLocale(GameText.textLocale(SDL.getContext()));
+        float cell = (fontSize + 1) / 2f;
+        p.setTextSize(cell * 2f * (cjk ? 0.92f : 0.95f));
+        p.setTextScaleX(1f);
+        float full = p.measureText(text);
+        float drawn = Math.min(full, room);
+        if (full > room && full > 0) p.setTextScaleX(room / full);
+        float x = align == 2 ? left + room - drawn : align == 1 ? left + (room - drawn) / 2f : left;
+        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        float baseline = height * 0.8f;
+        p.setColor(0xff000000 | shadow);
+        canvas.drawText(text, x + 1.5f, baseline + 1f, p);
+        p.setColor(0xff000000 | rgb);
+        canvas.drawText(text, x, baseline, p);
+        int[] pixels = new int[width * height + 1];
+        bitmap.getPixels(pixels, 0, width, 0, 0, width, height);
+        bitmap.recycle();
+        pixels[width * height] = Math.round(drawn * 256f);
+        return pixels;
+    }
+
+    /** The game-text translation's patch folders, lowest priority first (none: the original). */
+    public static String[] getGameTextStack() {
+        Context ctx = SDL.getContext();
+        if (ctx == null) return new String[0];
+        return GameText.stack(ctx);
+    }
+
     /** Launcher choices: {shot type 0..3, difficulty 0..3, stage 1..7 (7 = Extra)}. */
     /** The launcher's display settings: {portrait, scaling, scanlines}. */
     public static int[] getDisplayOptions() {

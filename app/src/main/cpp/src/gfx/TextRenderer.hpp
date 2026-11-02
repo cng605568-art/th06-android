@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <span>
+#include <string_view>
 
 #include "gfx/Image.hpp"
 
@@ -19,9 +20,20 @@ struct TextStyle {
     std::uint32_t shadow = 0x000000;
 };
 
+enum class TextAlign { Left, Centre, Right };
+
+// Translated text (UTF-8) in the game's text pipeline is marked with this leading byte, which
+// never starts Shift-JIS text; everything else is the game's own Shift-JIS.
+inline constexpr std::uint8_t kUtf8TextMarker = 0x01;
+inline bool isUtf8Text(std::span<const std::uint8_t> t) { return !t.empty() && t[0] == kUtf8TextMarker; }
+
 class TextRenderer {
   public:
     virtual ~TextRenderer() = default;
+    // UTF-8 text (translations): a proportional font, aligned within [left, left + width)
+    // and narrowed to fit that width. Returns the width drawn in texels (0: nothing).
+    virtual float renderUtf8(std::string_view utf8, const TextStyle& style, float left, float width, TextAlign align,
+                             Image& band) = 0;
     // Draws `sjis` into `band` (cleared, band.width = texture width, 16 rows), starting
     // `startX` texels from the left. One byte is (F + 1) / 2 texels wide, so a full-width
     // character takes F + 1. Returns false if nothing could be rendered.
@@ -32,6 +44,8 @@ class TextRenderer {
 class FallbackTextRenderer final : public TextRenderer {
   public:
     bool render(std::span<const std::uint8_t> sjis, const TextStyle& style, float startX, Image& band) override;
+    float renderUtf8(std::string_view utf8, const TextStyle& style, float left, float width, TextAlign align,
+                     Image& band) override;
 };
 
 // The original's look applied to a freshly rendered band: 5-bit colour channels, opaque

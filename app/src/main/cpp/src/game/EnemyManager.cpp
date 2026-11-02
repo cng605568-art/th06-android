@@ -1135,7 +1135,7 @@ restart_sub_changed:
                      ++i) {
                     name.push_back(bytes[i]);
                 }
-                if (world.gui) world.gui->spellStart(world, ecl.argAt<std::int16_t>(at, 0), name);
+                if (world.gui) world.gui->spellStart(world, ecl.argAt<std::int16_t>(at, 0), name, ecl.argAt<std::int16_t>(at, 2));
                 if (world.background) world.background->spellStart();
                 spellcard_.isCapturing = true;
                 spellcard_.isActive = 1;

@@ -43,5 +43,8 @@ void androidVibrate(int milliseconds);
 // Renders the game's Shift-JIS strings with the system's CJK font through
 // GameActivity.renderText().
 std::unique_ptr<TextRenderer> makeAndroidTextRenderer();
+// The launcher's game-text translation: patch folders, lowest priority first (empty: the
+// original Japanese text).
+std::vector<std::string> readAndroidGameTextStack();
 
 }  // namespace th06

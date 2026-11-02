@@ -7,6 +7,7 @@
 #include "audio/MusicPlayer.hpp"
 #include "core/Log.hpp"
 #include "game/Gui.hpp"
+#include "game/Translation.hpp"
 #include "game/World.hpp"
 #include "gfx/Image.hpp"
 #include "gfx/TextureLibrary.hpp"
@@ -26,6 +27,15 @@ constexpr std::size_t kPathMax = 63, kTitleMax = 33, kLineMax = 64;
 constexpr std::uint32_t kUp = 1, kDown = 2, kShoot = 4, kBomb = 8, kEsc = 16;
 
 bool lineBreak(std::uint8_t c) { return c == '\r' || c == '\n'; }
+
+// The track number from its path ("bgm/th06_02.mid": 2; 0 if there is none).
+int trackNumber(const MusicRoom::Track& t) {
+    const std::size_t at = t.path.find("th06_");
+    if (at == std::string::npos || at + 7 > t.path.size()) return 0;
+    const char a = t.path[at + 5], b = t.path[at + 6];
+    if (a < '0' || a > '9' || b < '0' || b > '9') return 0;
+    return (a - '0') * 10 + (b - '0');
+}
 
 std::span<const std::uint8_t> bytesOf(const std::string& s) {
     return {reinterpret_cast<const std::uint8_t*>(s.data()), s.size()};
@@ -122,7 +132,13 @@ bool MusicRoom::start(World& world, const Vfs& vfs, TextureLibrary& textures, Gu
     for (std::size_t i = 0; i < tracks_.size(); ++i) {
         AnmVm& vm = titles_[i];
         anm.initializeAndSetSprite(vm, kOffsetTitles + static_cast<int>(i));
-        gui.renderText(world, vm, bytesOf(tracks_[i].title), 15, kTitleRgb, Gui::Align::Left, kTitleShadow);
+        const auto own = bytesOf(tracks_[i].title);
+        std::vector<std::uint8_t> title(own.begin(), own.end());
+        if (world.translation) {  // "No. 1  <the translated title>"
+            const int n = trackNumber(tracks_[i]);
+            if (auto t = world.translation->musicTitle(n)) title = utf8GameText(std::format("No.{:2d}  {}", n, *t));
+        }
+        gui.renderText(world, vm, title, 15, kTitleRgb, Gui::Align::Left, kTitleShadow);
         vm.anchor = AnmAnchor::TopLeft;
     }
     for (int j = 0; j < kPieces; ++j) {
@@ -150,6 +166,23 @@ void MusicRoom::release(World& world) {
 // when the line is longer than 32 bytes). An empty piece is hidden.
 void MusicRoom::showComment(World& world, Gui& gui, int track) {
     const Track& t = tracks_[static_cast<std::size_t>(track)];
+    if (world.translation) {
+        if (auto lines = world.translation->musicComment(trackNumber(t))) {
+            // A translated comment: each line across its two pieces ("@" is the title line).
+            for (int k = 0; k < kLines; ++k) {
+                AnmVm& a = pieces_[static_cast<std::size_t>(2 * k)];
+                AnmVm& b = pieces_[static_cast<std::size_t>(2 * k + 1)];
+                a.pos = {96.0f, 320.0f + 16.0f * static_cast<float>(k), 0.0f};
+                b.pos = {344.0f, a.pos.y, 0.0f};
+                const std::string line = k < static_cast<int>(lines->size()) && (*lines)[static_cast<std::size_t>(k)] != "@"
+                                             ? (*lines)[static_cast<std::size_t>(k)]
+                                             : std::string();
+                const bool shown = !line.empty() && gui.renderTextAcross(world, a, b, utf8GameText(line), 15, kCommentRgb, kCommentShadow);
+                a.visible = b.visible = shown;
+            }
+            return;
+        }
+    }
     for (int j = 0; j < kPieces; ++j) {
         AnmVm& vm = pieces_[static_cast<std::size_t>(j)];
         const int k = j / 2;

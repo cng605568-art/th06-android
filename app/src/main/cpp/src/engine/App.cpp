@@ -116,6 +116,7 @@ bool App::init(int argc, char** argv) {
         else if (a == "--hitbox") controls_.showHitbox = true;
         else if (a == "--savestates") controls_.saveStates = true;
         else if (a == "--keys" && next) parseDevKeys(argv[++i]);
+        else if (a == "--translation" && next) translation_ = argv[++i];  // patch folders, comma-separated
         else if (a == "--mischief" && next) mischief_ = static_cast<std::uint32_t>(std::atoi(argv[++i]));
         else if (a == "--size" && next) std::sscanf(argv[++i], "%dx%d", &windowWidth_, &windowHeight_);
     }
@@ -181,6 +182,26 @@ bool App::init(int argc, char** argv) {
     // The game RNG starts from the clock, as the original's does.
     stage_->seedRandom(static_cast<std::uint16_t>(
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count()));
+    {
+        // The game's text in another language (the launcher's downloaded translation).
+        std::vector<std::string> folders;
+#if defined(__ANDROID__)
+        folders = readAndroidGameTextStack();
+#else
+        std::string list = translation_;
+        if (list.empty()) {
+            if (const char* env = std::getenv("TH06_TRANSLATION")) list = env;
+        }
+        for (std::size_t at = 0; at < list.size();) {
+            const std::size_t comma = list.find(',', at);
+            const std::string item = list.substr(at, comma == std::string::npos ? std::string::npos : comma - at);
+            if (!item.empty()) folders.push_back(item);
+            if (comma == std::string::npos) break;
+            at = comma + 1;
+        }
+#endif
+        stage_->setTranslation(std::move(folders));
+    }
     stage_->setShotType(shotType_);
     stage_->setMischief(mischief_);
     stage_->setAutoFire(controls_.autoFire);

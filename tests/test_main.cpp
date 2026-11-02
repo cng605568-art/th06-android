@@ -26,6 +26,7 @@
 #include "audio/SoundPlayer.hpp"
 #include "core/FixedTimestep.hpp"
 #include "core/HeapArray.hpp"
+#include "core/Json.hpp"
 #include "core/Log.hpp"
 #include "core/Math.hpp"
 #include "core/Sha256.hpp"
@@ -50,6 +51,7 @@
 #include "game/GameConfig.hpp"
 #include "game/Title.hpp"
 #include "game/Replay.hpp"
+#include "game/Translation.hpp"
 #include "game/MusicRoom.hpp"
 #include "input/DragPad.hpp"
 #include "gfx/Anm.hpp"
@@ -6095,6 +6097,163 @@ static void testReplaysInGame() {
     std::filesystem::remove_all(dir);
 }
 
+// Game-text translations: the JSON reader, thcrap's stacking, the dialogue and ending
+// patches, and the lookups.
+static void testTranslation() {
+    {
+        auto j = Json::parse(R"({"a": [1, 2.5, -3e2, true, false, null], "b": {"c": "xé😀\n"}})");
+        CHECK(j && j->isObject() && j->find("a")->size() == 6 && j->find("a")->array()[2].number() == -300.0);
+        CHECK(j && j->find("b")->find("c")->string() == "x\xC3\xA9\xF0\x9F\x98\x80\n");
+        // JSON5 leniency: comments, trailing commas, single quotes, bare keys, hex.
+        auto k = Json::parse("\xEF\xBB\xBF{ // note\n bare: 'single', /* c */ \"n\": 0x1F, \"arr\": [1, 2,], }");
+        CHECK(k && k->find("bare")->string() == "single" && k->find("n")->number() == 31 && k->find("arr")->size() == 2);
+        std::string why;
+        CHECK(!Json::parse("{\"a\": }", &why) && !why.empty() && !Json::parse("[1 2]") && !Json::parse("\"open"));
+        // Stacking: objects merge, arrays and strings replace.
+        Json base = *Json::parse(R"({"0": {"60_0": {"lines": ["a", "b"]}, "70_0": ["c"]}, "s": "x"})");
+        base.merge(*Json::parse(R"({"0": {"60_0": {"lines": ["A"]}}, "s": "y", "new": 1})"));
+        CHECK(base.find("0")->find("60_0")->find("lines")->size() == 1 && base.find("0")->find("70_0") && base.find("s")->string() == "y" &&
+              base.find("new"));
+        CHECK(utf8Prefix("ab\xC3\xA9", 3) == "ab" && utf8Prefix("abc", 9) == "abc");
+    }
+    CHECK(Translation::clean("<i$wonderful> day", true) == "wonderful day");
+    CHECK(Translation::clean("<c$Rumia$Youkai of the Dusk>", true) == "Rumia");
+    CHECK(Translation::clean("<l$Reimu:$12345678> \"Ugh,", false) == "Reimu: \"Ugh,");
+    CHECK(Translation::clean("100%% sure\x14(a note)", true) == "100% sure");
+    CHECK(Translation::clean("100%% sure", false) == "100%% sure");
+    CHECK(Translation::clean("<s$wide>x<b$<i$both>>", true) == "xboth");
+    CHECK(Translation::clean("a <b> c", true) == "a <b> c");
+
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "th06_translation_test";
+    std::filesystem::remove_all(dir);
+    auto put = [&](const std::string& rel, const std::string& text) {
+        std::filesystem::create_directories((dir / rel).parent_path());
+        std::ofstream(dir / rel, std::ios::binary) << text;
+    };
+    put("lang_en/th06/spells.js", R"({"0": "Moon Sign \"Moonlight Ray\"", "5": "100%% Hit"})");
+    put("lang_xx/th06/spells.js", R"({"0": "Lune"})");
+    put("lang_xx/th06/stages.js", R"({"1": ["Night Bird"], "7": "Extra!"})");
+    put("lang_en/themes.js", R"({"th06_02": "A Soul as Red as a Ground Cherry", "th06_03": "Apparitions"})");
+    put("lang_xx/th06/musiccmt.js", R"({"2": ["@", "Comment line", "", "x%%"]})");
+    put("lang_xx/stringdefs.js", R"({"th06 Bomb Reimu A": "Spirit Sign", "th06 BGM In-game format": "~ %s ~",})");
+    put("lang_xx/th06/spells.v1.02h.js", R"({"9": "Build-specific"})");
+    Translation t;
+    CHECK(!t.active() && !t.spellName(0));
+    t.setStack({(dir / "lang_en").string(), (dir / "lang_xx").string()});
+    CHECK(t.active() && t.folders().back().back() == '/');
+    CHECK(t.spellName(0) == "Lune" && t.spellName(5) == "100% Hit" && t.spellName(9) == "Build-specific" && !t.spellName(3));
+    CHECK(t.stageTitle(1) == "Night Bird" && t.stageTitle(7) == "Extra!" && !t.stageTitle(2));
+    CHECK(t.musicTitle(2) == "A Soul as Red as a Ground Cherry" && !t.musicTitle(4));
+    CHECK(t.musicCaption("Apparitions") == "~ Apparitions ~" && t.stringDef("th06 Bomb Reimu A") == "Spirit Sign");
+    const auto cmt = t.musicComment(2);
+    CHECK(cmt && cmt->size() == 4 && (*cmt)[0] == "@" && (*cmt)[1] == "Comment line" && (*cmt)[3] == "x%" && !t.musicComment(3));
+    {
+        Translation plain;
+        plain.setStack({(dir / "lang_en").string()});
+        CHECK(plain.musicCaption("T") == "\xE2\x99\xAAT");  // the default "♪%s"
+    }
+
+    // Dialogue: two scripts; boxes keyed by time and index; fewer and more lines; a title card.
+    auto cmd = [](std::vector<std::uint8_t>& b, std::uint16_t time, std::uint8_t type, std::vector<std::uint8_t> data) {
+        b.push_back(static_cast<std::uint8_t>(time));
+        b.push_back(static_cast<std::uint8_t>(time >> 8));
+        b.push_back(type);
+        b.push_back(static_cast<std::uint8_t>(data.size()));
+        b.insert(b.end(), data.begin(), data.end());
+    };
+    auto line = [](int side, int index, const std::string& text) {
+        std::vector<std::uint8_t> d = {static_cast<std::uint8_t>(side), 0, static_cast<std::uint8_t>(index), 0};
+        d.insert(d.end(), text.begin(), text.end());
+        d.push_back(0);
+        return d;
+    };
+    std::vector<std::uint8_t> msg(4 + 4 * 11, 0);
+    msg[0] = 11;
+    const std::uint32_t script0 = static_cast<std::uint32_t>(msg.size());
+    cmd(msg, 0, 1, {0, 0, 1, 0});      // (a portrait: not text)
+    cmd(msg, 60, 3, line(0, 0, "JA-a0"));
+    cmd(msg, 60, 3, line(0, 1, "JA-a1"));
+    cmd(msg, 60, 3, line(1, 0, "JA-b0"));  // a second box at the same time
+    cmd(msg, 60, 3, line(1, 1, "JA-b1"));
+    cmd(msg, 120, 8, line(1, 0, "JA-title"));
+    cmd(msg, 120, 8, line(1, 1, "JA-name"));
+    cmd(msg, 130, 3, line(0, 0, "JA-untranslated"));
+    cmd(msg, 0, 0, {});
+    const std::uint32_t script10 = static_cast<std::uint32_t>(msg.size());
+    cmd(msg, 0, 1, {0, 0, 1, 0});
+    cmd(msg, 40, 3, line(0, 0, "JA-m0"));
+    cmd(msg, 0, 0, {});
+    for (int i = 0; i < 11; ++i) {
+        const std::uint32_t o = i < 10 ? script0 : script10;
+        for (int k = 0; k < 4; ++k) msg[4 + 4 * static_cast<std::size_t>(i) + static_cast<std::size_t>(k)] = static_cast<std::uint8_t>(o >> (8 * k));
+    }
+    put("lang_xx/th06/msg1.dat.jdiff", R"({
+        "0": {"60_0": {"lines": ["Hello there.", "It's <i$you>.", "A third line."]},
+              "60_1": ["Only one line."],
+              "120_h1_0": {"lines": ["Youkai of the Dusk", "<c$Rumia$Youkai of the Dusk>"]}},
+        "10": {"40_0": ["Marisa's line, 100%%."]}})");
+    std::vector<std::uint8_t> patched = msg;
+    CHECK(t.patchMsg(patched, 1));
+    std::vector<std::string> texts;
+    std::vector<int> indices;
+    {
+        const std::uint32_t count = patched[0];
+        std::size_t pos = 4 + 4 * count;
+        const std::uint32_t o0 = patched[4] | patched[5] << 8, o10 = patched[44] | patched[45] << 8;
+        CHECK(o0 == pos && patched[o10 + 2] == 1);  // offsets follow the moved commands
+        while (pos + 4 <= patched.size()) {
+            const int type = patched[pos + 2], len = patched[pos + 3];
+            if (type == 3 || type == 8) {
+                indices.push_back(patched[pos + 6]);
+                const char* tx = reinterpret_cast<const char*>(&patched[pos + 8]);
+                texts.emplace_back(tx[0] == '\x01' ? std::string("U:") + (tx + 1) : std::string(tx));
+            }
+            pos += 4 + static_cast<std::size_t>(len);
+        }
+    }
+    const std::vector<std::string> expected = {"U:Hello there.", "U:It's you.", "U:A third line.", "U:Only one line.", "U:Youkai of the Dusk",
+                                               "U:Rumia", "JA-untranslated", "U:Marisa's line, 100%."};
+    CHECK(texts == expected);
+    CHECK((indices == std::vector<int>{0, 1, 2, 0, 0, 1, 0, 0}));
+    std::vector<std::uint8_t> untouched = msg;
+    CHECK(!t.patchMsg(untouched, 2) && untouched == msg);  // no jdiff for msg2
+
+    // Endings: runs of text lines by line number; commands kept.
+    put("lang_xx/th06/end00.end.jdiff", R"({"1": {"lines": ["The shrine at dawn.", "", "Reimu: \"Ugh.\""]}, "5": ["Last."]})");
+    using namespace std::string_literals;
+    const std::string endText = "@b00\0\nJA-1\0\nJA-2\0\n@w60\0\nJA-4\0\nJA-5\0\n@z\0\n"s;
+    std::vector<std::uint8_t> end(endText.begin(), endText.end());
+    CHECK(t.patchEnd(end, "end00.end"));
+    const std::string after(end.begin(), end.end());
+    const std::string want = std::string("@b00\0\n", 6) + "\x01The shrine at dawn." + std::string("\0\n", 2) + std::string("\0\n", 2) +
+                             "\x01Reimu: \"Ugh.\"" + std::string("\0\n", 2) + std::string("@w60\0\n", 6) + std::string("JA-4\0\n", 6) +
+                             std::string("JA-5\0\n", 6) + std::string("@z\0\n", 4);
+    CHECK(after == want);  // (line 5 is not the start of a run: unchanged)
+    std::vector<std::uint8_t> end2(endText.begin(), endText.end());
+    CHECK(!t.patchEnd(end2, "end01.end"));
+
+    // In a stage: the stage title and the music caption come out translated.
+    {
+        const Bytes archive = syntheticStageArchive();
+        Vfs vfs;
+        vfs.mount(open("SYNTH_ST.DAT", archive));
+        TextureLibrary lib;
+        const UiArt ui = registerUiArt(lib);
+        FallbackTextRenderer text;
+        Stage plain(lib, ui, &vfs, nullptr, &text);
+        CHECK(plain.load(1, Normal));
+        const float sjisWidth = plain.gui().lastTextWidth();
+        Stage st(lib, ui, &vfs, nullptr, &text);
+        st.setTranslation({(dir / "lang_en").string(), (dir / "lang_xx").string()});
+        CHECK(st.translation().active() && st.load(1, Normal));
+        // "~ A Soul as Red as a Ground Cherry ~": 38 characters, 6 texels each in the fallback.
+        CHECK(st.gui().lastTextWidth() == 36.0f * 6.0f && sjisWidth != st.gui().lastTextWidth());
+        st.setTranslation({});
+        CHECK(!st.translation().active() && st.world().translation == nullptr);
+    }
+    std::filesystem::remove_all(dir);
+}
+
 // The session log file for bug reports: lines with their level, the previous run kept.
 static void testLogFile() {
     const std::filesystem::path dir = std::filesystem::temp_directory_path() / "th06_log_test";
@@ -6399,6 +6558,7 @@ int main() {
         {"touch: drag-to-move pad and ship", testDragControls},
         {"practice: save states, slow motion, hitbox", testPracticeTools},
         {"session log file", testLogFile},
+        {"translations: JSON, stacking, dialogue and ending patches", testTranslation},
         {"replays: .rpy format, recording, playback", testReplayFormat},
         {"replays in the game: playback, save prompt, title, demo", testReplaysInGame},
     };

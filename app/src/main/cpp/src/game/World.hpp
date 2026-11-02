@@ -24,6 +24,7 @@ class ItemManager;
 class Player;
 class ScreenShake;
 class ScoreFile;
+class Translation;
 struct ShotData;
 
 // Playfield of the original: 384x448 at screen (32, 16) inside 640x480.
@@ -202,6 +203,7 @@ struct World {
     StageBackground* background = nullptr;
     MusicPlayer* music = nullptr;
     ScoreFile* scores = nullptr;  // score.dat records (spell history); null in tests
+    const Translation* translation = nullptr;  // the game's text in another language (null: original)
 
     void playSound(int idx) const {
         if (sound && idx >= 0) sound->playSound(idx);
