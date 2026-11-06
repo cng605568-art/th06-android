@@ -69,6 +69,8 @@ class App {
     //                     touch overlay -> virtual controller -> game input path
     int devFrames_ = 0;
     int devTicks_ = 0;  // --ticks N: screenshot/exit once N game ticks have run
+    int devSeed_ = -1;  // --seed N: the game RNG's first seed (default: the clock)
+    bool devLockstep_ = false;  // --lockstep: one game tick per rendered frame (reproducible runs)
     std::string devScreenshot_;
     bool devTouch_ = false;
     int devBombFrame_ = -1;  // --demo-bomb N: tap the touch BOMB button on frame N

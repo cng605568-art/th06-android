@@ -119,6 +119,8 @@ bool App::init(int argc, char** argv) {
         else if (a == "--translation" && next) translation_ = argv[++i];  // patch folders, comma-separated
         else if (a == "--mischief" && next) mischief_ = static_cast<std::uint32_t>(std::atoi(argv[++i]));
         else if (a == "--size" && next) std::sscanf(argv[++i], "%dx%d", &windowWidth_, &windowHeight_);
+        else if (a == "--seed" && next) devSeed_ = std::atoi(argv[++i]);
+        else if (a == "--lockstep") devLockstep_ = true;
     }
 #endif
 
@@ -179,9 +181,11 @@ bool App::init(int argc, char** argv) {
         controls_ = readAndroidControlOptions();
     }
 #endif
-    // The game RNG starts from the clock, as the original's does.
-    stage_->seedRandom(static_cast<std::uint16_t>(
-        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count()));
+    // The game RNG starts from the clock, as the original's does (desktop: --seed N fixes it).
+    stage_->seedRandom(devSeed_ >= 0 ? static_cast<std::uint16_t>(devSeed_)
+                                     : static_cast<std::uint16_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                                      std::chrono::system_clock::now().time_since_epoch())
+                                                                      .count()));
     {
         // The game's text in another language (the launcher's downloaded translation).
         std::vector<std::string> folders;
@@ -406,7 +410,7 @@ void App::loop() {
         const bool slow = stage_->ready() && !stage_->inMenus() && !stage_->inResults() && !stage_->inEnding() &&
                           !stage_->menus().frozen();
         clock_.setSpeed(slow ? controls_.speedPercent : 100);
-        const int ticks = clock_.advance(now);
+        const int ticks = devLockstep_ ? 1 : clock_.advance(now);
         if (ticks > 0) {
             InputState in = input_.sample();
             touch_.fillDrag(in);
@@ -425,7 +429,7 @@ void App::loop() {
         // Rendering: once per display refresh, interpolated to the present instant.
         gpu_.sync(textures_);
         if (stage_->takeCaptureRequest()) stage_->setCaptureReady(capturePlayfield());
-        renderFrame(stage_->paused() ? 1.0f : clock_.alpha());
+        renderFrame(stage_->paused() || devLockstep_ ? 1.0f : clock_.alpha());
         developerFrameHooks();
         SDL_GL_SwapWindow(window_);
 
