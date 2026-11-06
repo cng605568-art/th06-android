@@ -158,12 +158,12 @@ jobs:
           TH06_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           TH06_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           TH06_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: gradle --no-daemon --stacktrace :app:assembleRelease -Pth06.abis="$ABIS"
+        run: gradle --no-daemon --stacktrace :th06:assembleRelease -Pth06.abis="$ABIS"
 
       - name: Verify signature and stage APK
         run: |
-          apk=app/build/outputs/apk/release/app-release.apk
-          test -f "$apk" || { echo "::error::$apk was not produced"; ls -R app/build/outputs/apk || true; exit 1; }
+          apk=th06/build/outputs/apk/release/th06-release.apk
+          test -f "$apk" || { echo "::error::$apk was not produced"; ls -R th06/build/outputs/apk || true; exit 1; }
           "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner" verify --verbose --print-certs "$apk"
           # The app cannot start without these three libraries for every ABI built.
           unzip -l "$apk" 'lib/*'
@@ -188,7 +188,7 @@ jobs:
         run: |
           mkdir -p symbols
           for abi in ${ABIS//,/ }; do
-            lib=$(find app/build/intermediates -path "*merged_native_libs*" -path "*/$abi/*" -name libmain.so | head -n 1)
+            lib=$(find th06/build/intermediates -path "*merged_native_libs*" -path "*/$abi/*" -name libmain.so | head -n 1)
             if [ -n "$lib" ]; then
               mkdir -p "symbols/$abi" && cp "$lib" "symbols/$abi/libmain.so"
             else

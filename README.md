@@ -119,7 +119,7 @@ screen). Advanced: archives placed in `Android/data/io.github.cng605568art.th06/
 
 The launcher speaks English, 日本語, 简体中文, 繁體中文 and Bahasa Melayu (the **Language**
 card at the top; "Phone setting" follows Android's language). All its text lives in
-`app/src/main/res/values*/strings.xml`, one file per language with the same keys. Chinese
+`th06/src/main/res/values*/strings.xml`, one file per language with the same keys. Chinese
 uses the system's CJK fonts; the other languages use the bundled brush and Mincho faces,
 subset to exactly the characters the launcher needs.
 
@@ -145,48 +145,65 @@ picture and 東方紅魔郷 in brush script, a big Play button, and white cards 
 Stage select, Controls, Display, Practice tools, Mischief, Replace music, Backup and Help &
 updates. Titles and buttons use **Yuji Syuku** (brush) and
 text uses **Zen Antique** (antique Mincho), both SIL Open Font License 1.1, bundled as
-subsets with their licences in `app/src/main/assets/fonts/`. The app icon is an adaptive
+subsets with their licences in `th06/src/main/assets/fonts/`. The app icon is an adaptive
 icon (the picture over shrine red) with round and square fallbacks for older launchers.
 
 ## Layout
 
+The code is split so more games can share it: a shared engine (`engine/`) and one module per
+game (`th06/` today). Each game is its own Android app; a fix in the engine reaches every game.
+
 ```
 .github/workflows/build.yml   CI: tests, APK, signing, releases
 scripts/fetch_deps.sh         pinned SDL2 2.32.10, zstd 1.5.7, stb_image, bcdec (SHA-256 checked)
-app/build.gradle              AGP config, externalNativeBuild → CMake, signing from env vars
-app/src/main/java/...         ImportActivity (folder picker), GameActivity (SDL host + JNI), DataSources
-app/src/main/cpp/
-  CMakeLists.txt              libSDL2.so + libmain.so (also a Linux desktop dev build)
-  cmake/th06core.cmake        GL-free core shared with the tests
+engine/native/                the shared engine (C++, namespace touhou)
+  engine.cmake                thengine_core (no SDL/GL, unit-tested) and thengine_host (SDL host)
+  src/host/Game               the interface a game implements (start, tick, render, ...)
+  src/host/App                window, GL context, dual loop, letterbox/portrait layout, lifecycle
   src/io/                     MappedFile, BitReader, Lzss, Pbg3Archive, PkglArchive, Vfs
   src/gfx/                    Image (PNG/DDS), Anm (file tables), AnmManager (ANM VM + drawing),
-                              TextureLibrary, SpriteBatch (instanced GLES3, D3D8 blend states), RenderTarget
-  src/game/Ecl                ECL file layout (packed structs), opcode tables
-  src/game/EnemyManager       timeline + ECL VM, enemies
-  src/game/BulletManager      640-slot bullet manager and the 64 lasers
-  src/game/ItemManager        512-slot items, pickups, drops
-  src/game/Resources          graze, rolling score, extends, stage-clear bonus
-  src/game/Player             player movement, hitbox, orbs, shots
-  src/game/ShotData           reads the shot tables from your 東方紅魔郷.exe (PE32, SHA-256 checked)
-  src/game/Bomb, ScreenShake  the four player bombs; screen shake
-  src/game/EffectManager      512-slot particle effects, spell circles
-  src/game/Gui                side panel, boss HUD, names, messages, score popups, ASCII text, dialogue
-  src/game/StageBackground    STD stage backgrounds: script, camera, fog, culling, spell-card fade
-  src/game/StageMenu          pause menu and continue menu
-  src/game/ScoreFile, ResultScreen   score.dat; the result screen (name entry, statistics)
-  src/game/Ending             the ending / staff roll script interpreter
-  src/gfx/TextRenderer        Shift-JIS text into textures (Android: system font via JNI)
-  src/game/Stage              loads a stage from the archives, runs one tick, draws
-  src/core/ZunMath, FixedTimestep, Sha256   ZUN's RNG and angle helpers; the 60 Hz clock; SHA-256
-  src/input/                  VirtualController (touch → SDL virtual pad), InputMapper
-  src/audio/                  SoundPlayer (SoundIdx table, frame queue), MusicPlayer (WAV + .pos looping, fades), AudioMixer (SDL audio)
-  src/engine/App              window, GL context, dual loop, lifecycle
-tests/                        host tests run by CI before every APK build
+                              TextureLibrary, TextRenderer, SpriteBatch (instanced GLES3, D3D8
+                              blend states), RenderTarget, ProceduralArt (touch control art)
+  src/audio/                  MusicPlayer (WAV + .pos looping, fades), AudioMixer (SDL audio)
+  src/input/                  InputState, VirtualController (touch → SDL virtual pad), DragPad, InputMapper
+  src/text/PatchStack         Touhou Patch Center translation patches: stacking, variants, markup
+  src/core/                   ZunMath (ZUN's RNG, angles), FixedTimestep (60 Hz), Json, Sha256, Log
+  src/platform/               data mounting, crash handler, Android JNI glue
+th06/                         Embodiment of Scarlet Devil: the Android app module
+  build.gradle                AGP config, externalNativeBuild → CMake, signing from env vars
+  src/main/java/...           ImportActivity (launcher), GameActivity (SDL host + JNI), DataSources
+  src/main/cpp/
+    CMakeLists.txt            libSDL2.so + libmain.so (also a Linux desktop dev build)
+    th06.cmake                th06_game: the game code, shared with the tests
+    src/th06/Th06Game         the game as the host runs it: options, saves, haptics
+    src/th06/Ecl              ECL file layout (packed structs), opcode tables
+    src/th06/EnemyManager     timeline + ECL VM, enemies
+    src/th06/BulletManager    640-slot bullet manager and the 64 lasers
+    src/th06/ItemManager      512-slot items, pickups, drops
+    src/th06/Resources        graze, rolling score, extends, stage-clear bonus
+    src/th06/Player           player movement, hitbox, orbs, shots
+    src/th06/ShotData         reads the shot tables from your 東方紅魔郷.exe (PE32, SHA-256 checked)
+    src/th06/Bomb, ScreenShake  the four player bombs; screen shake
+    src/th06/EffectManager    512-slot particle effects, spell circles
+    src/th06/Gui              side panel, boss HUD, names, messages, score popups, ASCII text, dialogue
+    src/th06/StageBackground  STD stage backgrounds: script, camera, fog, culling, spell-card fade
+    src/th06/StageMenu        pause menu and continue menu
+    src/th06/Title, MusicRoom title screen and menus, replay list, attract demo; Music Room
+    src/th06/ScoreFile, ResultScreen   score.dat; the result screen (name entry, statistics)
+    src/th06/Replay           .rpy files: recording, saving, playback
+    src/th06/Ending           the ending / staff roll script interpreter
+    src/th06/SoundPlayer      SoundIdx table, frame queue
+    src/th06/Translation      which patch files th06 reads and how (dialogue box numbering)
+    src/th06/Stage            loads a stage from the archives, runs one tick, draws
+tests/                        host tests run by CI before every APK build (engine core + th06)
 ```
 
 Local builds (optional, Linux/macOS): `bash scripts/fetch_deps.sh`, then
 `cmake -S tests -B build-tests && cmake --build build-tests && ctest --test-dir build-tests`.
-With Gradle 9.4.1 and the Android SDK installed: `gradle :app:assembleRelease`.
+With Gradle 9.4.1 and the Android SDK installed: `gradle :th06:assembleRelease`. A Linux desktop
+build for development: `cmake -S th06/src/main/cpp -B build-desktop && cmake --build build-desktop`,
+then `./build-desktop/th06_desktop /path/to/game/folder` (`--seed N --lockstep` make runs
+repeatable; see `engine/native/src/host/App.hpp` for the other developer options).
 
 ## Credits
 

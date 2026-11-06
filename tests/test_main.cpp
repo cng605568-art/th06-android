@@ -23,7 +23,6 @@
 #include <zstd.h>
 
 #include "audio/MusicPlayer.hpp"
-#include "audio/SoundPlayer.hpp"
 #include "core/FixedTimestep.hpp"
 #include "core/HeapArray.hpp"
 #include "core/Json.hpp"
@@ -31,28 +30,29 @@
 #include "core/Math.hpp"
 #include "core/Sha256.hpp"
 #include "core/ZunMath.hpp"
-#include "game/Bomb.hpp"
-#include "game/BulletManager.hpp"
-#include "game/Ecl.hpp"
-#include "game/EffectManager.hpp"
-#include "game/EnemyManager.hpp"
-#include "game/Gui.hpp"
-#include "game/ItemManager.hpp"
-#include "game/Player.hpp"
-#include "game/Resources.hpp"
-#include "game/ScreenShake.hpp"
-#include "game/ShotData.hpp"
-#include "game/Stage.hpp"
-#include "game/StageBackground.hpp"
-#include "game/StageMenu.hpp"
-#include "game/ScoreFile.hpp"
-#include "game/ResultScreen.hpp"
-#include "game/Ending.hpp"
-#include "game/GameConfig.hpp"
-#include "game/Title.hpp"
-#include "game/Replay.hpp"
-#include "game/Translation.hpp"
-#include "game/MusicRoom.hpp"
+#include "th06/Bomb.hpp"
+#include "th06/BulletManager.hpp"
+#include "th06/Ecl.hpp"
+#include "th06/EffectManager.hpp"
+#include "th06/EnemyManager.hpp"
+#include "th06/Gui.hpp"
+#include "th06/ItemManager.hpp"
+#include "th06/Player.hpp"
+#include "th06/Resources.hpp"
+#include "th06/ScreenShake.hpp"
+#include "th06/ShotData.hpp"
+#include "th06/SoundPlayer.hpp"
+#include "th06/Stage.hpp"
+#include "th06/StageBackground.hpp"
+#include "th06/StageMenu.hpp"
+#include "th06/ScoreFile.hpp"
+#include "th06/ResultScreen.hpp"
+#include "th06/Ending.hpp"
+#include "th06/GameConfig.hpp"
+#include "th06/Title.hpp"
+#include "th06/Replay.hpp"
+#include "th06/Translation.hpp"
+#include "th06/MusicRoom.hpp"
 #include "input/DragPad.hpp"
 #include "gfx/Anm.hpp"
 #include "gfx/AnmManager.hpp"
@@ -66,12 +66,13 @@
 #include "io/MappedFile.hpp"
 #include "io/Vfs.hpp"
 
-namespace th06 {
+namespace touhou {
 std::array<std::uint8_t, 16> pkglKeystreamForTests(std::uint32_t seed);
 std::uint32_t pkglCrc32ForTests(std::string_view s);
-}  // namespace th06
+}  // namespace touhou
 
-using namespace th06;
+using namespace touhou;
+using namespace touhou::th06;
 using Bytes = std::vector<std::uint8_t>;
 
 static int g_checks = 0;
