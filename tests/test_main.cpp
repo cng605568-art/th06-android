@@ -23,7 +23,6 @@
 #include <zstd.h>
 
 #include "audio/MusicPlayer.hpp"
-#include "audio/SoundPlayer.hpp"
 #include "core/FixedTimestep.hpp"
 #include "core/HeapArray.hpp"
 #include "core/Json.hpp"
@@ -31,28 +30,29 @@
 #include "core/Math.hpp"
 #include "core/Sha256.hpp"
 #include "core/ZunMath.hpp"
-#include "game/Bomb.hpp"
-#include "game/BulletManager.hpp"
-#include "game/Ecl.hpp"
-#include "game/EffectManager.hpp"
-#include "game/EnemyManager.hpp"
-#include "game/Gui.hpp"
-#include "game/ItemManager.hpp"
-#include "game/Player.hpp"
-#include "game/Resources.hpp"
-#include "game/ScreenShake.hpp"
-#include "game/ShotData.hpp"
-#include "game/Stage.hpp"
-#include "game/StageBackground.hpp"
-#include "game/StageMenu.hpp"
-#include "game/ScoreFile.hpp"
-#include "game/ResultScreen.hpp"
-#include "game/Ending.hpp"
-#include "game/GameConfig.hpp"
-#include "game/Title.hpp"
-#include "game/Replay.hpp"
-#include "game/Translation.hpp"
-#include "game/MusicRoom.hpp"
+#include "th06/Bomb.hpp"
+#include "th06/BulletManager.hpp"
+#include "th06/Ecl.hpp"
+#include "th06/EffectManager.hpp"
+#include "th06/EnemyManager.hpp"
+#include "th06/Gui.hpp"
+#include "th06/ItemManager.hpp"
+#include "th06/Player.hpp"
+#include "th06/Resources.hpp"
+#include "th06/ScreenShake.hpp"
+#include "th06/ShotData.hpp"
+#include "th06/SoundPlayer.hpp"
+#include "th06/Stage.hpp"
+#include "th06/StageBackground.hpp"
+#include "th06/StageMenu.hpp"
+#include "th06/ScoreFile.hpp"
+#include "th06/ResultScreen.hpp"
+#include "th06/Ending.hpp"
+#include "th06/GameConfig.hpp"
+#include "th06/Title.hpp"
+#include "th06/Replay.hpp"
+#include "th06/Translation.hpp"
+#include "th06/MusicRoom.hpp"
 #include "input/DragPad.hpp"
 #include "gfx/Anm.hpp"
 #include "gfx/AnmManager.hpp"
@@ -66,12 +66,13 @@
 #include "io/MappedFile.hpp"
 #include "io/Vfs.hpp"
 
-namespace th06 {
+namespace touhou {
 std::array<std::uint8_t, 16> pkglKeystreamForTests(std::uint32_t seed);
 std::uint32_t pkglCrc32ForTests(std::string_view s);
-}  // namespace th06
+}  // namespace touhou
 
-using namespace th06;
+using namespace touhou;
+using namespace touhou::th06;
 using Bytes = std::vector<std::uint8_t>;
 
 static int g_checks = 0;
@@ -6502,6 +6503,131 @@ static void testEnding() {
     std::filesystem::remove_all(dir, ec);
 }
 
+// The engine split (shared engine + per-game module) must not change behaviour: a long
+// scripted run per shot type and a title-screen session are hashed tick by tick (game
+// state + every sprite drawn) and compared with the values recorded on v0.9.0.
+namespace {
+struct Fnv {
+    std::uint64_t h = 1469598103934665603ull;
+    void byte(std::uint8_t b) { h = (h ^ b) * 1099511628211ull; }
+    void u32(std::uint32_t v) {
+        for (int i = 0; i < 4; ++i) byte(static_cast<std::uint8_t>(v >> (8 * i)));
+    }
+    void i32(std::int32_t v) { u32(static_cast<std::uint32_t>(v)); }
+    void f32(float v) { u32(std::bit_cast<std::uint32_t>(v)); }
+};
+struct HashSink final : SpriteSink {
+    Fnv* fnv;
+    explicit HashSink(Fnv* f) : fnv(f) {}
+    void draw(std::uint16_t texture, Blend blend, const SpriteInstance& s) override {
+        fnv->u32(texture);
+        fnv->u32(static_cast<std::uint32_t>(blend));
+        for (float v : {s.x, s.y, s.w, s.h, s.u0, s.v0, s.u1, s.v1, s.angle}) fnv->f32(v);
+        fnv->u32(s.color);
+    }
+    void drawQuad3D(std::uint16_t texture, Blend blend, const Vertex3D* c, const Draw3DState& st) override {
+        fnv->u32(texture);
+        fnv->u32(static_cast<std::uint32_t>(blend) + 16);
+        for (int i = 0; i < 4; ++i) {
+            for (float v : {c[i].x, c[i].y, c[i].z, c[i].w, c[i].u, c[i].v, c[i].eyeZ}) fnv->f32(v);
+            fnv->u32(c[i].color);
+        }
+        for (float v : {st.fogStart, st.fogEnd, st.clipX, st.clipY, st.clipW, st.clipH}) fnv->f32(v);
+        fnv->u32(st.fogColor);
+        fnv->u32(st.depthWrite ? 1 : 0);
+    }
+    void setClip(float x, float y, float w, float h) override {
+        fnv->u32(0xC1);
+        for (float v : {x, y, w, h}) fnv->f32(v);
+    }
+    void clearClip() override { fnv->u32(0xC0); }
+};
+void hashFingerprint(Fnv& f, const StageFingerprint& p) {
+    f.u32(p.frame);
+    f.u32(p.score);
+    f.i32(p.power);
+    f.i32(p.lives);
+    f.i32(p.bombs);
+    f.u32(p.grazes);
+    f.f32(p.x);
+    f.f32(p.y);
+    f.i32(p.bullets);
+    f.i32(p.enemies);
+    f.i32(p.items);
+    f.u32(p.seed);
+    f.u32(p.draws);
+}
+}  // namespace
+
+static void testBehaviourGolden() {
+    const Bytes stArc = syntheticStageArchive(), tlArc = syntheticTitleArchive();
+    Vfs vfs;
+    vfs.mount(open("SYNTH_ST.DAT", stArc));
+    vfs.mount(open("SYNTH_TL.DAT", tlArc));
+    TextureLibrary lib;
+    const UiArt ui = registerUiArt(lib);
+    RecordingBackend backend;
+    SoundPlayer sound(&backend);
+    auto script = [](int f) {
+        InputState in;
+        in.shoot = f % 11 < 8;
+        in.focus = (f / 90) % 3 == 1;
+        in.bomb = f % 400 == 250;
+        in.left = (f / 37) % 4 == 0;
+        in.right = (f / 37) % 4 == 2;
+        in.up = (f / 53) % 3 == 0;
+        in.down = (f / 53) % 3 == 2;
+        in.pause = f == 700 || f == 760;  // the pause menu, then back to the game
+        if ((f / 120) % 4 == 3) {
+            in.drag = true;
+            in.dragId = static_cast<unsigned>(f / 120);
+            in.dragX = std::sin(static_cast<float>(f) * 0.07f) * 60.0f;
+            in.dragY = std::cos(static_cast<float>(f) * 0.05f) * 45.0f;
+        }
+        return in;
+    };
+    std::uint64_t perShot[4] = {};
+    for (int shot = 0; shot < 4; ++shot) {
+        Fnv f;
+        HashSink sink(&f);
+        Stage st(lib, ui, &vfs, &sound);
+        st.seedRandom(static_cast<std::uint16_t>(1000 + shot));
+        st.setShotType(shot);
+        CHECK(st.quickStart(1, shot % 2 ? Hard : Normal, false));
+        for (int t = 0; t < 1500; ++t) {
+            st.tick(script(t));
+            hashFingerprint(f, fingerprint(st));
+            if (t % 3 == 0) st.render(sink, 0.5f, HudInfo{60.0f, 0});
+        }
+        perShot[shot] = f.h;
+    }
+    std::uint64_t title = 0;
+    {
+        Fnv f;
+        HashSink sink(&f);
+        Stage st(lib, ui, &vfs, &sound);
+        st.seedRandom(55);
+        CHECK(st.openTitle(true));
+        for (int t = 0; t < 900; ++t) {
+            InputState in;
+            in.shoot = t == 40 || t == 300;
+            in.down = t == 80 || t == 120;
+            in.pause = t == 200 || t == 340;
+            st.tick(in);
+            st.render(sink, 1.0f, HudInfo{60.0f, 0});
+            f.u32(st.inMenus() ? 1 : 0);
+        }
+        title = f.h;
+    }
+    std::printf("  golden: shots %016llx %016llx %016llx %016llx title %016llx\n", static_cast<unsigned long long>(perShot[0]),
+                static_cast<unsigned long long>(perShot[1]), static_cast<unsigned long long>(perShot[2]),
+                static_cast<unsigned long long>(perShot[3]), static_cast<unsigned long long>(title));
+    const std::uint64_t expected[5] = {0xfef6c057f251abdfull, 0xe7e099066c7af577ull, 0xd17515e3894dd198ull, 0xbc57cbd19c712251ull,
+                                       0xdb8ae58173b8f2adull};  // recorded on v0.9.0
+    CHECK(perShot[0] == expected[0] && perShot[1] == expected[1] && perShot[2] == expected[2] && perShot[3] == expected[3]);
+    CHECK(title == expected[4]);
+}
+
 int main() {
     struct Test {
         const char* name;
@@ -6561,6 +6687,7 @@ int main() {
         {"translations: JSON, stacking, dialogue and ending patches", testTranslation},
         {"replays: .rpy format, recording, playback", testReplayFormat},
         {"replays in the game: playback, save prompt, title, demo", testReplaysInGame},
+        {"behaviour unchanged since v0.9.0 (golden hashes)", testBehaviourGolden},
     };
     for (const Test& t : tests) {
         const int before = g_failures;

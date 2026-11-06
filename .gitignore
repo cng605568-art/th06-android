@@ -3,8 +3,8 @@
 
 # Build output
 /build*/
-/app/build/
-/app/.cxx/
+/th06/build/
+/th06/.cxx/
 /.gradle/
 /local.properties
 *.apk
