@@ -16,6 +16,43 @@ constexpr std::uint32_t kColorsSaturated = 0x0049EE58;  // 28 x u32
 constexpr std::uint32_t kColorsPale = 0x0049EEC8;       // 28 x u32
 constexpr std::uint32_t kDropCycle = 0x0049EFA0;      // 32 x u8
 constexpr std::uint32_t kSpellBonus = 0x0049F1B8;     // 141 x u32
+constexpr std::uint32_t kEffectTable = 0x0049EFC0;    // 34 x {i32 script, u32 update, u32 init}
+
+using Init = ExeTables::EffectInit;
+using Update = ExeTables::EffectUpdate;
+// The routine addresses of 1.00b, by behaviour.
+bool effectInit(std::uint32_t va, Init& out) {
+    switch (va) {
+        case 0: out = Init::None; return true;
+        case 0x0041A5A0: out = Init::BigBurst; return true;
+        case 0x0041A370: out = Init::SmallBurst; return true;
+        case 0x0041A730: out = Init::OrbitMarker; return true;
+        case 0x0041AA60: out = Init::RandomDirection; return true;
+        case 0x0041BEC0: out = Init::RandomDirectionSpeed; return true;
+        case 0x0041B0B0: out = Init::WeatherForward; return true;
+        case 0x0041B4A0: out = Init::WeatherVortex; return true;
+        case 0x0041B770: out = Init::WeatherBackward; return true;
+        case 0x0041B9F0: out = Init::WeatherSlow; return true;
+        case 0x0041BC20: out = Init::WeatherFalling; return true;
+        default: return false;
+    }
+}
+bool effectUpdate(std::uint32_t va, Update& out) {
+    switch (va) {
+        case 0: out = Update::None; return true;
+        case 0x0041A4F0: out = Update::Physics; return true;
+        case 0x0041A750: out = Update::Orbit; return true;
+        case 0x0041AAF0: out = Update::Gather60; return true;
+        case 0x0041AC30: out = Update::Gather240; return true;
+        case 0x0041AD10: out = Update::Burst30; return true;
+        case 0x0041BFD0: out = Update::EaseOutBurst; return true;
+        case 0x0041ABE0: out = Update::FollowPlayer; return true;
+        case 0x0041C100: out = Update::FollowCamera; return true;
+        case 0x0041C1B0: out = Update::Noop; return true;
+        case 0x0041AEF0: out = Update::Weather; return true;
+        default: return false;
+    }
+}
 
 }  // namespace
 
@@ -57,6 +94,15 @@ bool loadExeTables(std::span<const std::uint8_t> exe, ExeTables& out, std::strin
         return fail("colour tables missing");
     }
     if (!readU32(kSpellBonus, t.spellBonus)) return fail("spell bonus table missing");
+    at = pe.offsetOf(kEffectTable, 12 * ExeTables::kEffects);
+    if (at < 0) return fail("effect table missing");
+    for (int i = 0; i < ExeTables::kEffects; ++i) {
+        const auto base = static_cast<std::size_t>(at) + 12 * static_cast<std::size_t>(i);
+        t.effects[i].script = pe.i32(base);
+        if (!effectUpdate(pe.u32(base + 4), t.effects[i].update) || !effectInit(pe.u32(base + 8), t.effects[i].init)) {
+            return fail("unknown routine in the effect table");
+        }
+    }
     const auto drops = pe.at(kDropCycle, ExeTables::kDrops);
     if (drops.empty()) return fail("drop table missing");
     for (int i = 0; i < ExeTables::kDrops; ++i) t.dropCycle[i] = drops[static_cast<std::size_t>(i)];

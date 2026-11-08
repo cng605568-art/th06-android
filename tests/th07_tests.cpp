@@ -24,6 +24,8 @@
 #include "th07/Bgm.hpp"
 #include "th07/ExeTables.hpp"
 #include "th07/GameConfig.hpp"
+#include "th07/Player.hpp"
+#include "th07/World.hpp"
 #include "th07/SoundPlayer.hpp"
 #include "th07/Version.hpp"
 
@@ -212,6 +214,10 @@ Bytes syntheticExe() {
     for (int i = 0; i < 28; ++i) set32(exe, off(0x0049EEC8) + 4 * i, 0xFF000000u + static_cast<std::uint32_t>(i));
     for (int i = 0; i < 32; ++i) exe[off(0x0049EFA0) + i] = static_cast<std::uint8_t>(i % 3);
     for (int i = 0; i < 141; ++i) set32(exe, off(0x0049F1B8) + 4 * i, static_cast<std::uint32_t>(1000 * i));
+    for (int i = 0; i < 34; ++i) set32(exe, off(0x0049EFC0) + 12 * i, static_cast<std::uint32_t>(0x2C0 + i));
+    set32(exe, off(0x0049EFC0) + 12 * 3 + 4, 0x0041A4F0);  // id 3: physics, big burst
+    set32(exe, off(0x0049EFC0) + 12 * 3 + 8, 0x0041A5A0);
+    set32(exe, off(0x0049EFC0) + 12 * 24 + 4, 0x0041ABE0);  // id 24: follow player
     return exe;
 }
 
@@ -374,6 +380,9 @@ static void testExeTablesAndSound() {
     CHECK(t.sampleFiles[29] == "data/wav/se_test29.wav");
     CHECK(t.fullPowerChain[30] == 310 && t.colorsPale[27] == 0xFF00001Bu && t.dropCycle[31] == 1);
     CHECK(t.spellBonus[140] == 140000);
+    CHECK(t.effects[33].script == 0x2C0 + 33 && t.effects[3].update == ExeTables::EffectUpdate::Physics &&
+          t.effects[3].init == ExeTables::EffectInit::BigBurst && t.effects[24].update == ExeTables::EffectUpdate::FollowPlayer &&
+          t.effects[24].init == ExeTables::EffectInit::None);
     CHECK(!loadExeTables(Bytes(exe.begin(), exe.begin() + 0x500), t, &err, false));  // tables cut off
 
     // Sound effects: samples by name from the archive; a 5-entry queue, repeats ignored,
@@ -805,6 +814,183 @@ static void testBackground() {
     CHECK(!bg.loaded() && !lib.loaded(5));
 }
 
+namespace {
+// A shot file: one level (threshold 999) firing one shot every 5 frames, straight up.
+Bytes shotFile(float speed, float diagonal, std::int32_t window) {
+    Bytes b;
+    put16(b, 0);
+    put16(b, 1);       // levels
+    putF(b, 3.0f);     // initial bombs
+    put32(b, static_cast<std::uint32_t>(window));
+    putF(b, 4.0f);     // hitbox
+    putF(b, 40.0f);    // graze box
+    putF(b, 8.0f);     // auto-collect speed
+    putF(b, 32.0f);    // item box
+    putF(b, 0.5f);     // cherry penalty
+    putF(b, 128.0f);   // point of collection
+    putF(b, speed);
+    putF(b, speed / 2.0f);
+    putF(b, diagonal);
+    putF(b, diagonal / 2.0f);
+    put32(b, 0x3C);    // level 0: entries at 0x3C
+    put32(b, 999);
+    put16(b, 5);       // interval
+    put16(b, 0);       // phase
+    putF(b, 0.0f);
+    putF(b, -10.0f);   // offset
+    putF(b, 8.0f);
+    putF(b, 8.0f);     // box
+    putF(b, -kZunPi / 2.0f);
+    putF(b, 10.0f);    // speed
+    put16(b, 3);       // damage
+    b.push_back(0);    // origin: player
+    b.push_back(0);    // ordinary
+    put16(b, 0x400 + 64);  // script
+    put16(b, 0xFFFF);  // silent
+    for (int i = 0; i < 4; ++i) put32(b, 0);
+    put16(b, 0xFFFF);  // end of list
+    b.resize(b.size() + 0x32, 0);
+    return b;
+}
+}  // namespace
+
+static void testPlayer() {
+    g_timing = Timing{};
+    EntryDef e;
+    e.sprites = {{0, 0, 0, 8, 8}};
+    for (int id : {0, 1, 2, 3, 4, 64, 128, 129}) e.scripts.push_back({id, {{3, 0, {0}}, {20, 1, {}}}});
+    Vfs vfs;
+    std::string err;
+    vfs.mount(openArchive("th07.dat", mem(pbg4({{"player00.anm", anmFile({e})},
+                                                {"ply00a.sht", shotFile(4.0f, 3.0f, 8)},
+                                                {"ply00as.sht", shotFile(2.0f, 1.5f, 8)}})),
+                          &err));
+    TextureLibrary textures;
+    AnmLibrary lib;
+    ZunRng rng(7);
+    GameState g;
+    g.setDifficulty(Normal);
+    World w;
+    w.state = &g;
+    w.rng = &rng;
+    w.anm = &lib;
+    Player p;
+    w.player = &p;
+    CHECK(p.load(vfs, textures, lib, 0, true, &err));
+    if (!lib.loaded(10)) {
+        std::fprintf(stderr, "  %s\n", err.c_str());
+        return;
+    }
+    CHECK(p.header().initialBombs == 3.0f && p.header().deathbombWindow == 8 && p.shots().focused.speed == 2.0f);
+    CHECK(p.shots().unfocused.entriesFor(0).size() == 1 && p.shots().unfocused.entriesFor(0)[0].damage == 3);
+    g.lives = 2;
+    g.bombs = 3;
+    p.stageStart(w);
+    CHECK(p.state() == Player::State::Spawning);
+    // A stage starts spawning with timer 120: the first spawn-in step makes the player
+    // invulnerable for 240 frames at once.
+    p.update(w, 0);
+    CHECK(p.state() == Player::State::Invulnerable);
+    // Movement: 10 frames right at 4 px, then clamped at the edge; diagonals 3 px per axis.
+    for (int i = 0; i < 10; ++i) p.update(w, BtnRight);
+    CHECK(p.position().x == 232.0f && p.position().y == 384.0f);
+    p.update(w, BtnUp | BtnLeft);
+    CHECK(p.position().x == 229.0f && p.position().y == 381.0f);
+    for (int i = 0; i < 100; ++i) p.update(w, BtnDown);
+    CHECK(p.position().y == 432.0f);
+    // The fire cycle: one shot every 5 frames while Shot is held (cycle frames 0, 5, ...).
+    for (int i = 0; i < 6; ++i) p.update(w, BtnShoot);
+    bool bomb = false;
+    const int dealt = p.damageQuery(w, {229.0f, 432.0f - 10.0f - 10.0f * 5.0f, 0.0f}, {16, 16, 0}, bomb);
+    CHECK(dealt == 3 && !bomb);  // the first shot, 6 frames up
+    // Become vulnerable, then die: 20 steps at the hit, 8 at the commit after the deathbomb
+    // window, 4 at the respawn move.
+    for (int i = 0; i < 300 && p.state() != Player::State::Alive; ++i) p.update(w, 0);
+    CHECK(p.state() == Player::State::Alive);
+    std::uint32_t before = rng.generations();
+    CHECK(p.bulletHit(w, p.position(), {4, 4, 0}) == Player::HitResult::Hit);
+    CHECK(p.state() == Player::State::Dead && rng.generations() - before == 20);
+    before = rng.generations();
+    for (int i = 0; i < 8; ++i) p.update(w, 0);
+    CHECK(g.misses == 1.0f && rng.generations() - before == 8);  // committed on the 8th frame
+    before = rng.generations();
+    int frames = 0;
+    while (p.state() == Player::State::Dead && frames < 60) {
+        p.update(w, 0);
+        ++frames;
+    }
+    CHECK(p.state() == Player::State::Spawning && g.lives == 1.0f && g.bombs == 3.0f && rng.generations() - before == 4);
+    CHECK(p.position().x == 192.0f && p.position().y == 384.0f);
+    // A deathbomb: hit, then Bomb inside the window. 8 steps for the bomb; no commit.
+    for (int i = 0; i < 400 && p.state() != Player::State::Alive; ++i) p.update(w, 0);
+    p.bulletHit(w, p.position(), {4, 4, 0});
+    p.update(w, 0);
+    before = rng.generations();
+    p.update(w, BtnBomb);
+    CHECK(p.state() == Player::State::Invulnerable && g.bombs == 2.0f && g.bombsUsed == 1.0f && g.bombActive);
+    CHECK(rng.generations() - before == 8);
+    for (int i = 0; i < 20; ++i) p.update(w, 0);
+    CHECK(g.misses == 1.0f && p.state() == Player::State::Invulnerable);
+    lib.release(10);
+}
+
+static void testGameState() {
+    GameState g;
+    g.setDifficulty(Normal);
+    // Extend thresholds.
+    const std::int32_t expect[] = {50, 125, 200, 300, 450, 800, 1000, 1200};
+    bool ok = true;
+    for (int n = 0; n < 8; ++n) {
+        g.extendsGranted = n;
+        ok = ok && g.extendThreshold() == expect[n];
+    }
+    CHECK(ok);
+    g.setDifficulty(Extra);
+    g.extendsGranted = 3;
+    CHECK(g.extendThreshold() == 1300 && g.minRank == 15 && g.maxRank == 16);
+    // Rank: subrank carries, clamped.
+    g.setDifficulty(Easy);
+    g.increaseSubrank(1000);
+    CHECK(g.rank == 20 && g.subRank == 0);
+    g.decreaseSubrank(1650);
+    CHECK(g.rank == 12 && g.subRank == 50);
+    // Score roll: 1/32 of the difference per frame, never slowing down while rolling.
+    g.score = 3200;
+    g.guiScore = 0;
+    g.hiScore = 100;
+    g.rollScore();
+    CHECK(g.guiScore == 100 && g.rollSpeed == 100 && g.hiScore == 100);
+    g.rollScore();
+    CHECK(g.guiScore == 200);  // step 96 < the running 100
+    for (int i = 0; i < 100; ++i) g.rollScore();
+    CHECK(g.guiScore == 3200 && g.rollSpeed == 0 && g.hiScore == 3200);
+    // Cherry and extends through World.
+    ZunRng rng(3);
+    World w;
+    w.state = &g;
+    w.rng = &rng;
+    g.setDifficulty(Normal);
+    g.cherry = 0;
+    g.cherryMax = 200000;
+    g.cherryPlus = 0;
+    w.cherryAddWithGauge(300);
+    CHECK(g.cherry == 300 && g.cherryPlus == 300);
+    w.cherryAdd(1000);
+    CHECK(g.cherry == 1300 && g.cherryPlus == 300);
+    w.cherryRaise(500000);
+    CHECK(g.cherry == 200000);
+    w.cherryRaiseMax(20000000);
+    CHECK(g.cherryMax == 9999990);
+    g.lives = 7;
+    g.bombs = 8;
+    g.extendsGranted = 0;
+    g.extendPoints = 130;
+    const std::uint32_t before = rng.generations();
+    w.checkPointExtends();
+    // Two extends (50, 125): a life (7 -> 8), then nothing to give (lives 8, bombs 8).
+    CHECK(g.lives == 8.0f && g.extendsGranted == 2 && g.nextExtend == 200 && rng.generations() - before == 4);
+}
+
 static void testPbg4() {
     const Bytes ver = text("0100a 123 456\n0100b 466944 -1234567\n");
     const Bytes stage = text("STD file bytes");
@@ -1000,6 +1186,8 @@ int main() {
         {"ANM VM: timing, waits, loops, registers, RNG, channels", testAnmVm},
         {"ANM drawing: rounding, anchors, rotation, colour", testAnmDraw},
         {"stage backgrounds: .std, script, camera, culling", testBackground},
+        {"game state: extends, rank, score roll, cherry", testGameState},
+        {"player: .sht, movement, shots, death, deathbomb", testPlayer},
     };
     for (const Test& t : tests) {
         const int before = g_failures;

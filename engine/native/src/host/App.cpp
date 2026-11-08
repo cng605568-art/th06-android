@@ -481,7 +481,7 @@ void App::developerFrameHooks() {
     running_ = false;
 }
 
-// --keys "30:shoot,60:down,...": presses a button once game tick N is reached, for one
+// --keys "30:shoot,60:down,90:bomb+focus,...": presses buttons once game tick N is reached, for one
 // input sample (one or more ticks), then releases everything for one sample before the
 // next key, so two presses never merge into one.
 void App::parseDevKeys(const std::string& spec) {
@@ -505,18 +505,27 @@ void App::applyDevKeys(InputState& in) {
         return;
     }
     if (devKeyNext_ >= devKeys_.size() || tickCount_ < devKeys_[devKeyNext_].tick) return;
-    const std::string& key = devKeys_[devKeyNext_].key;
+    const std::string& keys = devKeys_[devKeyNext_].key;
     devKeyHeld_ = true;
-    if (key == "up") in.up = true;
-    else if (key == "down") in.down = true;
-    else if (key == "left") in.left = true;
-    else if (key == "right") in.right = true;
-    else if (key == "shoot") in.shoot = true;
-    else if (key == "bomb") in.bomb = true;
-    else if (key == "pause") in.pause = true;
-    else if (key == "quit") in.quit = true;
-    else if (key == "save") in.saveState = true;
-    else if (key == "load") in.loadState = true;
+    // "a+b" presses several buttons in the same sample.
+    std::size_t at = 0;
+    while (at <= keys.size()) {
+        std::size_t end = keys.find('+', at);
+        if (end == std::string::npos) end = keys.size();
+        const std::string key = keys.substr(at, end - at);
+        if (key == "up") in.up = true;
+        else if (key == "down") in.down = true;
+        else if (key == "left") in.left = true;
+        else if (key == "right") in.right = true;
+        else if (key == "shoot") in.shoot = true;
+        else if (key == "bomb") in.bomb = true;
+        else if (key == "focus") in.focus = true;
+        else if (key == "pause") in.pause = true;
+        else if (key == "quit") in.quit = true;
+        else if (key == "save") in.saveState = true;
+        else if (key == "load") in.loadState = true;
+        at = end + 1;
+    }
 }
 
 bool App::capturePlayfield() {

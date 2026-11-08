@@ -3,8 +3,8 @@
 // The few data tables of Perfect Cherry Blossom that exist only inside th07.exe (version
 // 1.00b), read at run time from the player's own copy (never shipped with the port):
 // sound effects (sample and volume per sound id, and the sample file names), the full-power
-// item chain scores, the bullet colour tables, the enemy item-drop cycle and the spell card
-// base bonuses. The executable is identified by its SHA-256.
+// item chain scores, the bullet colour tables, the enemy item-drop cycle, the effect id table
+// and the spell card base bonuses. The executable is identified by its SHA-256.
 
 #include <array>
 #include <cstdint>
@@ -22,6 +22,22 @@ struct ExeTables {
     static constexpr int kColors = 28;
     static constexpr int kDrops = 32;
     static constexpr int kSpellCards = 141;
+    static constexpr int kEffects = 34;
+
+    // The effect id table: each id's global ANM script and the routines it runs at spawn
+    // (init) and every frame (update), as behaviours.
+    enum class EffectInit : std::uint8_t {
+        None, BigBurst, SmallBurst, OrbitMarker, RandomDirection, RandomDirectionSpeed,
+        WeatherForward, WeatherVortex, WeatherBackward, WeatherSlow, WeatherFalling,
+    };
+    enum class EffectUpdate : std::uint8_t {
+        None, Physics, Orbit, Gather60, Gather240, Burst30, EaseOutBurst, FollowPlayer, FollowCamera, Noop, Weather,
+    };
+    struct Effect {
+        std::int32_t script = 0;
+        EffectUpdate update = EffectUpdate::None;
+        EffectInit init = EffectInit::None;
+    };
 
     struct Sound {
         int sample = -1;           // 0..29
@@ -33,6 +49,7 @@ struct ExeTables {
     std::array<std::uint32_t, kColors> colorsSaturated{}, colorsPale{};
     std::array<std::uint8_t, kDrops> dropCycle{};
     std::array<std::uint32_t, kSpellCards> spellBonus{};
+    std::array<Effect, kEffects> effects{};
 };
 
 // False (with a reason) when `exe` is not th07.exe 1.00b (unless requireKnownVersion is

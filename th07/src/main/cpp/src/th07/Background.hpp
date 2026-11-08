@@ -60,6 +60,7 @@ class Background {
 
     const std::string& songPath(int k) const { return songs_[static_cast<std::size_t>(k & 3)]; }
     const Vec3f& cameraPosition() const { return cam_.pos; }
+    const Vec3f& cameraFacing() const { return cam_.facing; }  // the "look-at" vector, relative
     const Vec3f& normalizedFacing() const { return facingN_; }
     std::int32_t scriptTime() const { return time_.current; }
     Viewport viewport;

@@ -67,10 +67,19 @@ bool Th07Game::start(const GameContext& ctx) {
     }
 #if !defined(__ANDROID__)
     std::string previewFile, previewBackground;
+    Gameplay::Setup play;
+    bool startPlay = false;
+    autoFire_ = ctx.controls.autoFire;
+    for (int i = 1; i < ctx.argc; ++i) {
+        if (ctx.argv[i] && std::string(ctx.argv[i]) == "--hold-focus") holdFocus_ = true;
+    }
     for (int i = 1; i + 1 < ctx.argc; ++i) {
         const std::string a = ctx.argv[i] ? ctx.argv[i] : "";
         if (a == "--anm-preview") previewFile = ctx.argv[i + 1];
         else if (a == "--anm-bg") previewBackground = ctx.argv[i + 1];
+        else if (a == "--play") play.stage = std::atoi(ctx.argv[i + 1]), startPlay = true;
+        else if (a == "--shot") play.shotIndex = std::atoi(ctx.argv[i + 1]);
+        else if (a == "--difficulty") play.difficulty = std::atoi(ctx.argv[i + 1]);
         else if (a == "--stage-preview" && ctx.vfs) {
             std::string err;
             if (!background_.load(*ctx.vfs, *ctx.textures, anm_, rng_, std::atoi(ctx.argv[i + 1]), &err)) {
@@ -79,6 +88,25 @@ bool Th07Game::start(const GameContext& ctx) {
         }
     }
     if (!previewFile.empty() && ctx.vfs) startPreview(ctx, previewFile, previewBackground);
+    if (startPlay && ctx.vfs && exe_) {
+        rng_.seed(ctx.seed);
+        Gameplay::Resources res;
+        res.vfs = ctx.vfs;
+        res.textures = ctx.textures;
+        res.anm = &anm_;
+        res.rng = &rng_;
+        res.tables = &tables_;
+        res.sound = sound_.get();
+        res.music = music_.get();
+        game_ = std::make_unique<Gameplay>();
+        std::string err;
+        if (!game_->start(res, play, &err)) {
+            log::warn("Could not start stage {}: {}", play.stage, err);
+            game_.reset();
+        } else {
+            titleSongRequested_ = true;
+        }
+    }
 #endif
     return true;
 }
@@ -112,7 +140,40 @@ void Th07Game::startPreview(const GameContext& ctx, const std::string& file, con
     log::info("ANM preview: {} scripts of {}", previewVms_.size(), file);
 }
 
+namespace {
+
+std::uint16_t buttonWord(const InputState& in) {
+    std::uint16_t b = 0;
+    if (in.shoot) b |= BtnShoot;
+    if (in.bomb) b |= BtnBomb;
+    if (in.focus) b |= BtnFocus;
+    if (in.pause) b |= BtnMenu;
+    if (in.up) b |= BtnUp;
+    if (in.down) b |= BtnDown;
+    if (in.left) b |= BtnLeft;
+    if (in.right) b |= BtnRight;
+    if (in.skip) b |= BtnSkip;
+    if (in.quit) b |= BtnQ;
+    return b;
+}
+
+}  // namespace
+
 void Th07Game::tick(const InputState& input) {
+    if (game_) {
+        std::uint16_t word = buttonWord(input);
+        if (autoFire_) word |= BtnShoot;
+        if (holdFocus_) word |= BtnFocus;
+        game_->tick(word);
+        if (music_) {
+            music_->fadeStep();
+            music_->pump();
+        }
+        if (sound_) sound_->flush();
+        if (input.quit) quit_ = true;
+        ++frame_;
+        return;
+    }
     for (AnmVm& vm : previewVms_) vm.tick(anm_, rng_);
     if (background_.loaded()) background_.update(anm_, rng_);
     if (music_) music_->fadeStep();
@@ -130,6 +191,10 @@ void Th07Game::tick(const InputState& input) {
 }
 
 void Th07Game::render(SpriteSink& sink, float, const FrameInfo&) {
+    if (game_) {
+        game_->draw(sink);
+        return;
+    }
     if (!ui_) return;
     if (background_.loaded()) {
         AnmDrawState state;

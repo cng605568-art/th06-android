@@ -13,6 +13,7 @@
 #include "th07/Background.hpp"
 #include "th07/Bgm.hpp"
 #include "th07/ExeTables.hpp"
+#include "th07/Gameplay.hpp"
 #include "th07/SoundPlayer.hpp"
 
 namespace touhou::th07 {
@@ -26,7 +27,7 @@ class Th07Game final : public Game {
 
     bool quitRequested() const override { return quit_; }
     bool paused() const override { return false; }
-    bool showsPlayfield() const override { return false; }
+    bool showsPlayfield() const override { return game_ != nullptr; }
     bool practiceSpeedApplies() const override { return false; }
     void pauseNow() override {}
     bool back() override { return false; }  // nothing to go back to yet: leave
@@ -58,6 +59,11 @@ class Th07Game final : public Game {
     void startPreview(const GameContext& ctx, const std::string& file, const std::string& background);
     AnmLibrary anm_;
     ZunRng rng_;
+    // Desktop developer option --play STAGE [--shot N] [--difficulty D] [--practice]: straight
+    // into a stage (until the menus are ported).
+    std::unique_ptr<Gameplay> game_;
+    bool autoFire_ = false;  // the launcher's "Shot is held during play"
+    bool holdFocus_ = false;  // desktop --hold-focus
     std::vector<AnmVm> previewVms_;
     int previewBackground_ = -1;  // texture id
     // --stage-preview N: stage N's background running on its own.

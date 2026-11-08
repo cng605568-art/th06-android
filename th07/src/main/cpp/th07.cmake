@@ -11,10 +11,16 @@ add_library(th07_game STATIC
   ${TH07_SRC}/th07/Anm.cpp
   ${TH07_SRC}/th07/Background.cpp
   ${TH07_SRC}/th07/Bgm.cpp
+  ${TH07_SRC}/th07/Bombs.cpp
+  ${TH07_SRC}/th07/Effects.cpp
   ${TH07_SRC}/th07/ExeTables.cpp
   ${TH07_SRC}/th07/GameConfig.cpp
+  ${TH07_SRC}/th07/Gameplay.cpp
+  ${TH07_SRC}/th07/Player.cpp
+  ${TH07_SRC}/th07/ShotData.cpp
   ${TH07_SRC}/th07/SoundPlayer.cpp
-  ${TH07_SRC}/th07/Version.cpp)
+  ${TH07_SRC}/th07/Version.cpp
+  ${TH07_SRC}/th07/World.cpp)
 target_include_directories(th07_game PUBLIC "${TH07_SRC}")
 target_link_libraries(th07_game PUBLIC thengine_core)
 set_target_properties(th07_game PROPERTIES POSITION_INDEPENDENT_CODE ON)
