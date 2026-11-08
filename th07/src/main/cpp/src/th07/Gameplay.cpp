@@ -66,7 +66,14 @@ bool Gameplay::start(const Resources& res, const Setup& setup, std::string* erro
         if (res_.music) res_.music->fadeOut(seconds);
     };
     world_.onDialogueStart = [this]() { enemies_->removeAll(); };
+    world_.onSpellDeclared = [this](int card, const std::string& name) {
+        if (hooks_.spellDeclared && !state_.replay) hooks_.spellDeclared(card, name);
+    };
+    world_.onSpellCaptured = [this](int card, std::uint32_t bonus) {
+        if (hooks_.spellCaptured && !state_.replay) hooks_.spellCaptured(card, bonus);
+    };
     enemies_->setMusic(res.music);
+    outcome_ = Outcome::None;
     return setUpStage(true, error);
 }
 
@@ -134,6 +141,8 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
         g.extendsGranted = 0;
         g.nextExtend = g.difficulty >= Extra ? 200 : 50;
         if (g.difficulty >= Extra) g.slowMode = false;
+        // Step 7: score.dat (rewritten, then the hi-score and records read).
+        if (hooks_.readScores) hooks_.readScores(g);
         w.setMisses(0.0f);
         w.setBombsUsed(0.0f);
         g.spellsCaptured = 0;
@@ -146,6 +155,8 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
             g.cherryMax += 50000 * (s - 2);
             g.cherry = g.cherryMax;
         }
+        // Step 8: a play is counted (live play, slow mode off).
+        if (!g.replay && !g.slowMode && hooks_.countPlay) hooks_.countPlay(g, setup_.restart);
         if (g.replay) g.slowMode = false;
     } else {
         g.guiScore = g.score;
@@ -156,6 +167,7 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
     g.stagePointItems = 0;
     g.stageGraze = 0;
     ++g.stage;
+    if (!g.replay && hooks_.stageEntered) hooks_.stageEntered(g);
     if (g.practice && g.stage >= 2) w.setPower(128.0f);
     stageSeed_ = rng.currentSeed();
 
@@ -171,7 +183,7 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
     effects_.reset();
     if (!loadEffectFiles(error)) return false;
     shake_.clear();
-    finished_ = false;
+    if (hooks_.playTimeRebase) hooks_.playTimeRebase();
     {
         Gui::Resources gr;
         gr.vfs = res_.vfs;
@@ -225,21 +237,37 @@ void Gameplay::tick(std::uint16_t input) {
         prevInput_ = input;
         switch (r) {
             case InGameMenu::Request::Resume:
-                if (res_.music) res_.music->resume();
+                if (res_.music && !(g.stage == 6 && gui_->frame() < 300)) res_.music->resume();
+                if (hooks_.playTimeRebase) hooks_.playTimeRebase();
                 break;
             case InGameMenu::Request::Continue:
                 applyContinue();
                 if (res_.music) res_.music->resume();
+                if (hooks_.playTimeRebase) hooks_.playTimeRebase();
                 break;
             case InGameMenu::Request::Title:
-            case InGameMenu::Request::Results: finished_ = true; return;
-            case InGameMenu::Request::Restart: restartRequested_ = true; return;
+                if (hooks_.playTimeRebase) hooks_.playTimeRebase();
+                outcome_ = Outcome::Title;
+                return;
+            case InGameMenu::Request::Results:
+                g.guiScore = g.score;
+                if (hooks_.playTimeRebase) hooks_.playTimeRebase();
+                outcome_ = Outcome::Results;
+                return;
+            case InGameMenu::Request::Restart:
+                if (hooks_.playTimeRebase) hooks_.playTimeRebase();
+                outcome_ = Outcome::Restart;
+                return;
             case InGameMenu::Request::None: return;
         }
+    } else if (outcome_ != Outcome::None) {
+        prevInput_ = input;
+        return;  // waiting for the supervisor
     } else if ((pressed & BtnMenu) || pauseRequested_) {
         pauseRequested_ = false;
         menu_.openPause(world_);
-        if (res_.music) res_.music->pause();
+        if (res_.music && !(g.stage == 6 && gui_->frame() < 300)) res_.music->pause();
+        if (hooks_.playTimeAdd) hooks_.playTimeAdd();
         prevInput_ = input;
         return;
     }
@@ -253,8 +281,9 @@ void Gameplay::tick(std::uint16_t input) {
     player_->update(world_, input);
     if (player_->continueMenuRequested()) {
         player_->clearContinueRequest();
-        menu_.openContinue(world_, 3);
+        menu_.openContinue(world_, setup_.maxContinues);
         if (res_.music) res_.music->pause();
+        if (hooks_.playTimeAdd) hooks_.playTimeAdd();
     }
     enemies_->update(world_);
     if (testPatterns_ && g.stageFrame % 60 == 30) {
@@ -277,6 +306,11 @@ void Gameplay::tick(std::uint16_t input) {
     effects_.update(world_);
     bullets_->update(world_);
     gui_->update(world_, input, prevInput_);
+    switch (gui_->endRequest()) {
+        case Gui::EndRequest::Results: outcome_ = Outcome::Results; break;
+        case Gui::EndRequest::Ending: outcome_ = Outcome::Ending; break;
+        default: break;
+    }
     prevInput_ = input;
     drawState_.offsetX = drawState_.offsetY = 0.0f;
     shake_.update(*res_.rng, g.stageFrame, drawState_.offsetX, drawState_.offsetY);
@@ -314,16 +348,11 @@ void Gameplay::applyContinue() {
     g.extendsGranted = 0;
     g.nextExtend = 50;
     g.cherry = 0;
+    if (hooks_.continued) hooks_.continued(g);
 }
 
 bool Gameplay::stageAdvance(std::string* error) {
-    if (restartRequested_) {
-        restartRequested_ = false;
-        const Resources res = res_;
-        const Setup setup = setup_;
-        return start(res, setup, error);
-    }
-    if (!gui_->nextStageRequested()) return true;
+    if (!running_ || !gui_->nextStageRequested()) return true;
     gui_->clearNextStageRequest();
     return nextStage(error);
 }
