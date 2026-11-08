@@ -18,6 +18,7 @@ namespace touhou::th07 {
 
 class AnmLibrary;
 class Background;
+class BulletManager;
 class Effects;
 class Player;
 class SoundPlayer;
@@ -68,8 +69,11 @@ class ItemField {
 class PopupSink {
   public:
     virtual ~PopupSink() = default;
-    enum Status : int { FullPowerMode, SupernaturalBorder, CherryMax, BorderBonus };
+    enum Status : int { FullPowerMode, SupernaturalBorder, CherryMax, BorderBonus, Bonus, SpellCardBonus };
     virtual void status(Status s, std::uint32_t value) = 0;
+    // A score popup at a playfield position (colour 0xAARRGGBB; small font for point bullets).
+    virtual void score(const Vec3f& pos, std::uint32_t value, std::uint32_t color, bool small) = 0;
+    virtual void powerUp(const Vec3f& pos) = 0;  // the power-up glyph
 };
 
 struct GameState {
@@ -143,6 +147,7 @@ struct World {
     Effects* effects = nullptr;
     Background* background = nullptr;
     BulletField* bullets = nullptr;
+    BulletManager* bulletManager = nullptr;  // the concrete manager (ECL)
     ItemField* items = nullptr;
     PopupSink* popups = nullptr;
     ShakeSink* shakes = nullptr;

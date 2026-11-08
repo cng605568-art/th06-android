@@ -12,6 +12,7 @@ add_library(th07_game STATIC
   ${TH07_SRC}/th07/Background.cpp
   ${TH07_SRC}/th07/Bgm.cpp
   ${TH07_SRC}/th07/Bombs.cpp
+  ${TH07_SRC}/th07/Bullets.cpp
   ${TH07_SRC}/th07/Effects.cpp
   ${TH07_SRC}/th07/ExeTables.cpp
   ${TH07_SRC}/th07/GameConfig.cpp

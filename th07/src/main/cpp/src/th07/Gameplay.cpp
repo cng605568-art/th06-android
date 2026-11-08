@@ -53,6 +53,9 @@ bool Gameplay::start(const Resources& res, const Setup& setup, std::string* erro
     world_.effects = res.tables ? &effects_ : nullptr;
     world_.background = &background_;
     world_.shakes = &shake_;
+    world_.bullets = bullets_.get();
+    world_.bulletManager = bullets_.get();
+    world_.items = bullets_.get();
     return setUpStage(true, error);
 }
 
@@ -148,6 +151,7 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
     }
     if (!background_.load(*res_.vfs, *res_.textures, *res_.anm, rng, g.stage, error)) return false;
     background_.onWeatherShift = nullptr;
+    bullets_->stageStart(w);
     effects_.reset();
     if (!loadEffectFiles(error)) return false;
     shake_.clear();
@@ -193,7 +197,25 @@ void Gameplay::tick(std::uint16_t input) {
     // GUI (13), screen effects (15).
     background_.update(*res_.anm, *res_.rng);
     player_->update(world_, input);
+    if (testPatterns_ && g.stageFrame % 60 == 30) {
+        const int k = static_cast<int>(g.stageFrame / 60) % 11;
+        Shooter s;
+        s.type = static_cast<std::int16_t>(k);
+        s.color = static_cast<std::int16_t>(g.stageFrame / 60 % 8);
+        s.pos = {192.0f, 120.0f, 0.0f};
+        s.count1 = 24;
+        s.count2 = 2;
+        s.speed1 = 2.0f;
+        s.speed2 = 1.2f;
+        s.aimMode = 2;
+        s.flags = 0x4;
+        bullets_->fire(world_, s);
+        for (int i = 0; i < 4; ++i) {
+            bullets_->spawn({96.0f + 64.0f * static_cast<float>(i), 80.0f, 0.0f}, (k + i) % 10, ItemField::Normal);
+        }
+    }
     effects_.update(world_);
+    bullets_->update(world_);
     drawState_.offsetX = drawState_.offsetY = 0.0f;
     shake_.update(*res_.rng, g.stageFrame, drawState_.offsetX, drawState_.offsetY);
 }
@@ -205,6 +227,7 @@ void Gameplay::draw(SpriteSink& sink) {
     player_->drawLow(sink, drawState_);
     player_->drawHigh(sink, drawState_);
     effects_.draw(sink, drawState_);
+    bullets_->draw(sink, drawState_);
 }
 
 }  // namespace touhou::th07

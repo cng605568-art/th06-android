@@ -69,9 +69,11 @@ bool Th07Game::start(const GameContext& ctx) {
     std::string previewFile, previewBackground;
     Gameplay::Setup play;
     bool startPlay = false;
+    bool testBullets = false;
     autoFire_ = ctx.controls.autoFire;
     for (int i = 1; i < ctx.argc; ++i) {
         if (ctx.argv[i] && std::string(ctx.argv[i]) == "--hold-focus") holdFocus_ = true;
+        if (ctx.argv[i] && std::string(ctx.argv[i]) == "--test-bullets") testBullets = true;
     }
     for (int i = 1; i + 1 < ctx.argc; ++i) {
         const std::string a = ctx.argv[i] ? ctx.argv[i] : "";
@@ -105,6 +107,7 @@ bool Th07Game::start(const GameContext& ctx) {
             game_.reset();
         } else {
             titleSongRequested_ = true;
+            game_->setTestPatterns(testBullets);
         }
     }
 #endif

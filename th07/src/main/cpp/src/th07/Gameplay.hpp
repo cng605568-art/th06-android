@@ -11,6 +11,7 @@
 
 #include "th07/Anm.hpp"
 #include "th07/Background.hpp"
+#include "th07/Bullets.hpp"
 #include "th07/Effects.hpp"
 #include "th07/Player.hpp"
 #include "th07/World.hpp"
@@ -78,6 +79,8 @@ class Gameplay {
     GameState& state() { return state_; }
     const Player& player() const { return *player_; }
     std::uint16_t stageSeed() const { return stageSeed_; }
+    // Developer aid until the enemies are ported: test patterns and items every second.
+    void setTestPatterns(bool on) { testPatterns_ = on; }
 
   private:
     bool setUpStage(bool fresh, std::string* error);
@@ -90,12 +93,14 @@ class Gameplay {
     World world_;
     std::unique_ptr<Player> player_;
     Effects effects_;
+    std::unique_ptr<BulletManager> bullets_ = std::make_unique<BulletManager>();
     Background background_;
     ScreenShake shake_;
     AnmDrawState drawState_;
     std::uint16_t stageSeed_ = 0;
     bool running_ = false;
     bool etamaLoaded_ = false;
+    bool testPatterns_ = false;
 };
 
 }  // namespace touhou::th07
