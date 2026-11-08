@@ -3,12 +3,16 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
 #include <format>
+#include <fstream>
+#include <iterator>
 
 #include "core/Log.hpp"
 #include "gfx/SpriteSink.hpp"
 #include "th07/GameConfig.hpp"
 #include "th07/Player.hpp"
+#include "th07/Replay.hpp"
 
 namespace touhou::th07 {
 
@@ -157,6 +161,9 @@ void ResultScreen::update(const MenuInput& in) {
         case State::StatisticsOut: statistics(in); break;
         case State::Prompt:
         case State::CannotSave: prompt(in); break;
+        case State::SlotList: slotList(in); break;
+        case State::Overwrite: overwrite(in); break;
+        case State::ReplayName: replayName(in); break;
         case State::Leave:
             if (timer_ >= 60) {
                 ctx_.request(FlowState::MainMenu);
@@ -173,6 +180,14 @@ void ResultScreen::update(const MenuInput& in) {
     }
     if (state_ == State::Menu) {
         for (int i = 0; i < 9; ++i) vm_[static_cast<std::size_t>(i)].color = i == menuCursor_ ? 0xFFFFFFFFu : 0xB0FFFFFFu;
+    }
+    // The prompts' Yes (instance 19) and No (20): the selected one red, alpha kept.
+    if ((state_ == State::Prompt && promptDecided_) || state_ == State::Overwrite) {
+        for (int i = 0; i < 2; ++i) {
+            AnmVm& vm = vm_[static_cast<std::size_t>(19 + i)];
+            const bool lit = (i == 0) == promptYes_;
+            vm.color = (vm.color & 0xFF000000u) | (lit ? 0xFF6060u : 0x606060u);
+        }
     }
     ++timer_;
 }
@@ -494,31 +509,213 @@ void ResultScreen::statistics(const MenuInput& in) {
     }
 }
 
-// The replay prompt. Replays are not recorded by the port yet: the "cannot save" cases show
-// their message; otherwise the screen leaves with a note.
+// ---- the replay save prompt (spec 6.5.4) ----------------------------------------------------
+
+void ResultScreen::leave() {
+    sendAll(2);
+    ctx_.playSound(kSndBack);
+    setState(State::Leave);
+}
+
 void ResultScreen::prompt(const MenuInput& in) {
     const GameState& g = ctx_.lastGame;
-    if (state_ == State::Prompt) {
+    if (state_ == State::CannotSave) {
+        if (timer_ >= 20 && in.pressed(kSelect | kReturn)) leave();
+        return;
+    }
+    if (!promptDecided_) {
+        // The decision pass: one pass after the statistics close, 60 passes after creation in
+        // practice.
         const int decision = mode_ == Mode::PracticeEnd ? 60 : 1;
         if (timer_ + 1 < decision) return;
+        promptDecided_ = true;
         if (g.slowMode || ctx_.timingBad) {
             sendAll(19);
             setState(State::CannotSave);
         } else if (g.continues != 0) {
             sendAll(14);
             setState(State::CannotSave);
+        } else if (!ctx_.replayRecorded || !ctx_.replayRecorded()) {
+            leave();  // (the port's developer aids reach this screen without a game)
         } else {
-            promptNote_ = true;
-            sendAll(2);
-            ctx_.playSound(kSndBack);
-            setState(State::Leave);
+            sendAll(11);
+            promptYes_ = true;
         }
         return;
     }
-    if (timer_ >= 20 && in.pressed(kSelect | kReturn)) {
-        sendAll(2);
+    if (timer_ < 80) return;
+    if (in.pressed(BtnLeft | BtnRight)) {
+        promptYes_ = !promptYes_;
+        ctx_.playSound(kSndMove);
+    }
+    if (in.pressed(kReturn)) {
+        leave();
+    } else if (in.pressed(kSelect)) {
+        if (!promptYes_) {
+            leave();
+            return;
+        }
+        ctx_.playSound(kSndSelect);
+        sendAll(12);
+        readSlots();
+        setState(State::SlotList);
+    }
+}
+
+void ResultScreen::readSlots() {
+    if (!ctx_.replayDir.empty()) {
+        std::error_code ec;
+        std::filesystem::create_directories(ctx_.replayDir, ec);
+    }
+    for (int i = 0; i < 15; ++i) {
+        Slot& s = slots_[static_cast<std::size_t>(i)];
+        s = Slot{};
+        if (ctx_.replayDir.empty()) continue;
+        std::ifstream f(std::filesystem::path(ctx_.replayDir) / std::format("th7_{:02d}.rpy", i + 1), std::ios::binary);
+        if (!f) continue;
+        const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+        // Filled when it validates (its version modulo 0x1000 is then always 0x100).
+        const auto r = ReplayFile::parse(bytes, ctx_.verFile, nullptr, true);
+        if (!r) continue;
+        s.filled = true;
+        s.name = r->summary.name();
+        s.date = r->summary.date();
+        s.shot = r->summary.shot();
+        s.score = r->summary.score();
+    }
+}
+
+void ResultScreen::slotList(const MenuInput& in) {
+    if (timer_ < 20) return;
+    int d = 0;
+    if (in.pressedOrRepeat(BtnUp)) d = -1;
+    else if (in.pressedOrRepeat(BtnDown)) d = 1;
+    if (d != 0) {
+        slotCursor_ = wrap(slotCursor_ + d, 15);
+        ctx_.playSound(kSndMove);
+    }
+    if (in.pressed(kReturn)) {
         ctx_.playSound(kSndBack);
-        setState(State::Leave);
+        sendAll(11);
+        setState(State::Prompt);
+        timer_ = 80;  // (the prompt's lock is over)
+        return;
+    }
+    if (in.pressed(kSelect)) {
+        ctx_.playSound(kSndSelect);
+        const auto today = todayDate();
+        newDate_ = std::string(today.data(), 5);
+        sendAll(17);
+        const int row = 25 + slotCursor_;
+        if (has_[static_cast<std::size_t>(row)]) vm_[static_cast<std::size_t>(row)].interrupt(16);
+        nameCursor_ = 0;
+        keyCursor_ = lastNameFound_ ? kKeyEnd : 0;
+        if (slots_[static_cast<std::size_t>(slotCursor_)].filled) {
+            sendAll(13);
+            promptYes_ = true;
+            setState(State::Overwrite);
+        } else {
+            setState(State::ReplayName);
+        }
+    }
+}
+
+void ResultScreen::overwrite(const MenuInput& in) {
+    if (timer_ < 20) return;
+    if (in.pressed(BtnLeft | BtnRight)) {
+        promptYes_ = !promptYes_;
+        ctx_.playSound(kSndMove);
+    }
+    if (in.pressed(kReturn) || (in.pressed(kSelect) && !promptYes_)) {
+        ctx_.playSound(kSndBack);
+        sendAll(12);
+        setState(State::SlotList);
+        timer_ = 20;
+    } else if (in.pressed(kSelect)) {
+        ctx_.playSound(kSndSelect);
+        sendAll(17);
+        const int row = 25 + slotCursor_;
+        if (has_[static_cast<std::size_t>(row)]) vm_[static_cast<std::size_t>(row)].interrupt(16);
+        setState(State::ReplayName);
+    }
+}
+
+void ResultScreen::moveKey(const MenuInput& in) {
+    auto step = [&](int delta, bool inRow) {
+        for (int guard = 0; guard < kKeys; ++guard) {
+            if (inRow) {
+                const int row = keyCursor_ / 16, col = wrap(keyCursor_ % 16 + delta, 16);
+                keyCursor_ = row * 16 + col;
+            } else {
+                keyCursor_ = wrap(keyCursor_ + delta, kKeys);
+            }
+            if (keyCursor_ != kKeySpace) break;
+        }
+        ctx_.playSound(kSndMove);
+    };
+    if (in.pressedOrRepeat(BtnUp)) step(-16, false);
+    else if (in.pressedOrRepeat(BtnDown)) step(16, false);
+    else if (in.pressedOrRepeat(BtnLeft)) step(-1, true);
+    else if (in.pressedOrRepeat(BtnRight)) step(1, true);
+}
+
+void ResultScreen::replayName(const MenuInput& in) {
+    if (timer_ < 1) return;
+    moveKey(in);
+    if (in.pressedOrRepeat(kSelect)) {
+        const int at = std::min(nameCursor_, 7);
+        if (keyCursor_ == kKeyEnd) {
+            // END: the file is written under this name, which becomes the last name.
+            const std::string path =
+                ctx_.replayDir.empty() ? std::string() : (std::filesystem::path(ctx_.replayDir) / std::format("th7_{:02d}.rpy", slotCursor_ + 1)).string();
+            const std::string name(name_.data(), 8);
+            saved_ = ctx_.saveReplay ? ctx_.saveReplay(path, name) : false;
+            std::memcpy(lastName_.data(), name_.data(), 8);
+            lastName_[8] = 0;
+            sendAll(2);
+            setState(State::Leave);
+            // [QUIRK] END also falls into the cursor advance and the select sound.
+            if (nameCursor_ < 8) ++nameCursor_;
+            ctx_.playSound(kSndSelect);
+            return;
+        }
+        name_[static_cast<std::size_t>(at)] = keyCursor_ == kKeySp ? ' ' : kKeyTable[keyCursor_];
+        if (nameCursor_ < 8 && ++nameCursor_ == 8) keyCursor_ = kKeyEnd;
+        ctx_.playSound(kSndSelect);
+    }
+    if (in.pressedOrRepeat(kReturn) && nameCursor_ > 0) {
+        name_[static_cast<std::size_t>(std::min(nameCursor_, 7))] = ' ';
+        --nameCursor_;
+        name_[static_cast<std::size_t>(nameCursor_)] = ' ';
+        ctx_.playSound(kSndBack);
+    }
+    if (in.pressed(BtnMenu)) {
+        sendAll(12);
+        setState(State::SlotList);
+        timer_ = 20;
+    }
+}
+
+void ResultScreen::drawSlots() {
+    const GameState& g = ctx_.lastGame;
+    const bool naming = state_ == State::ReplayName;
+    if (has_[24]) ascii_.add(vm_[24].position.x, vm_[24].position.y, "No.   Name     Date   Player  Score", 0xFFFFFFFFu);
+    for (int i = 0; i < 15; ++i) {
+        const auto k = static_cast<std::size_t>(25 + i);
+        if (!has_[k]) continue;
+        const AnmVm& at = vm_[k];
+        const Slot& s = slots_[static_cast<std::size_t>(i)];
+        const std::uint32_t color = i == slotCursor_ ? 0xFFFF8080u : 0xFF808080u;
+        std::string line;
+        if (naming) {
+            line = std::format("No.{:02d} {:<8} {:<5} {} {:9d}0", i + 1, std::string(name_.data(), 8), newDate_, shotName7(g.shotIndex), g.guiScore);
+        } else if (s.filled) {
+            line = std::format("No.{:02d} {:<8} {:<5} {} {:9d}0", i + 1, s.name, s.date, shotName7(s.shot), s.score);
+        } else {
+            line = std::format("No.{:02d} -------- --/-- ------- ----------", i + 1);
+        }
+        ascii_.add(at.position.x, at.position.y, line, color);
+        if (naming && (timer_ / 8) % 2 == 0) ascii_.add(at.position.x + 14.0f * static_cast<float>(6 + std::min(nameCursor_, 7)), at.position.y + 2.0f, "_", color);
     }
 }
 
@@ -667,7 +864,8 @@ void ResultScreen::draw(SpriteSink& sink) {
         default: break;
     }
     if (state_ == State::NameEntry && timer_ >= 0 && rank_ >= 0) drawGrid();
-    if (state_ == State::Leave && promptNote_) ascii_.add(48.0f, 440.0f, "Replays are not saved yet.", 0xFFC0C0C0u);
+    if (state_ == State::SlotList || state_ == State::Overwrite || state_ == State::ReplayName) drawSlots();
+    if (state_ == State::ReplayName) drawGrid();
     ascii_.draw(sink, *ctx_.anm);
 }
 
