@@ -13,6 +13,7 @@
 #include "th07/Background.hpp"
 #include "th07/Bullets.hpp"
 #include "th07/Effects.hpp"
+#include "th07/Enemies.hpp"
 #include "th07/Player.hpp"
 #include "th07/World.hpp"
 
@@ -78,9 +79,12 @@ class Gameplay {
     const GameState& state() const { return state_; }
     GameState& state() { return state_; }
     const Player& player() const { return *player_; }
+    const EnemyManager& enemies() const { return *enemies_; }
     std::uint16_t stageSeed() const { return stageSeed_; }
-    // Developer aid until the enemies are ported: test patterns and items every second.
+    // Developer aid: test patterns and items every second (on top of the stage's enemies).
     void setTestPatterns(bool on) { testPatterns_ = on; }
+    // The GUI and dialogue (owned by the host; may stay null).
+    void setGui(StageGui* gui) { gui_ = world_.gui = gui; }
 
   private:
     bool setUpStage(bool fresh, std::string* error);
@@ -94,6 +98,7 @@ class Gameplay {
     std::unique_ptr<Player> player_;
     Effects effects_;
     std::unique_ptr<BulletManager> bullets_ = std::make_unique<BulletManager>();
+    std::unique_ptr<EnemyManager> enemies_ = std::make_unique<EnemyManager>();
     Background background_;
     ScreenShake shake_;
     AnmDrawState drawState_;
@@ -101,6 +106,7 @@ class Gameplay {
     bool running_ = false;
     bool etamaLoaded_ = false;
     bool testPatterns_ = false;
+    StageGui* gui_ = nullptr;
 };
 
 }  // namespace touhou::th07
