@@ -13,6 +13,7 @@
 #include "th07/Background.hpp"
 #include "th07/Bullets.hpp"
 #include "th07/Effects.hpp"
+#include "th07/Enemies.hpp"
 #include "th07/Gui.hpp"
 #include "th07/InGameMenu.hpp"
 #include "th07/Player.hpp"
@@ -90,8 +91,9 @@ class Gameplay {
     const GameState& state() const { return state_; }
     GameState& state() { return state_; }
     const Player& player() const { return *player_; }
+    const EnemyManager& enemies() const { return *enemies_; }
     std::uint16_t stageSeed() const { return stageSeed_; }
-    // Developer aid until the enemies are ported: test patterns and items every second.
+    // Developer aid: test patterns and items every second (on top of the stage's enemies).
     void setTestPatterns(bool on) { testPatterns_ = on; }
 
   private:
@@ -106,6 +108,7 @@ class Gameplay {
     std::unique_ptr<Player> player_;
     Effects effects_;
     std::unique_ptr<BulletManager> bullets_ = std::make_unique<BulletManager>();
+    std::unique_ptr<EnemyManager> enemies_ = std::make_unique<EnemyManager>();
     Background background_;
     ScreenShake shake_;
     std::unique_ptr<Gui> gui_ = std::make_unique<Gui>();

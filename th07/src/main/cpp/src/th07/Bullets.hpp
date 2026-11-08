@@ -118,6 +118,15 @@ class BulletManager final : public BulletField, public ItemField {
     int lastLiveCount() const { return liveCount_; }
     Bullet& bullet(int i) { return bullets_[static_cast<std::size_t>(i)]; }
     Laser& laser(int i) { return lasers_[static_cast<std::size_t>(i)]; }
+    // The pool slot of a laser spawnLaser returned; -1 for the inert record of a full pool.
+    int laserIndex(const Laser* l) const {
+        return l >= lasers_.data() && l < lasers_.data() + kLasers ? static_cast<int>(l - lasers_.data()) : -1;
+    }
+    // ECL ex routines: free a bullet as the manager does (state and timers only), and give a
+    // bullet another type's template block (VMs, hit size, bucket, height) with its colour
+    // re-applied.
+    void freeBullet(int i);
+    void retypeBullet(const World& w, int i, int type);
 
     // BulletField (the player's view).
     void clearWithoutItems() override { clearAll(*world_, 0); }

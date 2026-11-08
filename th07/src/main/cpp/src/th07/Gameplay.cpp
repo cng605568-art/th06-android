@@ -56,6 +56,7 @@ bool Gameplay::start(const Resources& res, const Setup& setup, std::string* erro
     world_.bullets = bullets_.get();
     world_.bulletManager = bullets_.get();
     world_.items = bullets_.get();
+    world_.enemies = enemies_.get();
     world_.gui = gui_.get();
     world_.popups = gui_.get();
     world_.onMusic = [this](int track) {
@@ -64,6 +65,8 @@ bool Gameplay::start(const Resources& res, const Setup& setup, std::string* erro
     world_.onMusicFade = [this](float seconds) {
         if (res_.music) res_.music->fadeOut(seconds);
     };
+    world_.onDialogueStart = [this]() { enemies_->removeAll(); };
+    enemies_->setMusic(res.music);
     return setUpStage(true, error);
 }
 
@@ -97,6 +100,7 @@ bool Gameplay::loadEffectFiles(std::string* error) {
 
 void Gameplay::releaseStageFiles() {
     background_.release(*res_.anm);
+    enemies_->release(*res_.anm);
     gui_->stageEnd(world_);
     for (int slot : {17, 18, 19, 20}) res_.anm->release(slot);
 }
@@ -105,6 +109,7 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
     GameState& g = state_;
     ZunRng& rng = *res_.rng;
     const World& w = world_;
+    g_timing.speed = 1.0f;  // the force-integer flag is never reset
     if (fresh) {
         rng.u32InRange(65535);  // a dummy allocation size
         // The anti-tamper canaries: the cherry base first, then 29 more values.
@@ -161,6 +166,8 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
     if (!background_.load(*res_.vfs, *res_.textures, *res_.anm, rng, g.stage, error)) return false;
     background_.onWeatherShift = nullptr;
     bullets_->stageStart(w);
+    // The enemy manager (stgNenm.anm, two RNG draws), then the stage's ECL.
+    if (!enemies_->stageStart(w, *res_.vfs, *res_.textures, g.stage, error)) return false;
     effects_.reset();
     if (!loadEffectFiles(error)) return false;
     shake_.clear();
@@ -249,6 +256,7 @@ void Gameplay::tick(std::uint16_t input) {
         menu_.openContinue(world_, 3);
         if (res_.music) res_.music->pause();
     }
+    enemies_->update(world_);
     if (testPatterns_ && g.stageFrame % 60 == 30) {
         const int k = static_cast<int>(g.stageFrame / 60) % 11;
         Shooter s;
@@ -278,7 +286,9 @@ void Gameplay::draw(SpriteSink& sink) {
     if (!running_) return;
     background_.drawHigh(sink, drawState_);
     background_.drawLow(sink, drawState_);
+    enemies_->drawLow(sink, drawState_);
     player_->drawLow(sink, drawState_);
+    enemies_->drawHigh(sink, drawState_);
     player_->drawHigh(sink, drawState_);
     effects_.draw(sink, drawState_);
     bullets_->draw(sink, drawState_);

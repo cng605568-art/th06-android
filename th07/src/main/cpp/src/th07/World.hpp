@@ -23,6 +23,7 @@ class AnmLibrary;
 class Background;
 class BulletManager;
 class Effects;
+class EnemyManager;
 class Player;
 class SoundPlayer;
 struct ExeTables;
@@ -188,6 +189,7 @@ struct World {
     Background* background = nullptr;
     BulletField* bullets = nullptr;
     BulletManager* bulletManager = nullptr;  // the concrete manager (ECL)
+    EnemyManager* enemies = nullptr;
     ItemField* items = nullptr;
     PopupSink* popups = nullptr;
     ShakeSink* shakes = nullptr;

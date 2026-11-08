@@ -1,5 +1,6 @@
 // Host tests for Perfect Cherry Blossom's game code (th07_game) and the engine pieces it
-// added: the PBG4 archive, thbgm.dat music, the version file. Synthetic data only; with
+// added: the PBG4 archive, thbgm.dat music, the version file, the stage systems (ANM,
+// backgrounds, the player, ECL scripts and enemies). Synthetic data only; with
 // TH07_TEST_DUMP=<dir> the synthetic th07.dat and thbgm.dat are also written there, to run
 // the desktop build on.
 
@@ -22,6 +23,10 @@
 #include "th07/Anm.hpp"
 #include "th07/Background.hpp"
 #include "th07/Bgm.hpp"
+#include "th07/Bullets.hpp"
+#include "th07/Ecl.hpp"
+#include "th07/Effects.hpp"
+#include "th07/Enemies.hpp"
 #include "th07/ExeTables.hpp"
 #include "th07/GameConfig.hpp"
 #include "th07/Player.hpp"
@@ -991,6 +996,695 @@ static void testGameState() {
     CHECK(g.lives == 8.0f && g.extendsGranted == 2 && g.nextExtend == 200 && rng.generations() - before == 4);
 }
 
+// ---- ECL and enemies -------------------------------------------------------------------------
+
+namespace {
+
+// One ECL instruction: time, opcode, argument words, variable mask, difficulty mask.
+struct EIns {
+    std::int32_t time;
+    std::int16_t op;
+    std::vector<std::uint32_t> args;
+    std::uint16_t mask = 0;
+    std::uint8_t diff = 0xFF;
+};
+// One timeline record.
+struct TRec {
+    std::int16_t time, arg0, op;
+    float x = 0, y = 0, z = 0;
+    std::int32_t life = 0, item = 0, score = 0;
+};
+std::uint32_t fw(float f) { return fbits(f); }
+std::uint32_t iw(std::int32_t i) { return static_cast<std::uint32_t>(i); }
+void set16(Bytes& b, std::size_t at, std::uint16_t v) {
+    b[at] = static_cast<std::uint8_t>(v);
+    b[at + 1] = static_cast<std::uint8_t>(v >> 8);
+}
+
+// An .ecl file: header, the subs (each closed by the time -1 / opcode -1 marker), then the
+// timelines (each closed by a record of time -1).
+Bytes eclFile(const std::vector<std::vector<EIns>>& subs, const std::vector<std::vector<TRec>>& timelines) {
+    Bytes b(0x44 + 4 * subs.size(), 0);
+    set16(b, 0, static_cast<std::uint16_t>(subs.size()));
+    set16(b, 2, static_cast<std::uint16_t>(timelines.size()));
+    for (std::size_t s = 0; s < subs.size(); ++s) {
+        set32(b, 0x44 + 4 * s, static_cast<std::uint32_t>(b.size()));
+        for (const EIns& i : subs[s]) {
+            put32(b, static_cast<std::uint32_t>(i.time));
+            put16(b, static_cast<std::uint16_t>(i.op));
+            put16(b, static_cast<std::uint16_t>(12 + 4 * i.args.size()));
+            b.push_back(0);
+            b.push_back(i.diff);
+            put16(b, i.mask);
+            for (std::uint32_t a : i.args) put32(b, a);
+        }
+        put32(b, 0xFFFFFFFFu);
+        put16(b, 0xFFFF);
+        put16(b, 12);
+        b.push_back(0);
+        b.push_back(0xFF);
+        put16(b, 0xFF);
+    }
+    for (std::size_t t = 0; t < timelines.size(); ++t) {
+        set32(b, 4 + 4 * t, static_cast<std::uint32_t>(b.size()));
+        auto rec = [&](const TRec& r) {
+            put16(b, static_cast<std::uint16_t>(r.time));
+            put16(b, static_cast<std::uint16_t>(r.arg0));
+            put16(b, static_cast<std::uint16_t>(r.op));
+            put16(b, 32);
+            putF(b, r.x);
+            putF(b, r.y);
+            putF(b, r.z);
+            put32(b, static_cast<std::uint32_t>(r.life));
+            put32(b, static_cast<std::uint32_t>(r.item));
+            put32(b, static_cast<std::uint32_t>(r.score));
+        };
+        for (const TRec& r : timelines[t]) rec(r);
+        rec(TRec{-1, 0, 0});
+    }
+    return b;
+}
+
+struct RecordingItems final : ItemField {
+    struct Item {
+        Vec3f pos;
+        int type, state;
+    };
+    std::vector<Item> spawned;
+    void spawn(const Vec3f& pos, int type, int state) override { spawned.push_back({pos, type, state}); }
+    void collectAll() override {}
+    void stopHoming() override {}
+};
+
+struct RecordingGui final : StageGui {
+    struct Card {
+        int number, portrait;
+        std::string name;
+    };
+    std::vector<Card> cards;
+    int ends = 0;
+    std::vector<std::uint32_t> bonuses, spellBonuses;
+    bool wait = false;
+    std::vector<int> dialogues;
+    void startDialogue(int n) override { dialogues.push_back(n); }
+    bool dialogueWait() const override { return wait; }
+    void spellCardStart(int card, int portrait, const std::string& name) override { cards.push_back({card, portrait, name}); }
+    void spellCardEnd() override { ++ends; }
+    void bonus(std::uint32_t p) override { bonuses.push_back(p); }
+    void spellCardBonus(std::uint32_t p) override { spellBonuses.push_back(p); }
+};
+
+// A stage with a synthetic stg1enm.anm (sprite and script 0: a 16x16 sprite), the given ECL
+// as ecldata1.ecl, the synthetic th07.exe tables, and (optionally) a player that shoots
+// 3-damage shots straight up.
+struct EnemyWorld {
+    Vfs vfs;
+    TextureLibrary textures;
+    AnmLibrary lib;
+    ZunRng rng{0x1234};
+    GameState g;
+    World w;
+    ExeTables tables;
+    std::unique_ptr<Player> player = std::make_unique<Player>();
+    std::unique_ptr<BulletManager> bullets = std::make_unique<BulletManager>();
+    std::unique_ptr<EnemyManager> enemies = std::make_unique<EnemyManager>();
+    std::unique_ptr<Effects> effects = std::make_unique<Effects>();
+    RecordingItems items;
+    RecordingGui gui;
+    bool ok = false;
+
+    void frame(std::uint16_t input = 0) {
+        if (w.player) player->update(w, input);
+        enemies->update(w);
+    }
+};
+
+std::unique_ptr<EnemyWorld> enemyWorld(const Bytes& ecl, bool withPlayer, int difficulty = Normal) {
+    g_timing = Timing{};
+    g_eclGlobals = EclGlobals{};
+    auto ew = std::make_unique<EnemyWorld>();
+    EntryDef enm;
+    enm.sprites = {{0, 0, 0, 16, 16}};
+    enm.scripts = {{0, {{3, 0, {0}}, {20, 1, {}}}}};
+    EntryDef ply;
+    ply.sprites = {{0, 0, 0, 8, 8}};
+    for (int id : {0, 1, 2, 3, 4, 64, 128, 129}) ply.scripts.push_back({id, {{3, 0, {0}}, {20, 1, {}}}});
+    // etama.anm section 0: 16 bullet colours (8x8) and the pellet's five scripts.
+    EntryDef etama;
+    etama.width = etama.height = 128;
+    for (int c = 0; c < 16; ++c) etama.sprites.push_back({c, static_cast<float>(8 * c), 0, 8, 8});
+    for (int id : {0, 15, 18, 19, 20}) etama.scripts.push_back({id, {{3, 0, {0}}, {20, 1, {}}}});
+    std::string err;
+    ew->vfs.mount(openArchive("th07.dat",
+                              mem(pbg4({{"stg1enm.anm", anmFile({enm})},
+                                        {"etama.anm", anmFile({etama})},
+                                        {"ecldata1.ecl", ecl},
+                                        {"player00.anm", anmFile({ply})},
+                                        {"ply00a.sht", shotFile(4.0f, 3.0f, 8)},
+                                        {"ply00as.sht", shotFile(2.0f, 1.5f, 8)}})),
+                              &err));
+    if (!loadExeTables(syntheticExe(), ew->tables, &err, false)) return ew;
+    GameState& g = ew->g;
+    g.setDifficulty(difficulty);
+    g.stage = 1;
+    g.shotIndex = 0;
+    g.lives = 2;
+    g.bombs = 3;
+    World& w = ew->w;
+    w.state = &g;
+    w.rng = &ew->rng;
+    w.anm = &ew->lib;
+    w.tables = &ew->tables;
+    w.items = &ew->items;
+    w.gui = &ew->gui;
+    w.bullets = ew->bullets.get();
+    w.bulletManager = ew->bullets.get();
+    w.enemies = ew->enemies.get();
+    w.effects = ew->effects.get();
+    ew->effects->reset();
+    if (withPlayer) {
+        w.player = ew->player.get();
+        if (!ew->player->load(ew->vfs, ew->textures, ew->lib, 0, true, &err)) return ew;
+        ew->player->stageStart(w);
+    }
+    if (!ew->lib.load(ew->vfs, ew->textures, "data/etama.anm", 11, 0x200, &err)) return ew;
+    ew->bullets->stageStart(w);
+    if (!ew->enemies->stageStart(w, ew->vfs, ew->textures, 1, &err)) {
+        std::fprintf(stderr, "  %s\n", err.c_str());
+        return ew;
+    }
+    ew->ok = true;
+    return ew;
+}
+
+std::int32_t wordAt(const EclFile& f, std::uint32_t off) { return eclI32(f.at(off)); }
+
+}  // namespace
+
+static void testEclFile() {
+    const Bytes ecl = eclFile({{{0, 4, {iw(10000), 7}, 1}}, {{5, 0, {}}}}, {{TRec{0, 1, 0, 1, 2, 3}}});
+    EclFile f;
+    std::string err;
+    CHECK(f.load(ecl, &err));
+    CHECK(f.subCount() == 2 && f.timelineCount() == 1);
+    CHECK(f.subOffset(0) == 0x44 + 8 && f.subOffset(1) == 0x44 + 8 + 20 + 12);
+    CHECK(eclI16(f.at(f.subOffset(0)) + 4) == 4 && eclU16(f.at(f.subOffset(0)) + 6) == 20 && f.validInstruction(f.subOffset(0)));
+    CHECK(eclI32(f.at(f.subOffset(1))) == 5 && f.validInstruction(f.subOffset(1)));
+    CHECK(eclI16(f.at(f.timelineOffset(0)) + 4) == 0 && eclF32(f.at(f.timelineOffset(0)) + 8) == 1.0f);
+    CHECK(!f.validInstruction(f.size() - 4));
+    // Header and offset validation.
+    CHECK(!f.load(Bytes(0x20, 0), &err) && !f.loaded());
+    Bytes bad = ecl;
+    set32(bad, 0x44, static_cast<std::uint32_t>(ecl.size()));
+    CHECK(!f.load(bad, &err));
+    bad = ecl;
+    set16(bad, 2, 17);
+    CHECK(!f.load(bad, &err));
+    bad = ecl;
+    set32(bad, 4, static_cast<std::uint32_t>(ecl.size() - 4));
+    CHECK(!f.load(bad, &err));
+    // x86 conversions.
+    CHECK(x86ToInt(-2.9f) == -2 && x86ToInt(2147483648.0f) == INT32_MIN && x86ToInt(std::nanf("")) == INT32_MIN);
+    CHECK(x86ToInt(-2147483648.0f) == INT32_MIN && x86ToInt(1e10f) == INT32_MIN);
+    CHECK(x86ToU32(3000000000.0f) == 3000000000u && x86ToU32(-1.0f) == 0xFFFFFFFFu && x86ToU32(std::nanf("")) == 0);
+    CHECK(eclEase(1, 0.5f) == 0.25f && eclEase(4, 0.5f) == 0.75f && eclEase(9, 0.3f) == 0.3f);
+}
+
+static void testEclArguments() {
+    const float randomVar = 10004.7f;  // truncates to 10004 (float A[0]): float-side ids are floats
+    const Bytes ecl = eclFile(
+        {
+            // Sub 0: variables, literals, unknown ids, self-modifying writes.
+            {
+                {0, 4, {iw(10000), 7}, 0x1},                   // int A[0] = 7
+                {0, 4, {123, 42}},                             // literal destination: writes the script word
+                {0, 5, {fw(randomVar), fw(2.5f)}, 0x1},        // float A[0] = 2.5
+                {0, 4, {iw(10001), iw(10057)}, 0x3},           // int read of 10057 returns the id
+                {0, 5, {fw(10005.0f), fw(99999.0f)}, 0x3},     // unknown float id: the word itself
+                {0, 12, {iw(10002), iw(10000), 5}, 0x3},       // int A[2] = A[0] + 5
+                {0, 17, {55}},                                 // a literal increments itself
+                {0, 5, {fw(10006.0f), fw(10018.0f)}, 0x3},     // float A[2] = position x
+                {0, 4, {iw(10003), iw(10000)}, 0x1},           // mask bit 1 clear: the literal 10000
+                {0, 5, {fw(10050.0f), fw(3.0f)}, 0x1},         // writable enemy field (orbit centre x)
+            },
+            // Sub 1: a literal loop counter counts itself down inside the script.
+            {
+                {0, 4, {iw(10000), 0}, 0x1},
+                {1, 17, {iw(10000)}, 0x1},
+                {1, 3, {1, iw(-16), 3}},
+            },
+        },
+        {});
+    auto ew = enemyWorld(ecl, false);
+    CHECK(ew->ok);
+    if (!ew->ok) return;
+    EnemyManager& m = *ew->enemies;
+    const std::uint32_t sub0 = m.ecl().subOffset(0);
+    Enemy& a = m.spawn(0, {100, 50, 0}, 10, 0, 0, false);
+    CHECK(a.active && a.life == 10);
+    CHECK(a.ctx.args.intA[0] == 7 && a.ctx.args.floatA[0] == 2.5f && a.ctx.args.intA[1] == 10057);
+    CHECK(a.ctx.args.floatA[1] == 99999.0f && a.ctx.args.intA[2] == 12 && a.ctx.args.floatA[2] == 100.0f);
+    CHECK(a.ctx.args.intA[3] == 10000 && a.moveOrigin.x == 3.0f);
+    CHECK(wordAt(m.ecl(), sub0 + 20 + 12) == 42);           // the second instruction's argument 0
+    CHECK(wordAt(m.ecl(), sub0 + 5 * 20 + 24 + 12) == 56);  // the increment's literal
+    // Variable reads and the writable maps.
+    CHECK(m.readInt(a, 10027) == 10 && m.readInt(a, 10018) == 100 && m.readInt(a, 99) == 99);
+    CHECK(m.readFloat(a, 10019.9f) == 50.0f && m.readFloat(a, 1.5f) == 1.5f);
+    CHECK(EnemyManager::intWritable(10016) && !EnemyManager::intWritable(10055) && !EnemyManager::intWritable(10018));
+    CHECK(EnemyManager::floatWritable(10021) && !EnemyManager::floatWritable(10024) && !EnemyManager::floatWritable(10000));
+    CHECK(m.writeInt(a, 10070, 300) && a.itemDrop == 44);  // a signed byte field
+    // Loops: the first run gets the full count, later runs find the counter used up.
+    Enemy& b = m.spawn(1, {0, 0, 0}, 1, 0, 0, false);
+    ew->frame();
+    CHECK(b.ctx.args.intA[0] == 3);
+    Enemy& c = m.spawn(1, {0, 0, 0}, 1, 0, 0, false);
+    ew->frame();
+    CHECK(c.ctx.args.intA[0] == 1 && wordAt(m.ecl(), m.ecl().subOffset(1) + 20 + 16 + 12 + 8) == -1);
+}
+
+static void testEclRandomVariables() {
+    const Bytes ecl = eclFile(
+        {
+            {{0, 4, {iw(10000), iw(10055)}, 0x3}},                // u32: 2 steps
+            {{0, 5, {fw(10004.0f), fw(10055.0f)}, 0x3}},          // float in [0, 1]: 2 steps
+            {{0, 4, {iw(10000), iw(10056)}, 0x3}},                // u32InRange(G'[0] = 0): no draw
+            {{0, 5, {fw(10004.0f), fw(10060.0f)}, 0x3}},          // random angle: 2 steps
+            {{0, 4, {iw(10000), iw(10060)}, 0x3}},                // the int read of 10060 is the id: no draw
+            {{0, 6, {iw(10000), 0}, 0x1}},                        // u32InRange(0): no draw
+            {{0, 8, {fw(10004.0f), fw(10.0f)}, 0x1}},             // floatInRange: 2 steps
+            {{0, 10, {iw(10000), 5}, 0x1}},                       // +-1: one u16 step
+            {{0, 117, {0, 1, iw(10055)}, 0x4}},                   // colour through the writable map: no draw
+        },
+        {});
+    auto ew = enemyWorld(ecl, false);
+    CHECK(ew->ok);
+    if (!ew->ok) return;
+    EnemyManager& m = *ew->enemies;
+    ZunRng& rng = ew->rng;
+    const int expect[] = {2, 2, 0, 2, 0, 0, 2, 1, 0};
+    bool counts = true;
+    for (int s = 0; s < 9; ++s) {
+        ZunRng ref = rng;
+        const std::uint32_t before = rng.generations();
+        Enemy& e = m.spawn(s, {0, 0, 0}, 1, 0, 0, false);
+        counts = counts && rng.generations() - before == static_cast<std::uint32_t>(expect[s]);
+        switch (s) {
+            case 0: CHECK(e.ctx.args.intA[0] == static_cast<std::int32_t>(ref.u32())); break;
+            case 1: CHECK(e.ctx.args.floatA[0] == ref.f32ZeroToOne()); break;
+            case 2: CHECK(e.ctx.args.intA[0] == 0); break;
+            case 3: CHECK(e.ctx.args.floatA[0] == ref.f32InRange(kZunTwoPi) - kZunPi); break;
+            case 4: CHECK(e.ctx.args.intA[0] == 10060); break;
+            case 7: CHECK(e.ctx.args.intA[0] == ((ref.u16() & 1) ? 5 : -5)); break;
+            default: break;
+        }
+        e.active = false;
+    }
+    CHECK(counts);
+    CHECK(ew->effects->normal(0).vm.color == 10055u);  // the literal colour word
+    // 10056 with bounds: u32InRange(G'[0]) + G'[1] and floatInRange(F'[0]) + F'[1].
+    Enemy& e = m.spawn(2, {0, 0, 0}, 1, 0, 0, false);
+    e.ctx.args.intG = {10, 1000, 0, 0};
+    e.ctx.args.floatG = {2.0f, 5.0f, 0, 0};
+    ZunRng ref = rng;
+    CHECK(m.readInt(e, 10056) == static_cast<std::int32_t>(ref.u32() % 10) + 1000);
+    CHECK(m.readFloat(e, 10056.0f) == ref.f32InRange(2.0f) + 5.0f);
+    CHECK(rng.generations() == ref.generations());
+}
+
+static void testEclTimelines() {
+    const Bytes ecl = eclFile(
+        {
+            {{0, 95, {0}}, {0, 47, {fw(0.0f), fw(1.0f), fw(0.0f)}}},  // sub 0: sprite, falls 1 px per frame
+            {{0, 95, {0}}, {0, 110, {77}}},                          // sub 1: sets its life at time 0
+        },
+        {{
+            TRec{3, 0, 0, 100, 50, 0, 30, 2, 500},
+            TRec{3, 0, 2, 200, 50, 0, 40, -1, 700},
+            TRec{4, 1, 0, 150, 60, 0, 30, 0, 0},
+            TRec{5, 0, 9},                         // wait for the dialogue
+            TRec{5, 0, 8},                         // dialogue 3 + character x 10
+            TRec{6, 0, 4, -999, 70, 0, 5, 0, 0},   // random x
+            TRec{7, 0, 0, 10, 10, 0, 5, 0, 0},     // skipped while a boss is present
+        }});
+    auto ew = enemyWorld(ecl, false);
+    CHECK(ew->ok);
+    if (!ew->ok) return;
+    EnemyManager& m = *ew->enemies;
+    const std::uint32_t start = ew->rng.generations();
+    for (int i = 0; i < 3; ++i) ew->frame();
+    CHECK(m.liveCount() == 0 && !m.enemy(0).active);
+    ew->frame();  // timeline clock 3: two spawns, each with its first step, then their loop step
+    const Enemy& a = m.enemy(0);
+    const Enemy& b = m.enemy(1);
+    CHECK(a.active && b.active && m.liveCount() == 2);
+    CHECK(a.pos.x == 100.0f && a.pos.y == 51.0f && a.life == 30 && a.maxLife == 30 && a.score == 500 && a.itemDrop == 2);
+    CHECK(b.mirror && b.itemDrop == -1 && b.score == 700 && b.life == 40);
+    ew->frame();
+    CHECK(m.enemy(2).active && m.enemy(2).life == 77 && m.enemy(2).maxLife == 77);  // the script's life wins
+    ew->gui.wait = true;
+    ew->frame();
+    ew->frame();
+    CHECK(ew->gui.dialogues.empty());
+    ew->gui.wait = false;
+    ew->frame();
+    CHECK(ew->gui.dialogues.size() == 1 && ew->gui.dialogues[0] == 0);
+    ZunRng ref = ew->rng;
+    ew->frame();
+    CHECK(m.enemy(3).active && m.enemy(3).pos.x == ref.f32InRange(368.0f) && m.enemy(3).pos.y == 71.0f);
+    ew->g.boss.present = true;
+    ew->frame();
+    CHECK(!m.enemy(4).active);
+    // The stage start draws the two random-drop counters (u16 steps), the counter first.
+    CHECK(start > 0 && m.dropCounter() < 3 && m.dropIndex() < 8);
+    EnemyManager other;
+    ZunRng ref2 = ew->rng;
+    std::string err;
+    CHECK(other.stageStartWith(ew->w, ecl, &err) && ew->rng.generations() - ref2.generations() == 2);
+    CHECK(other.dropCounter() == ref2.u16InRange(3) && other.dropIndex() == ref2.u16InRange(8));
+}
+
+static void testEclMovement() {
+    const Bytes ecl = eclFile(
+        {
+            {{0, 95, {0}}, {0, 55, {10, 0, fw(150.0f), fw(100.0f), fw(0.0f)}}},                     // interpolate
+            {{0, 95, {0}}, {0, 49, {fw(2.0f)}}, {0, 50, {fw(0.5f)}}},                              // polar + accel
+            {{0, 95, {0}}, {0, 56, {0, fw(192.0f), fw(224.0f), fw(0.0f), fw(0.0f), fw(0.0f), fw(50.0f), fw(0.0f)}}},
+            {{0, 95, {0}}, {0, 62, {fw(32.0f), fw(32.0f), fw(352.0f), fw(416.0f)}}, {0, 46, {fw(0.0f), fw(500.0f), fw(0.0f)}}},
+            {{0, 95, {0}}, {0, 55, {10, 4, fw(150.0f), fw(100.0f), fw(0.0f)}}},                     // ease-out
+            {{0, 95, {0}}, {0, 27, {fw(10018.0f), 4, 0, 0, fw(100.0f), fw(140.0f), 0, 0}}},         // interpolator on x
+        },
+        {});
+    auto ew = enemyWorld(ecl, false);
+    CHECK(ew->ok);
+    if (!ew->ok) return;
+    EnemyManager& m = *ew->enemies;
+    Enemy& in = m.spawn(0, {100, 100, 0}, 1, 0, 0, false);
+    Enemy& po = m.spawn(1, {100, 200, 0}, 1, 0, 0, false);
+    Enemy& orb = m.spawn(2, {0, 0, 0}, 1, 0, 0, false);
+    Enemy& cl = m.spawn(3, {0, 0, 0}, 1, 0, 0, false);
+    Enemy& ease = m.spawn(4, {100, 300, 0}, 1, 0, 0, false);
+    Enemy& ip = m.spawn(5, {100, 350, 0}, 1, 0, 0, false);
+    CHECK(in.vm.sprite != nullptr && in.moveMode == Enemy::Interpolate && in.moveDuration == 10);
+    CHECK(cl.pos.x == 32.0f && cl.pos.y == 416.0f);  // clamped to the bounds
+    ew->frame();
+    CHECK(in.pos.x == 110.0f && in.pos.y == 100.0f);  // 2 of 10 steps (the spawn step's velocity is replaced)
+    CHECK(po.pos.x == 103.0f && po.speed == 3.0f);
+    CHECK(orb.pos.x == 242.0f && orb.pos.y == 224.0f);
+    CHECK(ease.pos.x > 110.0f);
+    ew->frame();
+    CHECK(po.pos.x == 106.5f && ip.pos.x == 130.0f);
+    for (int i = 0; i < 10; ++i) ew->frame();
+    CHECK(in.pos.x == 150.0f && in.pos.y == 100.0f && in.moveMode == Enemy::Axis && in.velocity.x == 0.0f);
+    CHECK(ease.pos.x == 150.0f);
+    // The interpolator reached 140 on the 4th step; its last velocity is kept (axis mode).
+    CHECK(ip.pos.x == 230.0f && ip.velocity.x == 10.0f && ip.ctx.interps[0].routine == EclInterp::None);
+}
+
+static void testEclVmControl() {
+    const Bytes ecl = eclFile(
+        {
+            // Sub 0: call sub 1, then copy G'[0] (the caller's own copy, restored on return).
+            {{0, 41, {1}}, {0, 4, {iw(10001), iw(10029)}, 0x3}, {0, 45, {3}}, {0, 4, {iw(10002), 1}, 0x1}},
+            // Sub 1: the call refreshed G' from the globals.
+            {{0, 4, {iw(10000), iw(10029)}, 0x3}, {0, 4, {iw(10038), iw(10000)}, 0x3}, {0, 42, {}}},
+            // Sub 2: an interrupt into sub 3, which returns past the 109.
+            {{0, 108, {3, 1}}, {0, 109, {1}}, {0, 4, {iw(10001), 9}, 0x1}},
+            {{0, 4, {iw(10000), 5}, 0x1}, {0, 42, {}}},
+            // Sub 4: a difficulty-masked instruction (Lunatic only) and a jump.
+            {{0, 4, {iw(10000), 1}, 0x1, 0x08}, {0, 2, {5, 40}}, {0, 4, {iw(10001), 1}, 0x1}, {5, 4, {iw(10002), 1}, 0x1}},
+        },
+        {});
+    auto ew = enemyWorld(ecl, false);
+    CHECK(ew->ok);
+    if (!ew->ok) return;
+    EnemyManager& m = *ew->enemies;
+    g_eclGlobals.ints[0] = 5;
+    Enemy& a = m.spawn(0, {0, 0, 0}, 1, 0, 0, false);
+    CHECK(g_eclGlobals.ints[1] == 5);                           // the callee saw the refreshed copy
+    CHECK(a.ctx.args.intA[0] == 0 && a.ctx.args.intA[1] == 0);  // the caller's block came back
+    CHECK(a.depth == 0 && a.ctx.args.intA[2] == 0);
+    ew->frame();
+    ew->frame();
+    CHECK(a.ctx.args.intA[2] == 0);
+    ew->frame();
+    CHECK(a.ctx.args.intA[2] == 1);  // three frames after the wait
+    Enemy& b = m.spawn(2, {0, 0, 0}, 1, 0, 0, false);
+    CHECK(b.ctx.args.intA[0] == 0 && b.ctx.args.intA[1] == 9 && b.depth == 0);  // args restored on return
+    Enemy& c = m.spawn(4, {0, 0, 0}, 1, 0, 0, false);
+    CHECK(c.ctx.args.intA[0] == 0 && c.ctx.args.intA[1] == 0 && c.ctx.args.intA[2] == 1 && c.ctx.time.current == 6);
+    g_eclGlobals = EclGlobals{};
+}
+
+static void testEnemyDeathAndDamage() {
+    const Bytes ecl = eclFile(
+        {
+            {{0, 95, {0}}, {3, 4, {iw(10027), 0}, 0x1}},  // dies by script at time 3
+            {{0, 95, {0}}},                               // a target for the player's shots
+        },
+        {});
+    auto ew = enemyWorld(ecl, true);
+    CHECK(ew->ok);
+    if (!ew->ok) return;
+    EnemyManager& m = *ew->enemies;
+    GameState& g = ew->g;
+    Enemy& a = m.spawn(0, {100, 100, 0}, 5, ItemField::Bomb, 1000, false);
+    for (int i = 0; i < 4 && a.active; ++i) ew->frame();
+    CHECK(!a.active && g.score == 100 && (g.eventFlags & 0x20));
+    CHECK(ew->items.spawned.size() == 1 && ew->items.spawned[0].type == ItemField::Bomb && ew->items.spawned[0].state == 0);
+    CHECK(ew->items.spawned[0].pos.x == 100.0f);
+    // Random drops: every third death, from the table, the index wrapping at 32.
+    const std::uint16_t counter = m.dropCounter(), index = m.dropIndex();
+    ew->items.spawned.clear();
+    Enemy& r = m.spawn(0, {50, 50, 0}, 5, -1, 0, false);
+    for (int i = 0; i < 4 && r.active; ++i) ew->frame();
+    CHECK(m.dropCounter() == counter + 1);
+    if (counter % 3 == 0) {
+        CHECK(ew->items.spawned.size() == 1 && ew->items.spawned[0].type == ew->tables.dropCycle[index] && m.dropIndex() == index + 1);
+    } else {
+        CHECK(ew->items.spawned.empty() && m.dropIndex() == index);
+    }
+    // Shot damage: 3 per hit, Cherry +10 per hit (stage 1, unfocused), death and its drop.
+    ew->items.spawned.clear();
+    g.cherry = 0;
+    g.score = 0;
+    Enemy& t = m.spawn(1, {192, 300, 0}, 9, ItemField::Point, 300, false);
+    int frames = 0, hits = 0, lastLife = t.life;
+    while (t.active && frames < 120) {
+        ew->frame(BtnShoot);
+        if (t.life < lastLife) {
+            CHECK(lastLife - t.life == 3 && t.damageThisFrame == 3);
+            ++hits;
+            lastLife = t.life;
+        }
+        ++frames;
+    }
+    CHECK(!t.active && hits == 3 && g.cherry == 30 && g.score == 30);
+    CHECK(ew->items.spawned.size() == 1 && ew->items.spawned[0].type == ItemField::Point);
+}
+
+
+static void testEnemySpellCards() {
+    // The card name: "Test Card", XOR 0xAA over 48 bytes.
+    std::vector<std::uint32_t> card(13, 0xAAAAAAAAu);
+    card[0] = (5u << 16) | 2u;  // portrait 2, card 5
+    const std::string name = "Test Card";
+    for (std::size_t i = 0; i < name.size(); ++i) {
+        const auto shift = 8 * (i % 4);
+        card[1 + i / 4] = (card[1 + i / 4] & ~(0xFFu << shift)) | (static_cast<std::uint32_t>(name[i] ^ 0xAA) << shift);
+    }
+    const Bytes ecl = eclFile(
+        {
+            // Sub 0: a boss with a 120-frame card whose timeout runs sub 1.
+            {{0, 95, {0}}, {0, 99, {0}}, {0, 114, {120}}, {0, 115, {1}}, {0, 90, card}},
+            {{0, 91, {}}},
+            // Sub 2: a 600-frame card ended by the script at time 10.
+            {{0, 95, {0}}, {0, 99, {0}}, {0, 114, {600}}, {0, 90, card}, {10, 91, {}}},
+        },
+        {});
+    auto ew = enemyWorld(ecl, false);
+    CHECK(ew->ok);
+    if (!ew->ok) return;
+    EnemyManager& m = *ew->enemies;
+    GameState& g = ew->g;
+    Enemy& boss = m.spawn(0, {192, 100, 0}, 1000, 0, 0, false);
+    CHECK(boss.boss && m.bossSlot(0) == 0 && g.boss.present);
+    CHECK(g.spellCardActive && g.capturing && g.captureValue == 5000 && m.spellCard().drain == 5000 / 12);
+    CHECK(ew->gui.cards.size() == 1 && ew->gui.cards[0].number == 5 && ew->gui.cards[0].portrait == 2 && ew->gui.cards[0].name == name);
+    ew->frame();
+    CHECK(g.captureValue == 4990);  // 5000 - 1 x 416 / 60, rounded down to 10
+    g.cherry = 10000;
+    for (int i = 0; i < 119; ++i) ew->frame();
+    CHECK(g.spellCardActive && m.spellCard().active == 1 && g.boss.spellSeconds == 0);
+    ew->frame();  // the timer callback: timed out, Cherry -25 %, the timeout sub ends the card
+    CHECK(!g.capturing && g.captureValue == 0 && g.cherry == 7500);
+    CHECK(!g.spellCardActive && m.spellCard().active == 0 && ew->gui.ends == 1);
+    CHECK(ew->gui.spellBonuses.empty() && ew->gui.bonuses.empty() && g.spellsCaptured == 0);
+    // A captured card: capture value + graze bonus.
+    boss.active = false;
+    g.score = 0;
+    Enemy& b2 = m.spawn(2, {192, 100, 0}, 1000, 0, 0, false);
+    CHECK(b2.boss && g.spellCardActive && g.captureValue == 5000);
+    g.grazeBonus = 2500;
+    for (int i = 0; i < 10; ++i) ew->frame();
+    CHECK(!g.spellCardActive && ew->gui.ends == 2 && g.spellsCaptured == 1 && ew->gui.spellBonuses.size() == 1);
+    const std::uint32_t bonus = ew->gui.spellBonuses.empty() ? 0 : ew->gui.spellBonuses[0];
+    CHECK(bonus > 2500 && bonus % 10 == 0 && g.score == bonus / 10);
+}
+
+static void testEnemyCallbacks() {
+    const Bytes ecl = eclFile(
+        {
+            // 0: a boss with a life callback at 50 into sub 1.
+            {{0, 95, {0}}, {0, 99, {0}}, {0, 112, {50}}, {0, 113, {1}}},
+            {{0, 4, {iw(10000), 77}, 0x1}},
+            // 2: a plain enemy (killed by the callback).
+            {{0, 95, {0}}},
+            // 3: a boss with death type 3, no death effects.
+            {{0, 95, {0}}, {0, 99, {1}}, {0, 106, {3}}, {0, 98, {0xFF}}},
+            // 4: flies up and off the screen.
+            {{0, 95, {0}}, {0, 47, {fw(0.0f), fw(-10.0f), fw(0.0f)}}},
+            // 5: a periodic callback every 2 restarts into sub 6.
+            {{0, 144, {2, 6}}},
+            {{0, 17, {iw(10000)}, 0x1}, {0, 42, {}}},
+            // 7: a timer callback after 5 frames into sub 8 (an ordinary enemy).
+            {{0, 95, {0}}, {0, 114, {5}}, {0, 115, {8}}},
+            {{0, 4, {iw(10001), 1}, 0x1}},
+            // 9: death type 2 (items only, dies again every frame).
+            {{0, 95, {0}}, {0, 106, {2}}, {0, 98, {0xFF}}},
+            // 10: the game-speed routines (Youmu's slow-down) and its restore.
+            {{0, 121, {10, 2}}, {10, 121, {11, 0}}, {11, 121, {11, 3}}},
+        },
+        {});
+    auto ew = enemyWorld(ecl, false);
+    CHECK(ew->ok);
+    if (!ew->ok) return;
+    EnemyManager& m = *ew->enemies;
+    GameState& g = ew->g;
+    Enemy& boss = m.spawn(0, {100, 100, 0}, 100, 0, 0, false);
+    Enemy& minion = m.spawn(2, {200, 100, 0}, 30, 0, 100, false);
+    CHECK(boss.boss && !minion.boss && minion.active);
+    boss.life = 40;
+    ew->frame();  // the callback: life back to 50, its sub runs in the same frame, the minion dies
+    CHECK(boss.life == 50 && boss.lifeThresholds[0] == -1 && boss.ctx.args.intA[0] == 77 && boss.active);
+    CHECK(!minion.active && g.score == 10);
+    // Death type 3: the boss stays, cannot be damaged, and leaves the HUD.
+    Enemy& b3 = m.spawn(3, {150, 150, 0}, 10, 0, 0, false);
+    CHECK(g.boss.present && b3.bossId == 1 && b3.death1 == -1);
+    b3.life = 0;
+    g.eventFlags = 0;
+    ew->frame();
+    CHECK(b3.active && b3.life == 1 && !b3.damageable && b3.deathType == 0 && !g.boss.present && (g.eventFlags & 0x20));
+    // Off the screen after having been on it: despawned.
+    Enemy& up = m.spawn(4, {100, 60, 0}, 10, 0, 0, false);
+    int frames = 0;
+    while (up.active && frames < 30) {
+        ew->frame();
+        ++frames;
+    }
+    CHECK(!up.active && frames == 7);  // y 50, 40, ..., -10; off once y + 8 < 0
+    // The periodic sub keeps its own locals; every restart ticks its counter (its own return
+    // too), so with interval 2 it runs on every frame after the first [QUIRK].
+    Enemy& per = m.spawn(5, {0, 0, 0}, 1, 0, 0, false);
+    for (int i = 0; i < 4; ++i) ew->frame();
+    CHECK(per.periodicArgs.intA[0] == 3 && per.ctx.args.intA[0] == 0 && per.depth == 0);
+    // A timer callback on an ordinary enemy also costs 25 % of the Cherry [QUIRK].
+    g.cherry = 1000;
+    Enemy& timed = m.spawn(7, {300, 100, 0}, 10, 0, 0, false);
+    for (int i = 0; i < 5; ++i) ew->frame();
+    CHECK(timed.ctx.args.intA[1] == 0 && g.cherry == 1000);
+    ew->frame();
+    CHECK(timed.ctx.args.intA[1] == 1 && g.cherry == 750 && timed.timerThreshold == -1);
+    // Death type 2 drops its item every frame until the script intervenes [QUIRK].
+    ew->items.spawned.clear();
+    Enemy& d2 = m.spawn(9, {250, 250, 0}, 10, ItemField::Point, 0, false);
+    d2.life = 0;
+    ew->frame();
+    ew->frame();
+    // (The timer callback's kill-all also zeroed the other non-boss enemies' life: the
+    // periodic one dies now and drops its type-0 item.)
+    int points = 0;
+    for (const auto& it : ew->items.spawned) points += it.type == ItemField::Point && it.pos.x == 250.0f;
+    CHECK(d2.active && points == 2 && !per.active);
+    // Ex routines 10 and 11: the game runs at 1/2 speed, frame timers tick fractionally; the
+    // restore's own argument (3) sets the sticky force-integer flag.
+    Enemy& slow = m.spawn(10, {0, 0, 0}, 1, 0, 0, false);
+    CHECK(g_timing.speed == 0.5f && slow.ctx.time.current == 0 && slow.ctx.time.sub == 0.5f);
+    for (int i = 0; i < 19; ++i) ew->frame();
+    CHECK(slow.ctx.time.current == 10 && g_timing.speed == 0.5f);
+    ew->frame();
+    CHECK(g_timing.speed == 1.0f && !g_timing.forceInteger);
+    ew->frame();
+    CHECK(g_timing.speed == 1.0f && g_timing.forceInteger);
+    g_timing = Timing{};
+}
+
+static void testEnemyExRoutines() {
+    const Bytes ecl = eclFile(
+        {
+            // Four colour-2 pellets whose command chain already moved past slot 0 (a spawn delay
+            // chains into slot 1 at once), then ex routine 1 one frame later.
+            {{0, 95, {0}},
+             {0, 79, {0, 0x2000, 0, 5, 0, 0, 0}},
+             {0, 65, {(2u << 16) | 0u, 4, 1, fw(1.0f), fw(1.0f), fw(0.0f), fw(0.3f), 0x2000}},
+             {1, 121, {1, 0}},
+             {2, 121, {18, 0}}},
+        },
+        {});
+    auto ew = enemyWorld(ecl, true);
+    CHECK(ew->ok);
+    if (!ew->ok) return;
+    EnemyManager& m = *ew->enemies;
+    BulletManager& bm = *ew->bullets;
+    m.spawn(0, {192, 100, 0}, 10, 0, 0, false);
+    int fired = 0;
+    for (int i = 0; i < BulletManager::kBullets; ++i) {
+        const auto& b = bm.bullet(i);
+        if (b.state == 0) continue;
+        ++fired;
+        CHECK(b.vm.sprite != nullptr && b.color == 2 && b.cursor == 1 && b.tag == 0);
+    }
+    CHECK(fired == 4);
+    const std::uint32_t before = ew->rng.generations();
+    ew->enemies->update(ew->w);  // ex routine 1: one float draw per matching bullet
+    CHECK(ew->rng.generations() - before == 8);
+    bm.update(ew->w);
+    int turning = 0;
+    for (int i = 0; i < BulletManager::kBullets; ++i) {
+        const auto& b = bm.bullet(i);
+        if (b.state == 0) continue;
+        if ((b.active & 0x20) && b.tag == 1 && b.speed == 0.3f + 1.0f / 60.0f && b.cursor == 1) ++turning;
+    }
+    CHECK(turning == 4);
+}
+
+static void testEnemyBullets() {
+    const Bytes ecl = eclFile(
+        {
+            // A fan of 3 bullets, speed 2: rank-adjusted outside spell cards.
+            {{0, 95, {0}}, {0, 65, {0, 3, 1, fw(2.0f), fw(1.0f), fw(0.0f), fw(0.1f), 0}}},
+            // The same with count and speed from variables (mask bits 2 and 4).
+            {{0, 95, {0}}, {0, 4, {iw(10000), 2}, 0x1}, {0, 65, {0, iw(10000), 1, fw(10004.0f), fw(1.0f), fw(0.0f), fw(0.1f), 0}, 0x14}},
+        },
+        {});
+    auto ew = enemyWorld(ecl, true);  // patterns aim at the player
+    CHECK(ew->ok);
+    if (!ew->ok) return;
+    EnemyManager& m = *ew->enemies;
+    ew->g.rank = 32;  // speed + 32 x 0.3 / 32 - 0.15 = +0.15
+    Enemy& e = m.spawn(0, {192, 100, 0}, 10, 0, 0, false);
+    int live = 0;
+    float speed = 0;
+    for (int i = 0; i < BulletManager::kBullets; ++i) {
+        if (ew->bullets->bullet(i).state != 0) {
+            ++live;
+            speed = ew->bullets->bullet(i).speed;
+        }
+    }
+    CHECK(live == 3 && speed == 2.0f + 0.15f && e.shooter.count1 == 3 && e.shooter.aimMode == 1);
+    Enemy& f = m.spawn(1, {192, 100, 0}, 10, 0, 0, false);
+    CHECK(f.shooter.count1 == 2 && f.shooter.speed1 == 0.0f);  // speed 0 (variable, unset) is not adjusted
+}
+
 static void testPbg4() {
     const Bytes ver = text("0100a 123 456\n0100b 466944 -1234567\n");
     const Bytes stage = text("STD file bytes");
@@ -1188,6 +1882,17 @@ int main() {
         {"stage backgrounds: .std, script, camera, culling", testBackground},
         {"game state: extends, rank, score roll, cherry", testGameState},
         {"player: .sht, movement, shots, death, deathbomb", testPlayer},
+        {"ECL: file, header and offsets, x86 conversions", testEclFile},
+        {"ECL: arguments, variables, self-modifying writes", testEclArguments},
+        {"ECL: random variables and their RNG steps", testEclRandomVariables},
+        {"ECL: timelines spawn enemies", testEclTimelines},
+        {"ECL: movement modes, bounds, interpolators", testEclMovement},
+        {"ECL: calls, returns, interrupts, waits, jumps", testEclVmControl},
+        {"enemies: death, item drops, shot damage, Cherry", testEnemyDeathAndDamage},
+        {"enemies: spell cards, timeout, capture", testEnemySpellCards},
+        {"enemies: callbacks, death types, despawn, game speed", testEnemyCallbacks},
+        {"enemies: bullet patterns and rank", testEnemyBullets},
+        {"enemies: ex routines on the bullet pool", testEnemyExRoutines},
     };
     for (const Test& t : tests) {
         const int before = g_failures;

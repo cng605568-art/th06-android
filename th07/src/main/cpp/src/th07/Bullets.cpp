@@ -489,6 +489,25 @@ void BulletManager::radiusClear(const World& w, const Vec3f& c, float r) {
     }
 }
 
+void BulletManager::freeBullet(int i) {
+    Bullet& b = bullets_[static_cast<std::size_t>(i)];
+    b.state = 0;
+    b.timerA.reset();
+    b.timerB.reset();
+}
+
+void BulletManager::retypeBullet(const World& w, int i, int type) {
+    Bullet& b = bullets_[static_cast<std::size_t>(i)];
+    const Template& t = templates_[static_cast<std::size_t>(std::clamp(type, 0, 10))];
+    b.vm = t.vm;
+    b.cancelVm = t.cancel;
+    b.hitSize = t.hitSize;
+    b.bucket = t.bucket;
+    b.height = t.height;
+    setSprite(b.vm, *w.anm, t.vm.activeSprite + b.color);
+    b.cancelVm.selectSprite(*w.anm, t.cancel.activeSprite + remap(b.vm, b.color));
+}
+
 void BulletManager::freeze() {
     if (!world_) return;
     for (Bullet& b : bullets_) {
