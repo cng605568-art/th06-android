@@ -42,6 +42,7 @@ add_library(thengine_core STATIC
   ${THENGINE_SRC}/io/Archive.cpp
   ${THENGINE_SRC}/io/Lzss.cpp
   ${THENGINE_SRC}/io/MappedFile.cpp
+  ${THENGINE_SRC}/io/PeImage.cpp
   ${THENGINE_SRC}/io/Pbg3Archive.cpp
   ${THENGINE_SRC}/io/Pbg4Archive.cpp
   ${THENGINE_SRC}/io/PkglArchive.cpp
