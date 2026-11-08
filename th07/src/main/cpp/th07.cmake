@@ -2,7 +2,8 @@
 # engine/native/engine.cmake first). Used by the app's native build and by the host unit
 # tests. It grows system by system as the clean-room specs are implemented.
 #   th07_game   the ANM animation system, music (thbgm.dat + thbgm.fmt), sound effects, the
-#               tables read from th07.exe, the version file. No SDL.
+#               tables read from th07.exe, the version file, the stage systems (backgrounds,
+#               player, bullets, effects, ECL and enemies). No SDL.
 # Th07Game.cpp (the game as the host runs it) and main.cpp are compiled into the app.
 
 set(TH07_SRC "${CMAKE_CURRENT_LIST_DIR}/src")
@@ -13,7 +14,10 @@ add_library(th07_game STATIC
   ${TH07_SRC}/th07/Bgm.cpp
   ${TH07_SRC}/th07/Bombs.cpp
   ${TH07_SRC}/th07/Bullets.cpp
+  ${TH07_SRC}/th07/Ecl.cpp
+  ${TH07_SRC}/th07/EclEx.cpp
   ${TH07_SRC}/th07/Effects.cpp
+  ${TH07_SRC}/th07/Enemies.cpp
   ${TH07_SRC}/th07/ExeTables.cpp
   ${TH07_SRC}/th07/GameConfig.cpp
   ${TH07_SRC}/th07/Gameplay.cpp
