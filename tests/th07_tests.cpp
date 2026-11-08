@@ -39,6 +39,7 @@
 #include "th07/Flow.hpp"
 #include "th07/MainMenu.hpp"
 #include "th07/MusicRoom.hpp"
+#include "th07/Replay.hpp"
 #include "th07/ResultScreen.hpp"
 #include "th07/ScoreFile.hpp"
 #include "th07/ScreenEffects.hpp"
@@ -2421,20 +2422,20 @@ Bytes endScript() {
     return b;
 }
 
-void mountFlowData(FlowData& f) {
+void mountFlowData(FlowData& f, std::vector<Member> extra = {}, const char* dirTag = "flow") {
     std::string err;
     const std::string music = "@bgm/th07_01.mid\r\nTrack 1\r\ncomment\r\n@bgm/th07_02.mid\r\nTrack 2\r\nmore\r\n";
-    f.vfs.mount(openArchive("th07.dat",
-                            mem(pbg4({{"text.anm", menuAnm(30, 40, 0)},
-                                      {"ascii.anm", menuAnm(8, 130)},
-                                      {"capture.anm", menuAnm(2, 2)},
-                                      {"title01.anm", menuAnm(164, 40)},
-                                      {"result00.anm", menuAnm(41, 20)},
-                                      {"music00.anm", menuAnm(32, 32, 0)},
-                                      {"musiccmt.txt", text(music)},
-                                      {"end00.end", endScript()}})),
-                            &err));
-    f.dir = (std::filesystem::temp_directory_path() / ("th07_flow_test_" + std::to_string(::getpid()))).string() + "/";
+    std::vector<Member> members = {{"text.anm", menuAnm(30, 40, 0)},
+                                   {"ascii.anm", menuAnm(8, 130)},
+                                   {"capture.anm", menuAnm(2, 2)},
+                                   {"title01.anm", menuAnm(164, 40)},
+                                   {"result00.anm", menuAnm(41, 20)},
+                                   {"music00.anm", menuAnm(32, 32, 0)},
+                                   {"musiccmt.txt", text(music)},
+                                   {"end00.end", endScript()}};
+    for (Member& m : extra) members.push_back(std::move(m));
+    f.vfs.mount(openArchive("th07.dat", mem(pbg4(members)), &err));
+    f.dir = (std::filesystem::temp_directory_path() / (std::string("th07_") + dirTag + "_test_" + std::to_string(::getpid()))).string() + "/";
     std::filesystem::remove_all(f.dir);
     std::filesystem::create_directories(f.dir);
 }
@@ -2700,6 +2701,415 @@ static void testSupervisor() {
     std::filesystem::remove_all(f.dir);
 }
 
+// ---- replays ---------------------------------------------------------------------------------
+
+namespace {
+
+std::uint32_t le32(const Bytes& b, std::size_t at) {
+    return static_cast<std::uint32_t>(b[at]) | static_cast<std::uint32_t>(b[at + 1]) << 8 | static_cast<std::uint32_t>(b[at + 2]) << 16 |
+           static_cast<std::uint32_t>(b[at + 3]) << 24;
+}
+std::uint16_t le16(const Bytes& b, std::size_t at) { return static_cast<std::uint16_t>(b[at] | b[at + 1] << 8); }
+
+const ExeIdentity kTestExe{650752, 1234567};
+const Bytes kTestVer = text("0009_ 466944 99\r\n0100b 650752 1234567\r\n");
+
+// A recording as the game makes it: stage index `first` with `frames1` frames, then stage
+// index first + 1 with `frames2`, closed at the teardown.
+ReplayRecorder testRecording(const GameConfig& cfg, int first = 0, int frames1 = 61, int frames2 = 30) {
+    ReplayRecorder rec;
+    rec.create(3, Hard, cfg, kTestExe);
+    ReplayRecorder::StageStart s1;
+    s1.seed = 0x1234;
+    s1.lives = 3, s1.bombs = 3, s1.rank = 16, s1.cherryMax = 250000, s1.nextExtend = 50;
+    rec.startBlock(first, s1);
+    for (int i = 0; i < frames1; ++i) rec.write(static_cast<std::uint16_t>(i), i == 5 ? kReplayEventPaused : 0);
+    if (frames2 > 0) {
+        rec.closeBlock();
+        ReplayRecorder::StageStart s2 = s1;
+        s2.seed = 0xBEEF, s2.score = 123456, s2.power = 64, s2.cherryPlus = 49999, s2.spells = 2, s2.totalGraze = 77;
+        rec.startBlock(first + 1, s2);
+        for (int i = 0; i < frames2; ++i) rec.write(0x0011, 0x0040, 45, i == 0);
+    }
+    rec.closeBlock();  // the teardown's terminator
+    return rec;
+}
+
+}  // namespace
+
+static void testReplayContainer() {
+    GameConfig cfg;
+    cfg.lives = 3;
+    ReplayRecorder rec = testRecording(cfg);
+    CHECK(rec.active() && rec.currentBlock() == 1 && rec.frame() == 30);
+    CHECK(std::memcmp(rec.file().summary.bytes.data() + 0x0A, "NO N", 4) == 0);  // while recording [QUIRK]
+
+    // The save's three draws: the key (64..191), the summary's filler, the header's filler.
+    ZunRng rng(0x4242), expect(0x4242);
+    const auto key = static_cast<std::uint8_t>(expect.u16InRange(128) + 64);
+    const auto summaryFiller = static_cast<std::uint8_t>(expect.u16InRange(256));
+    const auto headerFiller = static_cast<std::uint8_t>(expect.u16InRange(256));
+    const std::uint32_t gen = rng.generations();
+    const Bytes file = rec.save(777777, 777770, 0.0f, "ABCDEFGH", "11/09", rng);
+    CHECK(rng.generations() == gen + 3 && rng.currentSeed() == expect.currentSeed());
+    CHECK(file.size() > 0x54 && std::memcmp(file.data(), "T7RP", 4) == 0 && le16(file, 4) == 0x1100 && le16(file, 6) == 0);
+    CHECK(file[0x0D] == key && file[0x0C] == headerFiller && key >= 64 && key <= 191 && le16(file, 0x0E) == 0);
+
+    // Obfuscation from 0x10 with a running key (+7 per byte); the checksum covers the plain
+    // bytes from 0x0D (the header filler is outside it).
+    Bytes plain = file;
+    ReplayFile::deobfuscate(plain);
+    CHECK(file[0x10] == static_cast<std::uint8_t>(plain[0x10] + key) && file[0x11] == static_cast<std::uint8_t>(plain[0x11] + key + 7));
+    std::uint32_t sum = 0x3F000318u;
+    for (std::size_t i = 0x0D; i < plain.size(); ++i) sum += plain[i];
+    CHECK(le32(plain, 8) == sum && ReplayFile::checksum(plain) == sum);
+    {
+        Bytes p2 = plain;
+        p2[0x0C] ^= 0xFF;
+        CHECK(ReplayFile::checksum(p2) == sum);
+        Bytes again = plain;
+        ReplayFile::obfuscate(again);
+        CHECK(again == file);
+    }
+
+    // The image: header, summary, stage blocks from 0xE8 in order, then the FPS blocks.
+    const std::uint32_t imageSize = le32(plain, 0x10), packed = le32(plain, 0x14), body = le32(plain, 0x18);
+    CHECK(imageSize == 0x54 + body && packed == plain.size() - 0x54);
+    Bytes image(imageSize, 0);
+    std::memcpy(image.data(), plain.data(), 0x54);
+    CHECK(lzss::decompress(std::span(plain).subspan(0x54), std::span(image).subspan(0x54)) == body);
+    const std::uint32_t o1 = le32(image, 0x1C), o2 = le32(image, 0x20), f1 = le32(image, 0x38), f2 = le32(image, 0x3C);
+    CHECK(o1 == 0xE8 && le32(image, 0x24) == 0 && le32(image, 0x34) == 0);
+    CHECK(o2 == o1 + 0x2C + 4 * (61 + 2));  // entry 0, 61 frames, one terminator
+    CHECK(f1 == o2 + 0x2C + 4 * (30 + 3));  // the last block has two terminators [QUIRK]
+    CHECK(f2 == f1 + 4);                    // samples at frames 0, 30 and 60, plus one byte
+    CHECK(imageSize == f2 + 2);
+    CHECK(image[f1] == 60 && image[f1 + 1] == 60 && image[f1 + 2] == 60 && image[f1 + 3] == 60);
+    CHECK(image[f2] == (45 | 0x80) && image[f2 + 1] == 45);  // the timing flag on the sample only
+    CHECK(le32(image, o1) == 123456 && le32(image, o2) == 777777);  // end scores
+    CHECK(le16(image, o1 + 0x20) == 0x1234 && le16(image, o2 + 0x20) == 0xBEEF && image[o2 + 0x22] == 64 && image[o2 + 0x27] == 2);
+    CHECK(le32(image, o2 + 0x10) == 49999 && le32(image, o2 + 0x14) == 77 && le32(image, o1 + 0x0C) == 250000);
+    CHECK(le16(image, o1 + 0x2C) == 0 && le16(image, o1 + 0x2C + 4 * 6) == 5 && le16(image, o1 + 0x2C + 4 * 6 + 2) == kReplayEventPaused);
+    CHECK(le16(image, o1 + 0x2C + 4 * 62) == 0 && le16(image, o2 + 0x2C + 4 * 1) == 0x0011 && le16(image, o2 + 0x2C + 4 * 1 + 2) == 0x0040);
+    // The summary.
+    const std::size_t s = 0x54;
+    CHECK(image[s] == summaryFiller && image[s + 1] == 'b' && image[s + 2] == 3 && image[s + 3] == Hard);
+    CHECK(std::memcmp(image.data() + s + 4, "11/09\0", 6) == 0 && std::memcmp(image.data() + s + 0x0A, "ABCDEFGH\0", 9) == 0);
+    CHECK(le16(image, s + 0x16) == 0x0100 && le32(image, s + 0x18) == 777770);
+    {
+        const std::vector<std::uint8_t> c = cfg.save();
+        CHECK(std::memcmp(image.data() + s + 0x1C, c.data(), 0x38) == 0 && image[s + 0x1C + 0x1C] == 3);
+    }
+    float f74, f78, f7c;
+    std::memcpy(&f74, image.data() + s + 0x74, 4);
+    std::memcpy(&f78, image.data() + s + 0x78, 4);
+    std::memcpy(&f7c, image.data() + s + 0x7C, 4);
+    CHECK(f78 == 0.0f && f74 == 1.12f && f7c == 2.34f && le32(image, s + 0x80) == 30);
+    CHECK(le32(image, s + 0x84) == 650752 && le32(image, s + 0x88) == 1234567 && std::memcmp(image.data() + s + 0x8C, "0100b\0", 6) == 0);
+
+    // Loading (spec 7.7).
+    std::string err;
+    const auto r = ReplayFile::parse(file, kTestVer, &err);
+    CHECK(r.has_value());
+    if (r) {
+        CHECK(r->summary.shot() == 3 && r->summary.difficulty() == Hard && r->summary.name() == "ABCDEFGH" && r->summary.date() == "11/09");
+        CHECK(r->summary.score() == 777770 && r->summary.lifeCount() == 3 && !r->summary.slowModeRecorded() && r->summary.versionTag() == "0100b");
+        CHECK(r->stageMask() == 0x03 && r->firstStage() == 0 && r->key == key && r->headerFiller == headerFiller);
+        CHECK(r->stages[0].entries.size() == 63 && r->stages[1].entries.size() == 33 && r->stages[0].fps.size() == 4 && r->stages[1].fps.size() == 2);
+        CHECK(r->stages[0].entries[6] == (ReplayEntry{5, kReplayEventPaused}) && r->stages[0].endScore == 123456 && r->stages[1].seed == 0xBEEF);
+        CHECK(r->stages[1].cherryPlus == 49999 && r->stages[1].spells == 2 && r->stages[0].cherryMax == 250000 && r->stages[0].lives == 3);
+        // A round trip through the writer gives the same contents.
+        ReplayFile copy = *r;
+        ZunRng rng2(9);
+        const auto r2 = ReplayFile::parse(copy.serialize(rng2), kTestVer);
+        CHECK(r2 && r2->stages[0].entries == r->stages[0].entries && r2->stages[1].entries == r->stages[1].entries);
+        CHECK(r2 && r2->stages[1].fps == r->stages[1].fps && r2->summary.name() == "ABCDEFGH" && r2->summary.score() == 777770);
+        // The replay list keeps the summary and the block headers only.
+        const auto h = ReplayFile::parse(file, kTestVer, nullptr, true);
+        CHECK(h && h->stages[1].present && h->stages[1].entries.empty() && h->stages[1].endScore == 777777);
+    }
+    CHECK(ReplayFile::parse(file, {}).has_value());  // no .ver data: the check passes
+
+    // Validation failures.
+    {
+        Bytes b = file;
+        b[0] = 'X';
+        CHECK(!ReplayFile::parse(b, kTestVer, &err) && err == "not a th07 replay");
+        b = file;
+        b[4] = 0x01;
+        CHECK(!ReplayFile::parse(b, kTestVer, &err) && err == "wrong version");
+        b = file;
+        b[b.size() - 3] ^= 0x10;
+        CHECK(!ReplayFile::parse(b, kTestVer, &err) && err == "checksum mismatch");
+        b = file;
+        b[0x0C] ^= 0xFF;  // the header filler is not covered
+        CHECK(ReplayFile::parse(b, kTestVer).has_value());
+        CHECK(!ReplayFile::parse(Bytes(file.begin(), file.begin() + 0x30), kTestVer, &err) && err == "too short");
+        // A cut body: the checksum is recomputed so the decompression is what fails.
+        Bytes cut = plain;
+        cut.resize(0x54 + packed / 2);
+        set32(cut, 8, ReplayFile::checksum(cut));
+        ReplayFile::obfuscate(cut);
+        CHECK(!ReplayFile::parse(cut, kTestVer, &err) && err == "body does not decompress");
+        // Another executable.
+        CHECK(!ReplayFile::parse(file, text("0100b 650752 7654321\r\n"), &err) && err == "recorded by another version");
+        CHECK(!ReplayFile::parse(file, text("0100a 650752 1234567\r\n"), &err));
+    }
+    {
+        // Slow mode in the recorded configuration: rejected.
+        GameConfig slow;
+        slow.slowMode = 1;
+        ReplayRecorder sr = testRecording(slow, 0, 10, 0);
+        ZunRng r3(1);
+        CHECK(!ReplayFile::parse(sr.save(1, 1, 0.0f, "SLOW", "01/01", r3), kTestVer, &err) && err == "recorded in slow mode");
+        // A "debug" version string passes the integrity check whatever the .ver data says.
+        ReplayRecorder dr = testRecording(cfg, 2, 10, 0);
+        dr.file().summary.setExe({1, 2}, "debug");
+        const auto d = ReplayFile::parse(dr.save(1, 1, 0.0f, "ZUN", "07/19", r3), kTestVer, &err);
+        CHECK(d && d->summary.versionTag() == "debug" && d->firstStage() == 2 && d->stages[2].entries.size() == 13);
+    }
+    // The drop frees everything.
+    rec.drop();
+    CHECK(!rec.active() && rec.currentBlock() == -1);
+}
+
+static void testReplayRecordingAndPlayback() {
+    // The game input: live play latches the raw input at the end of each pass (the player
+    // reads the previous pass's), playback feeds entry k - 1 in frame k. Both must hand the
+    // player the same inputs; the first frame of a stage sees 0 (the transition zeroed it).
+    std::vector<std::uint16_t> raw = {0};  // frame 1: the supervisor's transition pass
+    for (int i = 1; i < 200; ++i) raw.push_back(static_cast<std::uint16_t>((i * 37) % 0x200 | (i % 7 == 0 ? BtnMenu : 0)));
+    ReplayRecorder rec;
+    rec.create(0, Normal, GameConfig{}, kTestExe);
+    rec.startBlock(0, {});
+    std::uint16_t game = 0, prevGame = 0;  // reset when the hook is registered
+    std::vector<std::uint16_t> liveSeen, liveSeenPrev;
+    for (std::uint16_t r : raw) {
+        liveSeen.push_back(game);
+        liveSeenPrev.push_back(prevGame);
+        prevGame = game;  // the record hook (priority 16)
+        game = r;
+        rec.write(r, 0);
+    }
+    rec.closeBlock();
+    const ReplayStage& block = rec.file().stages[0];
+    CHECK(block.entries.size() == raw.size() + 2 && block.entries[1].input == 0 && block.entries[0].input == 0);
+    ReplayFeed feed;
+    feed.start(&block);
+    game = prevGame = 0;
+    bool same = true;
+    for (std::size_t k = 0; k < raw.size(); ++k) {
+        prevGame = game;  // the feed hook (priority 5)
+        game = feed.next();
+        same = same && game == liveSeen[k] && prevGame == liveSeenPrev[k];
+        // The entry recorded in this frame (its flags are this frame's events).
+        same = same && feed.upcoming().input == raw[k];
+    }
+    CHECK(same && liveSeen[0] == 0 && liveSeen[1] == 0 && liveSeen[5] == raw[4] && feed.frame() == static_cast<std::int32_t>(raw.size()));
+    // The whole raw word is kept (Menu, Q and so on).
+    CHECK(block.entries[8].input == raw[7] && (raw[7] & BtnMenu));
+    // Then the last entry, the terminator, and 0 past the block's end (the original reads on
+    // into the next data).
+    CHECK(feed.next() == raw.back() && feed.next() == 0 && !feed.pastEnd() && feed.next() == 0 && feed.pastEnd());
+
+    // FPS: sample s's byte is read one sample late [QUIRK].
+    ReplayStage st;
+    st.present = true;
+    st.entries.resize(70);
+    st.fps = {60, 50 | 0x80, 40};
+    feed.start(&st);
+    feed.next();
+    CHECK(feed.fps() == 50 && feed.fpsBad());
+    for (int i = 0; i < 30; ++i) feed.next();
+    CHECK(feed.fps() == 40 && !feed.fpsBad());
+    for (int i = 0; i < 30; ++i) feed.next();
+    CHECK(feed.fps() == 40);  // no byte after the last: the value stays
+
+    // The recorder stops at the original's buffer size (115189 entries, 32 minutes).
+    ReplayRecorder big;
+    big.create(0, Normal, GameConfig{}, kTestExe);
+    big.startBlock(0, {});
+    for (int i = 0; i < 116000; ++i) big.write(1, 0);
+    CHECK(big.file().stages[0].entries.size() == kReplayMaxEntries - 2);  // + the two terminators
+
+    // The restore at a stage's set-up (spec 7.8.2).
+    ReplayFile f;
+    GameConfig four;
+    four.lives = 4;
+    f.summary.setConfig(four.save());
+    f.stages[0].present = true;
+    f.stages[0].endScore = 5000;
+    ReplayStage& b = f.stages[1];
+    b.present = true;
+    b.seed = 0xABCD, b.lives = 5, b.bombs = 2, b.power = 77, b.rank = 20, b.chain = 3, b.spells = 4;
+    b.cherry = 1000, b.cherryMax = 300000, b.cherryPlus = 60000, b.totalGraze = 99, b.extendPoints = 33, b.extendsGranted = 1, b.nextExtend = 125;
+    GameState g;
+    g.setDifficulty(Hard);
+    g.lifeCount = 2;
+    ZunRng rng(7);
+    World w;
+    w.state = &g;
+    w.rng = &rng;
+    GameConfig copy;
+    restoreReplayStage(w, f, 1, copy);
+    CHECK(rng.currentSeed() == 0xABCD);  // (lives and power draw first; the seed is set last)
+    CHECK(g.livesI() == 5 && g.bombsI() == 2 && g.powerI() == 77 && g.rank == 20 && g.minRank == 10 && g.maxRank == 32);
+    CHECK(g.fullPowerChain == 3 && g.spellsCaptured == 4 && g.cherry == 1000 && g.cherryMax == 300000 && g.cherryPlus == 50000);
+    CHECK(g.totalGraze == 99 && g.extendPoints == 33 && g.extendsGranted == 1 && g.nextExtend == 125);
+    CHECK(g.score == 5000 && g.guiScore == 5000);  // stage 2 starts from stage 1's end score
+    CHECK(g.lifeCount == 4 && copy.lives == 4 && !g.slowMode);  // the recorded configuration
+    // Extra and Phantasm (index 6) start at 0; a stage whose previous block is absent keeps it.
+    f.stages[5].present = true;
+    f.stages[5].endScore = 9999;
+    f.stages[6] = b;
+    f.stages[3] = b;
+    GameState g2;
+    w.state = &g2;
+    restoreReplayStage(w, f, 6, copy);
+    CHECK(g2.score == 0);
+    restoreReplayStage(w, f, 3, copy);
+    CHECK(g2.score == 0 && rng.currentSeed() == 0xABCD);
+}
+
+static void testReplayFlow() {
+    // The save from the result screen, the replay menu and the attract demo, through the
+    // supervisor (no th07.exe tables here: games do not start, the requests are checked).
+    GameConfig cfg;
+    ReplayRecorder demoRec = testRecording(cfg, 2, 40, 0);
+    demoRec.file().summary.setShot(4);
+    ZunRng drng(5);
+    const Bytes demo = demoRec.save(10, 10, 0.0f, "ZUN", "07/19", drng);
+    FlowData f;
+    mountFlowData(f, {{"demorpy0.rpy", demo}}, "replay");
+    {
+        Supervisor s;
+        CHECK(s.start(flowBoot(f)));
+        s.pass(0);
+        // Spec 7.6: the recording is saved with the result screen's name and the game's score;
+        // the write is skipped for a main game whose configuration changed; it is freed always.
+        ReplayRecorder& rec = s.recorder();
+        rec = testRecording(s.config(), 0, 20, 0);
+        GameState& last = s.context().lastGame;
+        last = GameState{};
+        last.difficulty = Normal;
+        last.score = last.guiScore = 4242;
+        const std::string dir = f.dir + "replay/";
+        CHECK(s.saveReplay(dir + "th7_03.rpy", "TESTER  ") && !rec.active());
+        {
+            std::ifstream in(dir + "th7_03.rpy", std::ios::binary);
+            const Bytes bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            const auto r = ReplayFile::parse(bytes, {});
+            const auto today = todayDate();
+            CHECK(r && r->summary.name() == "TESTER  " && r->summary.score() == 4242 && r->stages[0].endScore == 4242);
+            CHECK(r && r->summary.date() == std::string(today.data(), 5) && r->stages[0].entries.size() == 23);
+        }
+        GameConfig other = s.config();
+        other.lives = 4;
+        rec = testRecording(other, 0, 20, 0);
+        CHECK(!s.saveReplay(dir + "th7_04.rpy", "X") && !std::filesystem::exists(dir + "th7_04.rpy") && !rec.active());
+        last.practice = true;  // practice and Extra change the copy (8 or 2 lives): saved
+        rec = testRecording(other, 0, 20, 0);
+        CHECK(s.saveReplay(dir + "th7_05.rpy", "PRACTICE") && std::filesystem::exists(dir + "th7_05.rpy"));
+        // A user file and a broken file in the folder.
+        std::filesystem::copy_file(dir + "th7_05.rpy", dir + "th7_ud0001.rpy");
+        std::ofstream(dir + "th7_02.rpy", std::ios::binary) << "T7RP broken";
+        const auto list = MainMenu::scanReplays(dir, {});
+        CHECK(list.size() == 3 && list[0].label == "No.03" && list[1].label == "No.05" && list[2].label == "User ");
+        CHECK(list.size() == 3 && list[0].file.summary.name() == "TESTER  " && list[0].file.stages[0].entries.empty());
+        std::filesystem::remove(dir + "th7_03.rpy");
+        std::filesystem::remove(dir + "th7_05.rpy");
+        std::filesystem::remove(dir + "th7_ud0001.rpy");
+        s.shutdown();
+    }
+    {
+        // The result screen after a game: name entry, statistics, then "save?" (Yes), the slot
+        // list (slot 1 empty), the replay name and END: replay/th7_01.rpy.
+        Supervisor s;
+        CHECK(s.start(flowBoot(f)));
+        s.pass(0);
+        s.recorder() = testRecording(s.config(), 0, 25, 0);
+        s.startEnding(0, Normal, false, 5000000);
+        idle(s, 30);
+        CHECK(s.active() == FlowState::ResultAfterGame && s.resultScreen());
+        s.pass(0);
+        idle(s, 30);
+        press(s, BtnMenu);  // the name entry ends at once
+        CHECK(s.resultScreen()->state() == ResultScreen::State::Statistics);
+        idle(s, 90);
+        press(s, BtnShoot);
+        idle(s, 31);
+        CHECK(s.resultScreen()->state() == ResultScreen::State::Prompt && s.resultScreen()->promptYes());
+        press(s, BtnShoot);  // locked until prompt pass 80
+        CHECK(s.resultScreen()->state() == ResultScreen::State::Prompt);
+        idle(s, 80);
+        press(s, BtnRight);
+        CHECK(!s.resultScreen()->promptYes());
+        press(s, BtnLeft);
+        press(s, BtnShoot);
+        CHECK(s.resultScreen()->state() == ResultScreen::State::SlotList && !s.resultScreen()->slots()[0].filled);
+        idle(s, 20);
+        press(s, BtnShoot);
+        CHECK(s.resultScreen()->state() == ResultScreen::State::ReplayName);
+        // To END: up from the first key wraps to the last row, left wraps to its end.
+        if (s.resultScreen()->keyCursor() != ResultScreen::kKeyEnd) {
+            press(s, BtnUp);
+            press(s, BtnLeft);
+        }
+        CHECK(s.resultScreen()->keyCursor() == ResultScreen::kKeyEnd);
+        press(s, BtnShoot);
+        CHECK(s.resultScreen()->state() == ResultScreen::State::Leave && s.resultScreen()->saved() && !s.recorder().active());
+        CHECK(std::filesystem::exists(f.dir + "replay/th7_01.rpy"));
+        idle(s, 62);
+        CHECK(s.active() == FlowState::MainMenu && s.mainMenu());
+
+        // The replay menu: the file, its stage list, mode 1, then a replay game is requested.
+        idle(s, 10);
+        for (int i = 0; i < 4 && s.mainMenu()->cursor() != 3; ++i) press(s, BtnDown);  // (the ending unlocked Extra Start)
+        CHECK(s.mainMenu()->cursor() == 3);
+        press(s, BtnShoot);
+        CHECK(s.mainMenu()->state() == MainMenu::State::Replay);
+        idle(s, 41);
+        CHECK(s.mainMenu()->replays().size() == 1 && s.mainMenu()->replays()[0].label == "No.01");
+        press(s, BtnShoot);
+        CHECK(s.mainMenu()->state() == MainMenu::State::ReplayStages && s.mainMenu()->cursor() == 0);
+        press(s, BtnDown);  // stages 2-7 are absent: back to stage 1
+        CHECK(s.mainMenu()->cursor() == 0);
+        press(s, BtnShoot);
+        CHECK(s.mainMenu()->state() == MainMenu::State::ReplayMode);
+        press(s, BtnDown);
+        s.pass(BtnShoot);
+        CHECK(s.requested() == FlowState::Game && s.context().replay && !s.context().demo && s.context().replayFile);
+        CHECK(s.context().playbackMode == 1 && s.context().stage == 0 && s.context().character == 1 && s.context().shotType == 1);
+        CHECK(s.config().difficulty != Hard);  // the remembered difficulty is not the replay's
+        // (The game cannot start here: the title opens, on the replay menu after a replay.)
+        idle(s, 3);
+        CHECK(s.active() == FlowState::MainMenu && s.mainMenu() && s.mainMenu()->state() == MainMenu::State::Replay && !s.context().replay);
+        s.shutdown();
+    }
+    {
+        // The attract demo: more than 900 idle passes on the title load demorpy0.rpy from the
+        // archive (the first demo of a session is 0).
+        Supervisor s;
+        CHECK(s.start(flowBoot(f)));
+        s.pass(0);
+        int passes = 0;
+        while (s.requested() != FlowState::Game && passes < 1200) {
+            s.pass(0);
+            ++passes;
+        }
+        CHECK(passes >= 900 && passes <= 902 && s.context().demo && s.context().replay && s.context().demoIndex == 0);
+        CHECK(s.context().stage == 2 && s.context().character == 2 && s.context().shotType == 0 && s.context().playbackMode == 0);
+        idle(s, 3);
+        // Back on the title (not the replay menu) with the demo flags cleared; the next demo
+        // (1) is not in this archive, so the idle counter just starts again.
+        CHECK(s.active() == FlowState::MainMenu && s.mainMenu() && s.mainMenu()->state() == MainMenu::State::Main && !s.context().replay && !s.context().demo);
+        idle(s, 950);
+        CHECK(s.context().demoIndex == 1 && s.active() == FlowState::MainMenu && s.requested() == FlowState::MainMenu);
+        s.shutdown();
+    }
+    std::filesystem::remove_all(f.dir);
+}
+
 static void dumpSynthetic(const char* dir) {
     const Music m = syntheticMusic();
     const Bytes arc = pbg4({{"th07_0100b.ver", text("0100b 466944 0\n")}, {"thbgm.fmt", m.fmt}});
@@ -2745,6 +3155,9 @@ int main() {
         {"menu input: pressed, masks, auto-repeat", testMenuInput},
         {"Music Room: musiccmt.txt", testMusicComments},
         {"supervisor: title, results, Music Room, ending", testSupervisor},
+        {"replays: container, checksum, key, validation", testReplayContainer},
+        {"replays: input latency, feed, FPS, stage restore", testReplayRecordingAndPlayback},
+        {"replays: save prompt, slot list, menu, demo", testReplayFlow},
         {"pause and continue menus: snapshot, locks", testInGameMenus},
         {"screen effects: shake draws, pulses, fades", testScreenEffects},
     };
