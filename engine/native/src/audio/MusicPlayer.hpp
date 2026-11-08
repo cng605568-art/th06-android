@@ -83,6 +83,8 @@ class MusicPlayer {
     bool fading() const { return fadeFrames_ > 0; }
     float gain() const { return gain_; }
     void setUnported(UnportedFeatures* u) { unported_ = u; }
+    // What a missing song is reported as (UnportedFeatures, shown on th06's HUD).
+    void setMissingMessage(std::string message) { missingMessage_ = std::move(message); }
     // The Option menu's music switch: while off, play requests are ignored (the music
     // stops). MIDI mode plays the WAV files: the port has no MIDI synthesiser.
     void setEnabled(bool on) {
@@ -104,6 +106,7 @@ class MusicPlayer {
     float gain_ = 1.0f;
     bool enabled_ = true;
     std::string overrideDir_;
+    std::string missingMessage_ = "background music (its WAV file is not in the game folder)";
     std::unique_ptr<MappedFile> override_;  // the replacement file being played
 };
 

@@ -14,6 +14,8 @@ enum class Level { Debug, Info, Warn, Error };
 void write(Level level, std::string_view message);
 // Starts the session log file; an existing one is first renamed to previousPath (if given).
 bool openFile(const std::string& path, const std::string& previousPath = {});
+// The Android log tag (the game's id, e.g. "th06"); default "touhou". Keep the string alive.
+void setTag(const char* tag);
 void closeFile();
 
 template <class... Args>

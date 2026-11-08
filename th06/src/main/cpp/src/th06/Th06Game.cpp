@@ -50,6 +50,7 @@ bool Th06Game::start(const GameContext& ctx) {
     stage_ = std::make_unique<Stage>(*ctx.textures, *ctx.ui, ctx.vfs, sound_.get(), ctx.text);
     if (ctx.music) {
         music_ = std::make_unique<MusicPlayer>(ctx.vfs, ctx.music);
+        music_->setMissingMessage("background music (needs the bgm folder with th06_NN.wav)");
         stage_->setMusic(music_.get());
         if (ctx.vfs->looseFileCount() == 0) log::info("No bgm/*.wav in the game folder: only replaced songs play");
     }

@@ -46,6 +46,7 @@ int App::run(int argc, char** argv) {
 bool App::init(int argc, char** argv) {
     if (!game_) return false;
     const GameInfo& info = game_->info();
+    log::setTag(info.id);
 #if defined(__ANDROID__)
     display_ = readAndroidDisplayOptions();
 #else
@@ -68,7 +69,7 @@ bool App::init(int argc, char** argv) {
         const std::string logs = storage + "logs";
         std::error_code ec;
         std::filesystem::create_directories(logs, ec);
-        if (log::openFile(logs + "/session.log", logs + "/previous.log")) installCrashHandler(logs + "/crash.txt");
+        if (log::openFile(logs + "/session.log", logs + "/previous.log")) installCrashHandler(logs + "/crash.txt", info.id);
     }
     SDL_SetHint(SDL_HINT_ORIENTATIONS, display_.portrait ? "Portrait PortraitUpsideDown" : "LandscapeLeft LandscapeRight");
     SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");

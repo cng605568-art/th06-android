@@ -128,7 +128,7 @@ bool MusicPlayer::play(std::string_view songPath) {
         if (!vfs_) return false;
         wav = vfs_->looseFile(withExtension(songPath, "wav"));
         if (wav.empty()) {
-            if (unported_) unported_->hit("background music (needs the bgm folder with th06_NN.wav)");
+            if (unported_) unported_->hit(missingMessage_.c_str());
             return false;
         }
         if (auto pos = vfs_->read(withExtension(songPath, "pos")); pos && pos->size() >= 8) {
