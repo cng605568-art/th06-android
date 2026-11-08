@@ -374,7 +374,7 @@ void ResultScreen::playerData(const MenuInput& in) {
                 renderPlayerData();
             }
         }
-        if (timer_ >= 40 && in.pressed(BtnShoot | BtnBomb | BtnMenu | BtnEnter)) {
+        if (in.pressed(BtnShoot | BtnBomb | BtnMenu | BtnEnter)) {
             ctx_.playSound(kSndBack);
             state_ = State::PlayerDataOut;
             timer_ = 0;
