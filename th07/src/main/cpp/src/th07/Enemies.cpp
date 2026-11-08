@@ -732,8 +732,8 @@ void EnemyManager::spellCardStart(Enemy& e, const std::uint8_t* ins) {
     e.circleFrozen = false;
     log::info("ECL: spell card {} (frame {}, base {}, time {}, drain {})", number, g.stageFrame, spell_.base, e.timerThreshold,
               spell_.drain);
-    // Hook: the card's score.dat history entry (attempts) is updated here outside replays
-    // (spec 11.2 step 8); the save data is not ported yet.
+    // The card's score.dat history entry (attempts), outside replays (spec 11.2 step 8).
+    if (wd.onSpellDeclared) wd.onSpellDeclared(number, name);
 }
 
 void EnemyManager::spellCardEnd() {
@@ -754,8 +754,9 @@ void EnemyManager::spellCardEnd() {
                 const auto bonus = static_cast<std::uint32_t>(g.captureValue + g.grazeBonus);
                 if (wd.gui) wd.gui->spellCardBonus(bonus);
                 g.addScore(bonus);
-                // Hook: the card's score.dat history entry (best score, successes) is updated
-                // here outside replays (spec 11.5); the save data is not ported yet.
+                // The card's score.dat history entry (best bonus, captures), outside replays
+                // (spec 11.5).
+                if (wd.onSpellCaptured) wd.onSpellCaptured(spell_.number, bonus);
                 ++g.spellsCaptured;
             }
         }

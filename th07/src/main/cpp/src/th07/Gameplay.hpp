@@ -5,6 +5,7 @@
 // simply absent (their World pointers stay null).
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -58,7 +59,30 @@ class Gameplay {
         bool practice = false;
         int lifeCount = 2;
         bool slowMode = false;
+        int maxContinues = 3;  // credits by total play time (3, 4 or 5)
+        bool restart = false;  // a pause-menu restart (counts a retry)
     };
+    // What the flow around the game provides (all optional): score.dat and the play
+    // statistics, at the points of the stage set-up and play where the original touches them.
+    struct Hooks {
+        // Fresh set-up, step 7: score.dat is rewritten (two RNG draws) and read (hi-score,
+        // spell history, clear records, practice bests).
+        std::function<void(GameState&)> readScores;
+        // Fresh set-up, step 8 (live play, slow mode off): a play (and a retry, a practice).
+        std::function<void(const GameState&, bool restart)> countPlay;
+        // Step 9 (live play): stage `state.stage` entered.
+        std::function<void(const GameState&)> stageEntered;
+        // Spell history in live play (practice included).
+        std::function<void(int card, const std::string& name)> spellDeclared;
+        std::function<void(int card, std::uint32_t bonus)> spellCaptured;
+        std::function<void(const GameState&)> continued;  // a continue was used
+        // Play time: counted up to now (pause, continue menu) and re-based (menus closed,
+        // after a continue, at every stage set-up).
+        std::function<void()> playTimeAdd;
+        std::function<void()> playTimeRebase;
+    };
+    // What the game asks the supervisor for (once set, it stays until the next start).
+    enum class Outcome : std::uint8_t { None, Title, Restart, Results, Ending };
     struct Resources {
         const Vfs* vfs = nullptr;
         TextureLibrary* textures = nullptr;
@@ -79,10 +103,16 @@ class Gameplay {
     bool nextStage(std::string* error);
     void end();
 
+    void setHooks(Hooks hooks) { hooks_ = std::move(hooks); }
+
     void tick(std::uint16_t input);
-    // After a tick: the GUI's "go to the next stage" request (the supervisor's next pass).
+    // The GUI's "go to the next stage" request (stages 1-5), acted on by the supervisor.
+    bool nextStagePending() const { return running_ && gui_->nextStageRequested(); }
+    // After a tick: performs a pending next-stage request at once (no supervisor).
     bool stageAdvance(std::string* error);
-    bool finished() const { return finished_ || gui_->gameFinished(); }
+    Outcome outcome() const { return outcome_; }
+    bool running() const { return running_; }
+    bool finished() const { return outcome_ != Outcome::None; }
     bool paused() const { return menu_.active(); }
     // Opens the pause menu (Android back button), as Menu pressed would.
     void requestPause() { pauseRequested_ = true; }
@@ -114,7 +144,9 @@ class Gameplay {
     std::unique_ptr<Gui> gui_ = std::make_unique<Gui>();
     std::uint16_t prevInput_ = 0;
     InGameMenu menu_;
-    bool finished_ = false, restartRequested_ = false, pauseRequested_ = false;
+    bool pauseRequested_ = false;
+    Outcome outcome_ = Outcome::None;
+    Hooks hooks_;
     void applyContinue();
     AnmDrawState drawState_;
     std::uint16_t stageSeed_ = 0;

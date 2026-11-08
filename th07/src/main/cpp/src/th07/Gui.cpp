@@ -125,6 +125,7 @@ bool Gui::stageStart(const World& w, const Resources& res, bool firstStage, std:
     bonus_.shown = status_.shown = spellBonus_.shown = false;
     nextStage_ = false;
     gameFinished_ = false;
+    endRequest_ = EndRequest::None;
     for (Popup& p : popups_) p.live = false;
     text_.clear();
     // The ASCII manager re-sends the gauge's fade state at every stage start; on the first
@@ -455,9 +456,17 @@ void Gui::runDialogue(const World& w, std::uint16_t input, std::uint16_t previou
             }
             case 10: advance = false, stalled = true; break;
             case 11: {
+                // Next level (spec 4.10): practice goes to the results; stages 1-5 to the next
+                // stage; stage 6 to the ending; Extra and Phantasm to the results (their clear
+                // records are kept by the supervisor). Replays are not ported.
                 w.state->guiScore = w.state->score;
-                if (w.state->practice || stage_ >= 6) {
+                if (w.state->practice) {
                     gameFinished_ = true;
+                    endRequest_ = EndRequest::Results;
+                } else if (stage_ >= 6) {
+                    gameFinished_ = true;
+                    w.state->finished = true;
+                    endRequest_ = stage_ == 6 ? EndRequest::Ending : EndRequest::Results;
                 } else {
                     showLoading_ = true;
                     nextStage_ = true;

@@ -48,6 +48,11 @@ class Gui final : public StageGui, public PopupSink {
     bool nextStageRequested() const { return nextStage_; }
     void clearNextStageRequest() { nextStage_ = false; }
     bool gameFinished() const { return gameFinished_; }
+    // The next-level opcode at the end of the game: the result screen (practice, Extra,
+    // Phantasm) or the ending (stage 6).
+    enum class EndRequest : std::uint8_t { None, Results, Ending };
+    EndRequest endRequest() const { return endRequest_; }
+    std::uint32_t frame() const { return frame_; }
     bool stageFinished() const { return stageClear_.active && stageClear_.vm.has(AnmVm::Stopped); }
 
     // StageGui.
@@ -164,6 +169,7 @@ class Gui final : public StageGui, public PopupSink {
     std::uint32_t clearBonus_ = 0;
     bool nextStage_ = false;
     bool gameFinished_ = false;
+    EndRequest endRequest_ = EndRequest::None;
 };
 
 }  // namespace touhou::th07

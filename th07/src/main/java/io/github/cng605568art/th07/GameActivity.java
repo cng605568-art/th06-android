@@ -125,10 +125,13 @@ public class GameActivity extends SDLActivity {
         }
     }
 
-    /** Launcher choices: {shot type 0..5, difficulty 0..5, stage 1..6, spare lives 0..4, practice}. */
+    /**
+     * Launcher choices: {shot type 0..5, difficulty 0..5, stage 1..6, spare lives 0..4, practice,
+     * skip the title screen}.
+     */
     public static int[] getGameOptions() {
         Context ctx = SDL.getContext();
-        if (ctx == null) return new int[] {0, 1, 1, 2, 0};
+        if (ctx == null) return new int[] {0, 1, 1, 2, 0, 0};
         return Options.game(ctx);
     }
 

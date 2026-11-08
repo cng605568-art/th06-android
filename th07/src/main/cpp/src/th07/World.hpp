@@ -166,6 +166,7 @@ struct GameState {
     // The completion counter of the result screen (+1 per enemy-manager pass without
     // dialogue, +1800 per "set boss life markers").
     std::uint32_t completion = 0;
+    bool finished = false;  // the game was cleared (stage 6, Extra or Phantasm)
     BossHud boss;
 
     void setDifficulty(int d);
@@ -199,6 +200,10 @@ struct World {
     std::function<void()> onDialogueStart;
     std::function<void(int)> onMusic;
     std::function<void(float)> onMusicFade;
+    // Spell history hooks (score.dat): a card declared (its Shift-JIS name from the ECL), a
+    // card captured (the capture bonus).
+    std::function<void(int, const std::string&)> onSpellDeclared;
+    std::function<void(int, std::uint32_t)> onSpellCaptured;
 
     void playSound(int id) const {
         if (sound && id >= 0) sound->playSound(id);
