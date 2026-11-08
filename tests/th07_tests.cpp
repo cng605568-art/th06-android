@@ -1524,6 +1524,93 @@ static void testEnemySpellCards() {
     CHECK(bonus > 2500 && bonus % 10 == 0 && g.score == bonus / 10);
 }
 
+static void testEnemyCallbacks() {
+    const Bytes ecl = eclFile(
+        {
+            // 0: a boss with a life callback at 50 into sub 1.
+            {{0, 95, {0}}, {0, 99, {0}}, {0, 112, {50}}, {0, 113, {1}}},
+            {{0, 4, {iw(10000), 77}, 0x1}},
+            // 2: a plain enemy (killed by the callback).
+            {{0, 95, {0}}},
+            // 3: a boss with death type 3, no death effects.
+            {{0, 95, {0}}, {0, 99, {1}}, {0, 106, {3}}, {0, 98, {0xFF}}},
+            // 4: flies up and off the screen.
+            {{0, 95, {0}}, {0, 47, {fw(0.0f), fw(-10.0f), fw(0.0f)}}},
+            // 5: a periodic callback every 2 restarts into sub 6.
+            {{0, 144, {2, 6}}},
+            {{0, 17, {iw(10000)}, 0x1}, {0, 42, {}}},
+            // 7: a timer callback after 5 frames into sub 8 (an ordinary enemy).
+            {{0, 95, {0}}, {0, 114, {5}}, {0, 115, {8}}},
+            {{0, 4, {iw(10001), 1}, 0x1}},
+            // 9: death type 2 (items only, dies again every frame).
+            {{0, 95, {0}}, {0, 106, {2}}, {0, 98, {0xFF}}},
+            // 10: the game-speed routines (Youmu's slow-down) and its restore.
+            {{0, 121, {10, 2}}, {10, 121, {11, 0}}, {11, 121, {11, 3}}},
+        },
+        {});
+    auto ew = enemyWorld(ecl, false);
+    CHECK(ew->ok);
+    if (!ew->ok) return;
+    EnemyManager& m = *ew->enemies;
+    GameState& g = ew->g;
+    Enemy& boss = m.spawn(0, {100, 100, 0}, 100, 0, 0, false);
+    Enemy& minion = m.spawn(2, {200, 100, 0}, 30, 0, 100, false);
+    CHECK(boss.boss && !minion.boss && minion.active);
+    boss.life = 40;
+    ew->frame();  // the callback: life back to 50, its sub runs in the same frame, the minion dies
+    CHECK(boss.life == 50 && boss.lifeThresholds[0] == -1 && boss.ctx.args.intA[0] == 77 && boss.active);
+    CHECK(!minion.active && g.score == 10);
+    // Death type 3: the boss stays, cannot be damaged, and leaves the HUD.
+    Enemy& b3 = m.spawn(3, {150, 150, 0}, 10, 0, 0, false);
+    CHECK(g.boss.present && b3.bossId == 1 && b3.death1 == -1);
+    b3.life = 0;
+    g.eventFlags = 0;
+    ew->frame();
+    CHECK(b3.active && b3.life == 1 && !b3.damageable && b3.deathType == 0 && !g.boss.present && (g.eventFlags & 0x20));
+    // Off the screen after having been on it: despawned.
+    Enemy& up = m.spawn(4, {100, 60, 0}, 10, 0, 0, false);
+    int frames = 0;
+    while (up.active && frames < 30) {
+        ew->frame();
+        ++frames;
+    }
+    CHECK(!up.active && frames == 7);  // y 50, 40, ..., -10; off once y + 8 < 0
+    // The periodic sub keeps its own locals; every restart ticks its counter (its own return
+    // too), so with interval 2 it runs on every frame after the first [QUIRK].
+    Enemy& per = m.spawn(5, {0, 0, 0}, 1, 0, 0, false);
+    for (int i = 0; i < 4; ++i) ew->frame();
+    CHECK(per.periodicArgs.intA[0] == 3 && per.ctx.args.intA[0] == 0 && per.depth == 0);
+    // A timer callback on an ordinary enemy also costs 25 % of the Cherry [QUIRK].
+    g.cherry = 1000;
+    Enemy& timed = m.spawn(7, {300, 100, 0}, 10, 0, 0, false);
+    for (int i = 0; i < 5; ++i) ew->frame();
+    CHECK(timed.ctx.args.intA[1] == 0 && g.cherry == 1000);
+    ew->frame();
+    CHECK(timed.ctx.args.intA[1] == 1 && g.cherry == 750 && timed.timerThreshold == -1);
+    // Death type 2 drops its item every frame until the script intervenes [QUIRK].
+    ew->items.spawned.clear();
+    Enemy& d2 = m.spawn(9, {250, 250, 0}, 10, ItemField::Point, 0, false);
+    d2.life = 0;
+    ew->frame();
+    ew->frame();
+    // (The timer callback's kill-all also zeroed the other non-boss enemies' life: the
+    // periodic one dies now and drops its type-0 item.)
+    int points = 0;
+    for (const auto& it : ew->items.spawned) points += it.type == ItemField::Point && it.pos.x == 250.0f;
+    CHECK(d2.active && points == 2 && !per.active);
+    // Ex routines 10 and 11: the game runs at 1/2 speed, frame timers tick fractionally; the
+    // restore's own argument (3) sets the sticky force-integer flag.
+    Enemy& slow = m.spawn(10, {0, 0, 0}, 1, 0, 0, false);
+    CHECK(g_timing.speed == 0.5f && slow.ctx.time.current == 0 && slow.ctx.time.sub == 0.5f);
+    for (int i = 0; i < 19; ++i) ew->frame();
+    CHECK(slow.ctx.time.current == 10 && g_timing.speed == 0.5f);
+    ew->frame();
+    CHECK(g_timing.speed == 1.0f && !g_timing.forceInteger);
+    ew->frame();
+    CHECK(g_timing.speed == 1.0f && g_timing.forceInteger);
+    g_timing = Timing{};
+}
+
 static void testEnemyBullets() {
     const Bytes ecl = eclFile(
         {
@@ -1757,6 +1844,7 @@ int main() {
         {"ECL: calls, returns, interrupts, waits, jumps", testEclVmControl},
         {"enemies: death, item drops, shot damage, Cherry", testEnemyDeathAndDamage},
         {"enemies: spell cards, timeout, capture", testEnemySpellCards},
+        {"enemies: callbacks, death types, despawn, game speed", testEnemyCallbacks},
         {"enemies: bullet patterns and rank", testEnemyBullets},
     };
     for (const Test& t : tests) {
