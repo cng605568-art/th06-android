@@ -32,6 +32,7 @@ class AudioMixer final : public SampleBackend, public MusicBackend {
     void startMusic(std::unique_ptr<MusicStream> stream) override;
     void stopMusic() override;
     void setMusicGain(float gain) override;
+    void pauseMusic(bool paused) override;
     bool isOpen() const { return device_ != 0; }
 
   private:
@@ -51,6 +52,7 @@ class AudioMixer final : public SampleBackend, public MusicBackend {
     std::array<Voice, kMaxVoices> voices_{};
     std::vector<std::int32_t> scratch_;
     std::unique_ptr<MusicStream> music_;
+    bool musicPaused_ = false;
 };
 
 }  // namespace touhou

@@ -30,8 +30,7 @@ add_subdirectory("${TOUHOU_THIRD_PARTY}/SDL2" "${CMAKE_CURRENT_BINARY_DIR}/SDL2"
 
 # ---- the shared engine (core + SDL host) and the game ----------------------------------
 include("${TOUHOU_ROOT}/engine/native/engine.cmake")
-# th07.cmake (the game code as a library shared with the tests) arrives with the first
-# ported system.
+include("${CMAKE_CURRENT_LIST_DIR}/th07.cmake")
 
 set(TH07_APP_SOURCES
   src/main.cpp
@@ -47,8 +46,7 @@ else()
   set(TH07_APP_TARGET th07_desktop)
 endif()
 
-target_link_libraries(${TH07_APP_TARGET} PRIVATE thengine_host)
-target_include_directories(${TH07_APP_TARGET} PRIVATE src)
+target_link_libraries(${TH07_APP_TARGET} PRIVATE th07_game thengine_host)
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
   target_compile_options(${TH07_APP_TARGET} PRIVATE -Wall -Wextra)
 endif()

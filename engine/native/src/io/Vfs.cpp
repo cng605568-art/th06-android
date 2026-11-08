@@ -101,8 +101,13 @@ std::size_t Vfs::mountDirectory(const std::string& dir, bool preferNewClassic) {
             if (!file || file->bytes().size() < 4) continue;
             const auto magic = file->bytes().first(4);
             const bool pbg3 = std::equal(magic.begin(), magic.end(), "PBG3");
+            const bool pbg4 = std::equal(magic.begin(), magic.end(), "PBG4");
             const bool pkgl = std::equal(magic.begin(), magic.end(), "PKGL");
-            if (pbg3 || pkgl) found.push_back({item.path(), pkgl});
+            if (std::equal(magic.begin(), magic.end(), "ZWAV")) {  // th07's music (thbgm.dat): a loose file
+                addLooseFile(item.path().filename().string(), std::move(file));
+                continue;
+            }
+            if (pbg3 || pbg4 || pkgl) found.push_back({item.path(), pkgl});
         }
     }
 

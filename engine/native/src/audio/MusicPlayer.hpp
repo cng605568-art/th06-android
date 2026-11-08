@@ -32,6 +32,9 @@ class MusicStream {
     // `wav` must stay valid while the stream plays (memory-mapped from the game folder).
     // Loop points are in sample frames from the start of the data chunk; 0 = not set.
     bool open(std::span<const std::uint8_t> wav, std::int64_t loopStart, std::int64_t loopEnd, std::string* error);
+    // The same over raw 16-bit PCM with its format given (th07: a song inside thbgm.dat).
+    bool openPcm(std::span<const std::uint8_t> pcm, int channels, int sampleRate, std::int64_t loopStart,
+                 std::int64_t loopEnd, std::string* error);
     // Adds `frames` stereo frames at `outRate` into `acc` (interleaved L R), scaled by gain.
     void mixInto(std::int32_t* acc, std::size_t frames, int outRate);
     void setGain(float gain) { gainQ15_ = static_cast<std::int32_t>(gain * 32768.0f); }
@@ -58,6 +61,9 @@ class MusicBackend {
     virtual void startMusic(std::unique_ptr<MusicStream> stream) = 0;  // replaces any playing song
     virtual void stopMusic() = 0;
     virtual void setMusicGain(float gain) = 0;
+    // Holds the song where it is (true) or continues it from that sample (false). th07
+    // pauses its music in the pause and continue menus; th06 never does.
+    virtual void pauseMusic(bool paused) = 0;
 };
 
 class MusicPlayer {

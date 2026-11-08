@@ -1,13 +1,15 @@
 #pragma once
 
-// Perfect Cherry Blossom as the shared host runs it (host/Game). For now a placeholder
-// screen that reports the game files it found; the game itself is being ported (see the
-// roadmap, Phase 3).
+// Perfect Cherry Blossom as the shared host runs it (host/Game). For now a status screen:
+// whether th07.dat (1.00b) and the music were found, with the title song playing from
+// thbgm.dat. The game itself is being ported system by system (roadmap, Phase 3).
 
 #include <cstdint>
+#include <memory>
 #include <string>
 
 #include "host/Game.hpp"
+#include "th07/Bgm.hpp"
 
 namespace touhou::th07 {
 
@@ -37,6 +39,11 @@ class Th07Game final : public Game {
   private:
     const UiArt* ui_ = nullptr;
     std::size_t files_ = 0;
+    bool archive_ = false;  // th07.dat with th07_0100b.ver
+    std::size_t songs_ = 0;
+    bool thbgm_ = false, thbgmBad_ = false;
+    std::unique_ptr<BgmPlayer> music_;
+    bool titleSongRequested_ = false;
     std::uint64_t frame_ = 0;
     bool quit_ = false;
 };

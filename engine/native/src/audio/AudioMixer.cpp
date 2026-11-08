@@ -81,6 +81,7 @@ void AudioMixer::startMusic(std::unique_ptr<MusicStream> stream) {
     if (!device_) return;
     SDL_LockAudioDevice(device_);
     music_.swap(stream);
+    musicPaused_ = false;
     SDL_UnlockAudioDevice(device_);
     // The previous song (now in `stream`) is released here, outside the audio lock.
 }
@@ -91,6 +92,13 @@ void AudioMixer::setMusicGain(float gain) {
     if (!device_) return;
     SDL_LockAudioDevice(device_);
     if (music_) music_->setGain(std::clamp(gain, 0.0f, 1.0f));
+    SDL_UnlockAudioDevice(device_);
+}
+
+void AudioMixer::pauseMusic(bool paused) {
+    if (!device_) return;
+    SDL_LockAudioDevice(device_);
+    musicPaused_ = paused;
     SDL_UnlockAudioDevice(device_);
 }
 
@@ -106,7 +114,7 @@ void SDLCALL AudioMixer::callback(void* userdata, Uint8* stream, int len) {
 void AudioMixer::mix(std::int16_t* out, std::size_t samples) {
     if (samples > scratch_.size()) samples = scratch_.size();  // never allocate here
     std::fill_n(scratch_.begin(), samples, 0);
-    if (music_ && spec_.channels == 2) music_->mixInto(scratch_.data(), samples / 2, spec_.freq);
+    if (music_ && !musicPaused_ && spec_.channels == 2) music_->mixInto(scratch_.data(), samples / 2, spec_.freq);
     for (Voice& v : voices_) {
         if (!v.active) continue;
         const auto& pcm = samples_[static_cast<std::size_t>(v.sample)];
