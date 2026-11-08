@@ -1,5 +1,6 @@
 #include "th07/Th07Game.hpp"
 
+#include <cstdlib>
 #include <format>
 
 #include "core/Log.hpp"
@@ -70,6 +71,12 @@ bool Th07Game::start(const GameContext& ctx) {
         const std::string a = ctx.argv[i] ? ctx.argv[i] : "";
         if (a == "--anm-preview") previewFile = ctx.argv[i + 1];
         else if (a == "--anm-bg") previewBackground = ctx.argv[i + 1];
+        else if (a == "--stage-preview" && ctx.vfs) {
+            std::string err;
+            if (!background_.load(*ctx.vfs, *ctx.textures, anm_, rng_, std::atoi(ctx.argv[i + 1]), &err)) {
+                log::warn("Stage preview: {}", err);
+            }
+        }
     }
     if (!previewFile.empty() && ctx.vfs) startPreview(ctx, previewFile, previewBackground);
 #endif
@@ -107,6 +114,7 @@ void Th07Game::startPreview(const GameContext& ctx, const std::string& file, con
 
 void Th07Game::tick(const InputState& input) {
     for (AnmVm& vm : previewVms_) vm.tick(anm_, rng_);
+    if (background_.loaded()) background_.update(anm_, rng_);
     if (music_) music_->fadeStep();
     ++frame_;
     if (input.quit) quit_ = true;
@@ -123,6 +131,12 @@ void Th07Game::tick(const InputState& input) {
 
 void Th07Game::render(SpriteSink& sink, float, const FrameInfo&) {
     if (!ui_) return;
+    if (background_.loaded()) {
+        AnmDrawState state;
+        background_.drawHigh(sink, state);
+        background_.drawLow(sink, state);
+        return;
+    }
     if (!previewVms_.empty()) {
         if (previewBackground_ >= 0) {
             SpriteInstance s;

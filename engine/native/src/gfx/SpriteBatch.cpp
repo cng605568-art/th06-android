@@ -219,6 +219,22 @@ void SpriteBatch::clearClip() {
     glDisable(GL_SCISSOR_TEST);
 }
 
+void SpriteBatch::clearRect(float x, float y, float w, float h, std::uint32_t color, bool colorToo) {
+    flush();
+    flush3D();
+    glEnable(GL_SCISSOR_TEST);
+    scissor(x, y, w, h);
+    glDepthMask(GL_TRUE);
+    glClearDepthf(1.0f);
+    if (colorToo) {
+        glClearColor(static_cast<float>(color & 0xFF) / 255.0f, static_cast<float>((color >> 8) & 0xFF) / 255.0f,
+                     static_cast<float>((color >> 16) & 0xFF) / 255.0f, static_cast<float>(color >> 24) / 255.0f);
+    }
+    glClear(colorToo ? (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT) : GL_DEPTH_BUFFER_BIT);
+    if (clip2D_) scissor(clipX_, clipY_, clipW_, clipH_);
+    else glDisable(GL_SCISSOR_TEST);
+}
+
 void SpriteBatch::drawQuad3D(std::uint16_t texture, Blend blend, const Vertex3D* c, const Draw3DState& state) {
     flush();  // keep submission order with the 2D sprites
     const GLuint tex = textures_->get(texture);

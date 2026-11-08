@@ -80,6 +80,11 @@ class SpriteSink {
     // clearClip(). Sinks without clipping ignore it.
     virtual void setClip(float x, float y, float w, float h) { (void)x, (void)y, (void)w, (void)h; }
     virtual void clearClip() {}
+    // Clears a rectangle of the target (pixels, y down): its depth, and its colour too when
+    // `colorToo` (to `color`, bytes R, G, B, A). Sinks without depth ignore it.
+    virtual void clearRect(float x, float y, float w, float h, std::uint32_t color, bool colorToo) {
+        (void)x, (void)y, (void)w, (void)h, (void)color, (void)colorToo;
+    }
     // Convenience: draw a region centred at (x, y) at native size times `scale`.
     void drawRegion(const SpriteRegion& r, float x, float y, float scale = 1.0f,
                     std::uint32_t color = rgba(255, 255, 255), float angle = 0.0f,

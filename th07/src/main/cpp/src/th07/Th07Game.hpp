@@ -10,6 +10,7 @@
 
 #include "host/Game.hpp"
 #include "th07/Anm.hpp"
+#include "th07/Background.hpp"
 #include "th07/Bgm.hpp"
 #include "th07/ExeTables.hpp"
 #include "th07/SoundPlayer.hpp"
@@ -59,6 +60,8 @@ class Th07Game final : public Game {
     ZunRng rng_;
     std::vector<AnmVm> previewVms_;
     int previewBackground_ = -1;  // texture id
+    // --stage-preview N: stage N's background running on its own.
+    Background background_;
     bool titleSongRequested_ = false;
     std::uint64_t frame_ = 0;
     bool quit_ = false;

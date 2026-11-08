@@ -9,8 +9,10 @@ set(TH07_SRC "${CMAKE_CURRENT_LIST_DIR}/src")
 
 add_library(th07_game STATIC
   ${TH07_SRC}/th07/Anm.cpp
+  ${TH07_SRC}/th07/Background.cpp
   ${TH07_SRC}/th07/Bgm.cpp
   ${TH07_SRC}/th07/ExeTables.cpp
+  ${TH07_SRC}/th07/GameConfig.cpp
   ${TH07_SRC}/th07/SoundPlayer.cpp
   ${TH07_SRC}/th07/Version.cpp)
 target_include_directories(th07_game PUBLIC "${TH07_SRC}")

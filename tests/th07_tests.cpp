@@ -20,8 +20,10 @@
 #include "gfx/SpriteSink.hpp"
 #include "gfx/TextureLibrary.hpp"
 #include "th07/Anm.hpp"
+#include "th07/Background.hpp"
 #include "th07/Bgm.hpp"
 #include "th07/ExeTables.hpp"
+#include "th07/GameConfig.hpp"
 #include "th07/SoundPlayer.hpp"
 #include "th07/Version.hpp"
 
@@ -631,6 +633,178 @@ static void testAnmDraw() {
     CHECK(sink.items.size() == 3);
 }
 
+
+static void testGameConfig() {
+    GameConfig fresh;
+    CHECK(!fresh.load({}, true) && fresh.music == GameConfig::MusicWav && fresh.lives == 2 && fresh.colourMode == 255);
+    CHECK(!fresh.load({}, false) && fresh.music == GameConfig::MusicMidi);
+    const std::vector<std::uint8_t> bytes = fresh.save();
+    CHECK(bytes.size() == 56 && bytes[0x14] == 0x02 && bytes[0x16] == 0x07 && bytes[0x34] == 1 && bytes[0x26] == 1);
+    // A valid file round-trips (option bits: bit 0 forced on, bit 7 off).
+    GameConfig c = fresh;
+    c.lives = 4;
+    c.slowMode = 1;
+    c.difficulty = 5;
+    c.optionBits = 0x2080;
+    c.colourMode = 1;
+    GameConfig back;
+    CHECK(back.load(c.save(), true) && back.lives == 4 && back.difficulty == 5 && back.optionBits == 0x2001 && back.colourMode == 1);
+    // Invalid (lives 5): defaults, but the padding, unused bytes and option bits survive.
+    std::vector<std::uint8_t> bad = c.save();
+    bad[0x1C] = 5;
+    bad[0x12] = 0xAA;
+    bad[0x30] = 0x55;
+    GameConfig re;
+    CHECK(!re.load(bad, false) && re.lives == 2 && re.slowMode == 0 && re.music == GameConfig::MusicMidi && re.padding[0] == 0xAA &&
+          re.unused[0x30 - 0x27] == 0x55 && re.optionBits == 0x2001);
+    // Wrong size or version: rebuilt.
+    std::vector<std::uint8_t> shortFile(bad.begin(), bad.begin() + 40);
+    CHECK(!re.load(shortFile, true) && re.lives == 2);
+    std::vector<std::uint8_t> oldVersion = fresh.save();
+    oldVersion[0x14] = 0x01;
+    CHECK(!re.load(oldVersion, true));
+}
+
+namespace {
+struct Sink3D final : SpriteSink {
+    struct Quad3D {
+        Vertex3D v[4];
+        Draw3DState state;
+    };
+    std::vector<Quad3D> quads;
+    struct Clear {
+        std::uint32_t color;
+        bool colorToo;
+    };
+    std::vector<Clear> clears;
+    void draw(std::uint16_t, Blend, const SpriteInstance&) override {}
+    void drawQuad3D(std::uint16_t, Blend, const Vertex3D* c, const Draw3DState& s) override {
+        Quad3D q;
+        for (int i = 0; i < 4; ++i) q.v[i] = c[i];
+        q.state = s;
+        quads.push_back(q);
+    }
+    void clearRect(float, float, float, float, std::uint32_t color, bool colorToo) override { clears.push_back({color, colorToo}); }
+};
+void putF(Bytes& b, float f) { put32(b, fbits(f)); }
+void putVec(Bytes& b, float x, float y, float z) {
+    putF(b, x);
+    putF(b, y);
+    putF(b, z);
+}
+}  // namespace
+
+static void testBackground() {
+    g_timing = Timing{};
+    EntryDef e;
+    e.sprites = {{0, 0, 0, 8, 8}};
+    e.scripts.push_back({0, {{3, 0, {0}}, {31, 0, {1}}, {20, 1, {}}}});  // sprite 0, stage camera, stop
+    // stage1.std: one object (layer 0, one 100x100 quad), three instances (one visible, one
+    // behind the camera, one too far), and a script.
+    Bytes std(0x490, 0);
+    const char song[] = "bgm/th07_02.mid";
+    std::memcpy(std.data() + 0x290, song, sizeof song);
+    put32(std, 0x494);  // object 0
+    put16(std, 0);
+    std.push_back(0);   // layer 0
+    std.push_back(0);
+    putVec(std, 0, 0, 0);  // origin
+    putVec(std, 0, 0, 0);  // size
+    put16(std, 0);         // quad: type 0, 0x1C bytes, script 0, at the origin, 100x100
+    put16(std, 0x1C);
+    put16(std, 0);
+    put16(std, 0);
+    putVec(std, 0, 0, 0);
+    putF(std, 100);
+    putF(std, 100);
+    put16(std, 0xFFFF);  // end of quads
+    std.resize(std.size() + 0x1A, 0);
+    const auto instancesAt = static_cast<std::uint32_t>(std.size());
+    for (float z : {0.0f, -400.0f, 2000.0f}) {
+        put16(std, 0);
+        put16(std, 0);
+        putVec(std, 0, 0, z);
+    }
+    put16(std, 0xFFFF);
+    std.resize(std.size() + 14, 0);
+    const auto scriptAt = static_cast<std::uint32_t>(std.size());
+    auto rec = [&](std::int32_t frame, std::int16_t op, std::uint32_t a, std::uint32_t b, std::uint32_t c) {
+        put32(std, static_cast<std::uint32_t>(frame));
+        put16(std, static_cast<std::uint16_t>(op));
+        put16(std, 20);
+        put32(std, a);
+        put32(std, b);
+        put32(std, c);
+    };
+    rec(0, 5, fbits(0), fbits(0), fbits(-200));  // camera position
+    rec(0, 7, fbits(0), fbits(0), fbits(1));     // facing
+    rec(0, 9, fbits(0), fbits(1), fbits(0));     // up
+    rec(10, 5, fbits(0), fbits(100), fbits(-200));
+    rec(10, 6, 10, 0, 0);  // move there over 10 frames, linearly
+    rec(20, 3, 0, 0, 0);   // halt
+    rec(30, 31, 7, 0, 0);  // label 7
+    rec(30, 13, 0xFF102030u, 0, 0);  // clear colour
+    rec(-1, -1, 0, 0, 0);
+    set32(std, 0, 0x00010001u);  // 1 object, 1 quad
+    set32(std, 4, instancesAt);
+    set32(std, 8, scriptAt);
+
+    Vfs vfs;
+    std::string err;
+    vfs.mount(openArchive("th07.dat", mem(pbg4({{"stg1bg.anm", anmFile({e})}, {"stage1.std", std}})), &err));
+    TextureLibrary textures;
+    AnmLibrary lib;
+    ZunRng rng(1);
+    Background bg;
+    CHECK(bg.load(vfs, textures, lib, rng, 1, &err));
+    if (!bg.loaded()) {
+        std::fprintf(stderr, "  %s\n", err.c_str());
+        return;
+    }
+    CHECK(bg.songPath(0) == "bgm/th07_02.mid" && bg.songPath(1).empty());
+
+    bg.update(lib, rng);
+    CHECK(bg.cameraPosition().z == -200.0f && bg.normalizedFacing().z == 1.0f && bg.scriptTime() == 1);
+    Sink3D sink;
+    AnmDrawState state;
+    bg.drawHigh(sink, state);
+    bg.drawLow(sink, state);
+    CHECK(sink.clears.size() == 1 && !sink.clears[0].colorToo);
+    CHECK(sink.quads.size() == 1);  // the instances behind and too far away are culled
+    if (sink.quads.size() == 1) {
+        const auto& q = sink.quads[0];
+        // A quad facing the camera 200 units ahead: centred on the playfield (pixel centres at
+        // +0.5), symmetric, at eye depth 200 and inside the depth range.
+        auto px = [](const Vertex3D& v) { return (v.x / v.w + 1.0f) * 320.0f; };
+        auto py = [](const Vertex3D& v) { return (1.0f - v.y / v.w) * 240.0f; };
+        const float cx = (px(q.v[0]) + px(q.v[1])) / 2.0f, cy = (py(q.v[0]) + py(q.v[2])) / 2.0f;
+        CHECK(std::fabs(cx - 224.5f) < 1e-3f && std::fabs(cy - 240.5f) < 1e-3f);
+        const float half = std::tan(kZunPi / 12.0f) * 200.0f;  // half the visible height at that depth
+        CHECK(std::fabs(std::fabs(py(q.v[0]) - py(q.v[2])) - 448.0f * 100.0f / (2.0f * half)) < 0.05f);
+        CHECK(std::fabs(q.v[0].eyeZ - 200.0f) < 1e-3f && std::fabs(q.v[3].eyeZ - 200.0f) < 1e-3f);
+        CHECK(q.v[0].z > -q.v[0].w && q.v[0].z < q.v[0].w && q.state.clipX == 32.0f && q.state.clipH == 448.0f);
+    }
+
+    // The camera moves from frame 10 to 19, linearly. Script time freezes as soon as the next
+    // pending record is a halt, before the halt's own frame (a quirk of the original).
+    for (int k = 1; k <= 10; ++k) bg.update(lib, rng);
+    CHECK(std::fabs(bg.cameraPosition().y - 10.0f) < 1e-4f && bg.scriptTime() == 10);
+    for (int k = 11; k <= 19; ++k) bg.update(lib, rng);
+    CHECK(bg.cameraPosition().y == 100.0f && bg.scriptTime() == 10);
+    bg.update(lib, rng);
+    bg.update(lib, rng);
+    CHECK(bg.scriptTime() == 10 && bg.cameraPosition().y == 100.0f);
+    // The ECL resumes the script at label 7: time jumps to its frame, the clear colour is set.
+    bg.setResumeLabel(7);
+    bg.update(lib, rng);
+    CHECK(bg.scriptTime() == 31);
+    sink.clears.clear();
+    bg.drawHigh(sink, state);
+    CHECK(sink.clears.size() == 1 && sink.clears[0].colorToo && sink.clears[0].color == rgba(0x10, 0x20, 0x30, 0xFF));
+    bg.release(lib);
+    CHECK(!bg.loaded() && !lib.loaded(5));
+}
+
 static void testPbg4() {
     const Bytes ver = text("0100a 123 456\n0100b 466944 -1234567\n");
     const Bytes stage = text("STD file bytes");
@@ -821,9 +995,11 @@ int main() {
         {"version file and executable checksum", testVersionFile},
         {"music: thbgm.fmt, queue timing, fades, pause", testBgm},
         {"th07.exe tables, sound effects", testExeTablesAndSound},
+        {"th07.cfg: layout, validation, rebuild rules", testGameConfig},
         {"ANM: version-2 chains, THTX textures, slots", testAnmLoad},
         {"ANM VM: timing, waits, loops, registers, RNG, channels", testAnmVm},
         {"ANM drawing: rounding, anchors, rotation, colour", testAnmDraw},
+        {"stage backgrounds: .std, script, camera, culling", testBackground},
     };
     for (const Test& t : tests) {
         const int before = g_failures;
