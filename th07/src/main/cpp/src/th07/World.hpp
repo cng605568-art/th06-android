@@ -9,7 +9,9 @@
 // gameplay RNG (two u32 draws), which a replay-exact port must keep. The checks themselves
 // are not ported.
 
+#include <array>
 #include <cstdint>
+#include <string>
 
 #include "audio/Sound.hpp"
 #include "core/ZunMath.hpp"
@@ -76,6 +78,36 @@ class PopupSink {
     virtual void powerUp(const Vec3f& pos) = 0;  // the power-up glyph
 };
 
+// The GUI and dialogue as the enemies and timelines see them (implemented by the GUI; the
+// defaults do nothing, for tests and while the GUI is missing).
+class StageGui {
+  public:
+    virtual ~StageGui() = default;
+    // Dialogue (msgN.dat): ECL timeline opcode 8 starts script `number`; "current" means a
+    // message is up (it pauses subrank, play time and the boss bar); "wait" is timeline
+    // opcode 9's query.
+    virtual void startDialogue(int number) { (void)number; }
+    virtual bool dialogueCurrent() const { return false; }
+    virtual bool dialogueWait() const { return false; }
+    // Spell cards: the card's banner (portrait index, -1 none) and its end animation.
+    virtual void spellCardStart(int card, int portrait, const std::string& name) { (void)card, (void)portrait, (void)name; }
+    virtual void spellCardEnd() {}
+    virtual void bonus(std::uint32_t points) { (void)points; }           // "BONUS n"
+    virtual void spellCardBonus(std::uint32_t points) { (void)points; }  // "Spell Card Bonus!"
+};
+
+// What the boss HUD shows (written by the enemies, read by the GUI).
+struct BossHud {
+    bool present = false;  // also gates timeline spawns
+    float bar = 0;         // life / maximum life of boss slot 0
+    std::array<float, 8> segmentA{}, segmentB{};
+    std::array<std::int32_t, 8> segmentColor{};
+    std::int32_t lifeMarkers = 0;
+    std::int32_t spellSeconds = 0;
+    std::array<float, 4> markerX{-999, -999, -999, -999};
+    std::array<bool, 4> markerTint{};
+};
+
 struct GameState {
     static constexpr int kMaxLives = 8, kMaxBombs = 8, kMaxPower = 128;
     static constexpr std::int32_t kCherryPlusFull = 50000;
@@ -126,6 +158,10 @@ struct GameState {
     bool timeStop = false;  // never set in 1.00b
     std::uint32_t stageFrame = 0;
     std::uint32_t eventFlags = 0;  // replay event flags of this frame
+    // The completion counter of the result screen (+1 per enemy-manager pass without
+    // dialogue, +1800 per "set boss life markers").
+    std::uint32_t completion = 0;
+    BossHud boss;
 
     void setDifficulty(int d);
     void increaseSubrank(std::int32_t amount);
@@ -151,6 +187,7 @@ struct World {
     ItemField* items = nullptr;
     PopupSink* popups = nullptr;
     ShakeSink* shakes = nullptr;
+    StageGui* gui = nullptr;
 
     void playSound(int id) const {
         if (sound && id >= 0) sound->playSound(id);
