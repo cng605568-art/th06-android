@@ -42,6 +42,20 @@ bool Th07Game::start(const GameContext& ctx) {
         }
         thbgm_ = !thbgm.empty();
         log::info("Music: {} song(s) in thbgm.fmt, thbgm.dat {}", songs_, thbgm_ ? "found" : "missing");
+        for (const auto exe : ctx.vfs->executables()) {
+            std::string why;
+            if (loadExeTables(exe, tables_, &why)) {
+                exe_ = true;
+                break;
+            }
+            log::info("Not th07.exe 1.00b: {}", why);
+        }
+        if (!exe_) log::warn("No th07.exe 1.00b in the game folder: sound effects and other tables are missing");
+        if (exe_ && ctx.samples) {
+            sound_ = std::make_unique<SoundPlayer>(ctx.samples, &tables_);
+            soundsLoaded_ = sound_->loadSamples(*ctx.vfs);
+            log::info("Loaded {} of {} sound effects", soundsLoaded_, ExeTables::kSamples);
+        }
         if (ctx.music) {
             music_ = std::make_unique<BgmPlayer>(ctx.music);
             music_->setData(std::move(records), thbgm);
@@ -59,7 +73,11 @@ void Th07Game::tick(const InputState& input) {
         music_->playLoaded(8);
         titleSongRequested_ = true;
     }
+    if (sound_ && input.shoot && !lastShoot_) sound_->playSound(10);  // the menu "OK" sound, as a test
+    lastShoot_ = input.shoot;
+    // The audio pump: one music command step, then the frame's sound effects.
     if (music_) music_->pump();
+    if (sound_) sound_->flush();
 }
 
 void Th07Game::render(SpriteSink& sink, float, const FrameInfo&) {
@@ -75,8 +93,11 @@ void Th07Game::render(SpriteSink& sink, float, const FrameInfo&) {
                               : songs_ == 0 ? "THBGM.FMT: MISSING"
                                             : std::format("MUSIC: {} SONGS", songs_);
     drawText(sink, *ui_, 136, 272, music, 2.0f, thbgm_ && songs_ ? good : bad);
+    drawText(sink, *ui_, 136, 336, exe_ ? std::format("TH07.EXE 1.00B: FOUND, {} SOUNDS", soundsLoaded_) : "TH07.EXE 1.00B: MISSING",
+             2.0f, exe_ ? good : bad);
+    if (sound_) drawText(sink, *ui_, 136, 368, "PRESS SHOT TO TEST A SOUND", 2.0f, grey);
     if (music_ && music_->playing()) drawText(sink, *ui_, 136, 304, "NOW PLAYING: " + music_->current(), 2.0f, grey);
-    drawText(sink, *ui_, 136, 352, std::format("{} FILES IN THE GAME FOLDER", files_), 2.0f, grey);
+    drawText(sink, *ui_, 136, 416, std::format("{} FILES IN THE GAME FOLDER", files_), 2.0f, grey);
 }
 
 void Th07Game::logStatus(const FrameInfo& frame) const {

@@ -20,7 +20,7 @@ namespace touhou {
 class AudioMixer final : public SampleBackend, public MusicBackend {
   public:
     static constexpr int kMaxSamples = 32;
-    static constexpr int kMaxVoices = 32;
+    static constexpr int kMaxVoices = 64;  // th07 has 38 sound ids, one voice each
 
     ~AudioMixer() override;
 

@@ -10,6 +10,8 @@
 
 #include "host/Game.hpp"
 #include "th07/Bgm.hpp"
+#include "th07/ExeTables.hpp"
+#include "th07/SoundPlayer.hpp"
 
 namespace touhou::th07 {
 
@@ -43,6 +45,11 @@ class Th07Game final : public Game {
     std::size_t songs_ = 0;
     bool thbgm_ = false, thbgmBad_ = false;
     std::unique_ptr<BgmPlayer> music_;
+    bool exe_ = false;  // th07.exe 1.00b found (its tables loaded)
+    ExeTables tables_;
+    std::unique_ptr<SoundPlayer> sound_;
+    int soundsLoaded_ = 0;
+    bool lastShoot_ = false;
     bool titleSongRequested_ = false;
     std::uint64_t frame_ = 0;
     bool quit_ = false;

@@ -18,6 +18,8 @@
 #include "io/MappedFile.hpp"
 #include "io/Vfs.hpp"
 #include "th07/Bgm.hpp"
+#include "th07/ExeTables.hpp"
+#include "th07/SoundPlayer.hpp"
 #include "th07/Version.hpp"
 
 using namespace touhou;
@@ -168,7 +170,119 @@ struct RecordingMusic final : MusicBackend {
     void pauseMusic(bool p) override { paused = p; }
 };
 
+// A minimal PE32 image with one section mapping VA 0x49E000..0x4A0000, holding test tables
+// at th07.exe 1.00b's addresses (sound id i: sample i % 30, volume -10 * i).
+Bytes syntheticExe() {
+    constexpr std::uint32_t kRva = 0x9E000, kRaw = 0x400, kSize = 0x2000;
+    Bytes exe(kRaw + kSize, 0);
+    exe[0] = 'M';
+    exe[1] = 'Z';
+    set32(exe, 0x3c, 0x40);
+    std::memcpy(exe.data() + 0x40, "PE\0\0", 4);
+    exe[0x46] = 1;     // one section
+    exe[0x54] = 0xE0;  // optional header size
+    exe[0x58] = 0x0b;  // PE32 magic 0x10b
+    exe[0x59] = 0x01;
+    set32(exe, 0x58 + 28, 0x400000);  // image base
+    const std::size_t sec = 0x58 + 0xE0;
+    std::memcpy(exe.data() + sec, ".data", 5);
+    set32(exe, sec + 8, kSize);
+    set32(exe, sec + 12, kRva);
+    set32(exe, sec + 16, kSize);
+    set32(exe, sec + 20, kRaw);
+    auto off = [&](std::uint32_t va) { return kRaw + (va - 0x400000 - kRva); };
+    for (int i = 0; i < 38; ++i) {
+        set32(exe, off(0x0049EA88) + 8 * i, static_cast<std::uint32_t>(i % 30));
+        exe[off(0x0049EA88) + 8 * i + 4] = static_cast<std::uint8_t>(static_cast<std::uint16_t>(-10 * i));
+        exe[off(0x0049EA88) + 8 * i + 5] = static_cast<std::uint8_t>(static_cast<std::uint16_t>(-10 * i) >> 8);
+    }
+    std::uint32_t strVa = 0x0049F800;
+    for (int i = 0; i < 30; ++i) {
+        const std::string name = "data/wav/se_test" + std::to_string(i) + ".wav";
+        std::memcpy(exe.data() + off(strVa), name.data(), name.size());
+        set32(exe, off(0x0049EBB8) + 4 * i, strVa);
+        strVa += static_cast<std::uint32_t>(name.size()) + 1;
+    }
+    for (int i = 0; i < 31; ++i) set32(exe, off(0x0049ECF8) + 4 * i, static_cast<std::uint32_t>(10 * (i + 1)));
+    for (int i = 0; i < 28; ++i) set32(exe, off(0x0049EEC8) + 4 * i, 0xFF000000u + static_cast<std::uint32_t>(i));
+    for (int i = 0; i < 32; ++i) exe[off(0x0049EFA0) + i] = static_cast<std::uint8_t>(i % 3);
+    for (int i = 0; i < 141; ++i) set32(exe, off(0x0049F1B8) + 4 * i, static_cast<std::uint32_t>(1000 * i));
+    return exe;
+}
+
+// A tiny valid WAV (16-bit mono silence).
+Bytes tinyWav() {
+    Bytes w = text("RIFF");
+    put32(w, 36 + 8);
+    const Bytes rest = text("WAVEfmt ");
+    w.insert(w.end(), rest.begin(), rest.end());
+    put32(w, 16);
+    put16(w, 1);
+    put16(w, 1);
+    put32(w, 22050);
+    put32(w, 44100);
+    put16(w, 2);
+    put16(w, 16);
+    const Bytes data = text("data");
+    w.insert(w.end(), data.begin(), data.end());
+    put32(w, 8);
+    w.resize(w.size() + 8, 0);
+    return w;
+}
+
+struct RecordingSamples final : SampleBackend {
+    int loads = 0;
+    struct Play {
+        int voice, sample;
+        float gain;
+    };
+    std::vector<Play> plays;
+    bool loadSample(int, const std::uint8_t*, std::size_t) override {
+        ++loads;
+        return true;
+    }
+    void playSample(int voice, int sample, float gain) override { plays.push_back({voice, sample, gain}); }
+};
+
 }  // namespace
+
+static void testExeTablesAndSound() {
+    const Bytes exe = syntheticExe();
+    ExeTables t;
+    std::string err;
+    CHECK(!loadExeTables(exe, t, &err));  // not the real 1.00b executable
+    CHECK(loadExeTables(exe, t, &err, false));
+    if (!err.empty() && t.sampleFiles[0].empty()) std::fprintf(stderr, "  %s\n", err.c_str());
+    CHECK(t.sounds[37].sample == 7 && t.sounds[37].volume == -370);
+    CHECK(t.sampleFiles[29] == "data/wav/se_test29.wav");
+    CHECK(t.fullPowerChain[30] == 310 && t.colorsPale[27] == 0xFF00001Bu && t.dropCycle[31] == 1);
+    CHECK(t.spellBonus[140] == 140000);
+    CHECK(!loadExeTables(Bytes(exe.begin(), exe.begin() + 0x500), t, &err, false));  // tables cut off
+
+    // Sound effects: samples by name from the archive; a 5-entry queue, repeats ignored,
+    // more dropped; each id on its own voice with its own volume.
+    std::vector<Member> members;
+    for (int i = 0; i < 30; ++i) members.push_back({"se_test" + std::to_string(i) + ".wav", tinyWav()});
+    Vfs vfs;
+    vfs.mount(openArchive("th07.dat", mem(pbg4(members)), &err));
+    RecordingSamples backend;
+    SoundPlayer sound(&backend, &t);
+    CHECK(sound.loadSamples(vfs) == 30 && backend.loads == 30);
+    for (int id : {3, 3, 37, 1, 2, 4, 5, 6, 99}) sound.playSound(id);
+    sound.flush();
+    CHECK(backend.plays.size() == 5 && backend.plays[0].voice == 3 && backend.plays[1].voice == 37 &&
+          backend.plays[1].sample == 7 && backend.plays[4].voice == 4);
+    CHECK(std::fabs(backend.plays[1].gain - std::pow(10.0f, -370.0f / 2000.0f)) < 1e-6f);
+    // Switched off: the queue is kept (full) and plays once effects are back on.
+    backend.plays.clear();
+    sound.setEnabled(false);
+    for (int id = 10; id < 20; ++id) sound.playSound(id);
+    sound.flush();
+    CHECK(backend.plays.empty());
+    sound.setEnabled(true);
+    sound.flush();
+    CHECK(backend.plays.size() == 5 && backend.plays[4].voice == 14);
+}
 
 static void testPbg4() {
     const Bytes ver = text("0100a 123 456\n0100b 466944 -1234567\n");
@@ -356,6 +470,7 @@ int main() {
         {"PBG4 archive (th07.dat)", testPbg4},
         {"version file and executable checksum", testVersionFile},
         {"music: thbgm.fmt, queue timing, fades, pause", testBgm},
+        {"th07.exe tables, sound effects", testExeTablesAndSound},
     };
     for (const Test& t : tests) {
         const int before = g_failures;

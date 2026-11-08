@@ -1,0 +1,42 @@
+#pragma once
+
+// The few data tables of Perfect Cherry Blossom that exist only inside th07.exe (version
+// 1.00b), read at run time from the player's own copy (never shipped with the port):
+// sound effects (sample and volume per sound id, and the sample file names), the full-power
+// item chain scores, the bullet colour tables, the enemy item-drop cycle and the spell card
+// base bonuses. The executable is identified by its SHA-256.
+
+#include <array>
+#include <cstdint>
+#include <span>
+#include <string>
+
+namespace touhou::th07 {
+
+inline constexpr const char* kTh07Exe100bSha256 = "35467eaf8dc7fc85f024f16fb2037255f151cefda33cf4867bc9122aaa2e80ca";
+
+struct ExeTables {
+    static constexpr int kSoundIds = 38;
+    static constexpr int kSamples = 30;
+    static constexpr int kChain = 31;
+    static constexpr int kColors = 28;
+    static constexpr int kDrops = 32;
+    static constexpr int kSpellCards = 141;
+
+    struct Sound {
+        int sample = -1;           // 0..29
+        std::int16_t volume = 0;   // DirectSound volume, hundredths of a dB (<= 0)
+    };
+    std::array<Sound, kSoundIds> sounds{};
+    std::array<std::string, kSamples> sampleFiles;  // "data/wav/se_....wav"
+    std::array<std::int32_t, kChain> fullPowerChain{};
+    std::array<std::uint32_t, kColors> colorsSaturated{}, colorsPale{};
+    std::array<std::uint8_t, kDrops> dropCycle{};
+    std::array<std::uint32_t, kSpellCards> spellBonus{};
+};
+
+// False (with a reason) when `exe` is not th07.exe 1.00b (unless requireKnownVersion is
+// false, for tests) or a table is not where it should be.
+bool loadExeTables(std::span<const std::uint8_t> exe, ExeTables& out, std::string* error, bool requireKnownVersion = true);
+
+}  // namespace touhou::th07
