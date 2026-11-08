@@ -214,6 +214,11 @@ bool Supervisor::passOnce(std::uint16_t raw, bool first) {
     if (active_ == FlowState::Game && game_ && game_->running() && game_->slowSkipped()) input_.merge(sample);
     else input_.sample(sample);
     bool transitioned = false;
+    if (zeroNextPass_) {  // a game started without a transition: its first pass sees nothing held
+        zeroNextPass_ = false;
+        input_.clear();
+        transitioned = true;
+    }
     if (requested_ != active_) {
         previous_ = active_;
         ctx_.previous = previous_;
@@ -604,6 +609,7 @@ bool Supervisor::startReplay(std::shared_ptr<const ReplayFile> file, int stageIn
     ctx_.maxContinues = hours < 7 ? 3 : hours < 14 ? 4 : 5;
     if (!openGame(true, false)) return false;
     active_ = requested_ = FlowState::Game;
+    zeroNextPass_ = true;
     return true;
 }
 
@@ -652,6 +658,7 @@ bool Supervisor::startGame(const Gameplay::Setup& setup) {
         return false;
     }
     active_ = requested_ = FlowState::Game;
+    zeroNextPass_ = true;
     return true;
 }
 

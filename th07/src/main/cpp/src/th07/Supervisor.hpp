@@ -181,6 +181,7 @@ class Supervisor {
     std::uint32_t writes_ = 0;
     ReplayRecorder recorder_;
     int passesLastCall_ = 0;
+    bool zeroNextPass_ = false;
     std::function<void(int, std::int32_t, const ReplayEntry&, std::uint32_t)> playbackObserver_;
     std::uint64_t runningBase_ = 0, playBase_ = 0;
 };

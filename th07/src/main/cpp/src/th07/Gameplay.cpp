@@ -441,9 +441,10 @@ bool Gameplay::tick(std::uint16_t raw) {
     drawState_.offsetX = drawState_.offsetY = 0.0f;
     screenFx_.update(*res_.rng, g, drawState_.offsetX, drawState_.offsetY);
     // The recorder's record hook (priority 16), after all gameplay: the game input is latched
-    // (even in slow mode), then the raw input and the event flags are written. Nothing
-    // happens while a menu is up (the continue menu opened during this pass).
-    if (!playback_ && !menu_.active()) {
+    // (even in slow mode), then the raw input and the event flags are written. Its "menu up"
+    // test reads the game manager's step 6 flag, so the frame in which the player opens the
+    // continue menu is still recorded (ZUN's demo files show it).
+    if (!playback_) {
         prevGameInput_ = gameInput_;
         gameInput_ = raw;
         if (recorder_ && !g.slowMode) recorder_->write(raw, static_cast<std::uint16_t>(g.eventFlags));

@@ -204,12 +204,11 @@ void Gui::asciiUpdate(const World& w) {
         m.tick(*w.anm, *w.rng);
     }
     borderVm_.tick(*w.anm, *w.rng);
-    // The demo marker (started on its first pass, keeping its position).
+    // The demo marker (started on its first pass without resetting the VM's position; its
+    // script places it).
     if (demo_) {
         if (!demoStarted_) {
-            const Vec3f at = demoMarker_.position;
             demoMarker_.start(*w.anm, *w.rng, 7);
-            demoMarker_.position = at;
             demoStarted_ = true;
         }
         demoMarker_.tick(*w.anm, *w.rng);
