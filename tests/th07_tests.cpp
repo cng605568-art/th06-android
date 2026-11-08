@@ -1966,6 +1966,62 @@ static void testScreenEffects() {
     CHECK(p.colors.size() == 1 && (p.colors[0] >> 24) == 255);
 }
 
+static void testPlayfieldCamera() {
+    g_timing = Timing{};
+    EntryDef e;
+    e.width = e.height = 512;
+    e.format = 0;
+    e.sprites = {{0, 0, 0, 128, 128}};
+    e.scripts.push_back({0, {{3, 0, {0}}}});
+    Vfs vfs;
+    std::string err;
+    vfs.mount(openArchive("th07.dat", mem(pbg4({{"p.anm", anmFile({e})}})), &err));
+    TextureLibrary textures;
+    AnmLibrary lib;
+    CHECK(lib.load(vfs, textures, "p.anm", 4, 0x724, &err));
+    if (!lib.loaded(4)) return;
+    ZunRng rng(1);
+    AnmVm vm;
+    vm.startFresh(lib, rng, 0x724);
+    vm.flags |= AnmVm::Visible | AnmVm::Active;
+    struct Probe : SpriteSink {
+        std::vector<Vertex3D> v;
+        Draw3DState ds;
+        void draw(std::uint16_t, Blend, const SpriteInstance&) override {}
+        void drawQuad3D(std::uint16_t, Blend, const Vertex3D* c, const Draw3DState& st) override {
+            v.assign(c, c + 4);
+            ds = st;
+        }
+    };
+    auto px = [](float ndc) { return (ndc + 1.0f) * 320.0f - 0.5f; };  // back to Direct3D pixels
+    auto py = [](float ndc) { return (1.0f - ndc) * 240.0f - 0.5f; };
+    Background bg;
+    AnmDrawState none;
+    // At depth 0 the playfield camera maps field coordinates 1:1 onto the playfield.
+    vm.position = {192.0f, 224.0f, 0.0f};
+    Probe p;
+    bg.drawProjected(p, vm, none);
+    CHECK(p.v.size() == 4);
+    if (p.v.size() == 4) {
+        CHECK(std::fabs(px(p.v[0].x) - (32 + 192 - 64)) < 0.01f && std::fabs(py(p.v[0].y) - (16 + 224 - 64)) < 0.01f);
+        CHECK(std::fabs(px(p.v[3].x) - (32 + 192 + 64)) < 0.01f && std::fabs(py(p.v[3].y) - (16 + 224 + 64)) < 0.01f);
+        // On top of everything, never writing depth, clipped to the playfield.
+        CHECK(p.v[0].z == -1.0f && p.v[0].w == 1.0f && !p.ds.depthWrite && p.ds.clipX == 32.0f && p.ds.clipW == 384.0f);
+    }
+    // Nearer the camera (positive z) it grows about its projected centre.
+    vm.position = {100.0f, 100.0f, 200.0f};
+    Probe q;
+    bg.drawProjected(q, vm, none);
+    if (q.v.size() == 4) {
+        const float w = px(q.v[1].x) - px(q.v[0].x);
+        const float eye = 224.0f / std::tan(kZunPi / 20.0f);
+        const float sc = eye / (eye - 200.0f);
+        CHECK(std::fabs(w - 128.0f * sc) < 0.05f);
+        const float cx = (px(q.v[0].x) + px(q.v[1].x)) / 2.0f;
+        CHECK(std::fabs(cx - (32.0f + 192.0f + (100.0f - 192.0f) * sc)) < 0.05f);
+    }
+}
+
 static void testInGameMenus() {
     g_timing = Timing{};
     // capture.anm's shape: a blank 512x512 texture and a 128x128 backdrop sprite at the origin.
@@ -2746,6 +2802,7 @@ int main() {
         {"Music Room: musiccmt.txt", testMusicComments},
         {"supervisor: title, results, Music Room, ending", testSupervisor},
         {"pause and continue menus: snapshot, locks", testInGameMenus},
+        {"playfield camera: projected sprites", testPlayfieldCamera},
         {"screen effects: shake draws, pulses, fades", testScreenEffects},
     };
     for (const Test& t : tests) {

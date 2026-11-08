@@ -297,21 +297,24 @@ void Th07Game::render(SpriteSink& sink, float, const FrameInfo&) {
 
 bool Th07Game::takeCaptureRequest() {
     Gameplay* g = flow_ ? flow_->game() : nullptr;
-    return g && g->inGameMenu().takeCaptureRequest();
+    return g && g->takeCaptureRequest();
 }
 
 int Th07Game::captureTexture() const {
     const std::uint16_t id = anm_.slotTexture(4);  // capture.anm, loaded at boot
-    return id != 0 ? id : -1;
+    if (id == 0) return -1;
+    // An empty rectangle would make the host fill the whole texture: refuse instead.
+    const CaptureRect r = captureRect();
+    return r.w > 0 && r.h > 0 ? id : -1;
 }
 
 void Th07Game::setCaptureReady(bool ready) {
-    if (Gameplay* g = flow_ ? flow_->game() : nullptr) g->inGameMenu().setCaptureReady(ready);
+    if (Gameplay* g = flow_ ? flow_->game() : nullptr) g->setCaptureReady(ready);
 }
 
 Game::CaptureRect Th07Game::captureRect() const {
     CaptureRect r;
-    if (Gameplay* g = flow_ ? flow_->game() : nullptr) g->inGameMenu().captureRect(r.x, r.y, r.w, r.h);
+    if (Gameplay* g = flow_ ? flow_->game() : nullptr) g->captureRect(r.x, r.y, r.w, r.h);
     return r;
 }
 

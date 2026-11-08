@@ -99,8 +99,13 @@ class Gameplay {
     bool running() const { return running_; }
     bool finished() const { return outcome_ != Outcome::None; }
     bool paused() const { return menu_.active(); }
-    // The pause and continue menus (their playfield snapshot goes through the host).
+    // The pause and continue menus.
     InGameMenu& inGameMenu() { return menu_; }
+    // The host's playfield capture, one request at a time: the pause/continue menus' backdrop
+    // or the GUI's stage-transition snapshot (different rectangles of capture.anm's texture).
+    bool takeCaptureRequest();
+    void captureRect(int& x, int& y, int& w, int& h) const;
+    void setCaptureReady(bool ready);
     // Opens the pause menu (Android back button), as Menu pressed would.
     void requestPause() { pauseRequested_ = true; }
     void draw(SpriteSink& sink);
@@ -131,6 +136,8 @@ class Gameplay {
     std::unique_ptr<Gui> gui_ = std::make_unique<Gui>();
     std::uint16_t prevInput_ = 0;
     InGameMenu menu_;
+    enum class CaptureOwner : std::uint8_t { None, Menu, Gui };
+    CaptureOwner captureOwner_ = CaptureOwner::None;
     bool pauseRequested_ = false;
     Outcome outcome_ = Outcome::None;
     Hooks hooks_;

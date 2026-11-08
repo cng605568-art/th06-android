@@ -9,6 +9,7 @@
 #include "gfx/TextRenderer.hpp"
 #include "gfx/TextureLibrary.hpp"
 #include "io/Vfs.hpp"
+#include "th07/Background.hpp"
 #include "th07/Bullets.hpp"
 #include "th07/Player.hpp"
 
@@ -78,6 +79,30 @@ bool Gui::stageStart(const World& w, const Resources& res, bool firstStage, std:
     }
     stageClear_ = Element{};
     showLoading_ = false;
+    tilesActive_ = false;
+    tileLive_.fill(false);
+    if (!firstStage && snapshotLive_) {
+        // A new stage: capture the old stage's last frame and break it into tiles that turn
+        // away over the new one.
+        snapshotVm_.interrupt(1);
+        captureRequest_ = true;
+        captureReady_ = false;
+        for (int i = 0; i < 14; ++i) {
+            for (int j = 0; j < 12; ++j) {
+                const auto n = static_cast<std::size_t>(i * 12 + j);
+                AnmVm& t = tiles_[n];
+                startVm(t, kCapture + 2 + (i + j) % 2);
+                t.intRegs[1] = i + 2 * j;  // the stagger
+                t.position = {32.0f * static_cast<float>(j) - 0.5f + 16.0f, 32.0f * static_cast<float>(i) - 0.5f + 16.0f, 0.0f};
+                t.uvScroll = {32.0f * static_cast<float>(j) / 512.0f, 32.0f * static_cast<float>(i) / 512.0f};
+                tileLive_[n] = true;
+            }
+        }
+        tilesActive_ = true;
+    } else if (firstStage) {
+        snapshotLive_ = false;
+        captureReady_ = false;
+    }
     if (stage_ < 1 || stage_ > 8) {
         if (error) *error = "no GUI for this stage";
         return false;
@@ -139,6 +164,16 @@ bool Gui::stageStart(const World& w, const Resources& res, bool firstStage, std:
 
 // The boss name label shows front sprite 0x609, whose texels are overwritten with the
 // current boss's name sprite (0x60E + k, in front.anm's second texture).
+void Gui::captureRect(int& x, int& y, int& w, int& h) const {
+    x = y = w = h = 0;
+    if (!snapshotVm_.sprite) return;
+    const AnmSprite& sp = *snapshotVm_.sprite;
+    x = static_cast<int>(sp.startX);
+    y = static_cast<int>(sp.startY);
+    w = static_cast<int>(sp.endX - sp.startX);
+    h = static_cast<int>(sp.endY - sp.startY);
+}
+
 void Gui::copyBossName(int k) {
     if (!world_ || !res_.textures) return;
     const AnmSprite* name = world_->anm->sprite(kFront + 14 + k);
@@ -449,6 +484,10 @@ void Gui::runDialogue(const World& w, std::uint16_t input, std::uint16_t previou
                     stageClear_ = Element{};
                     startVm(stageClear_.vm, kLoading);
                     stageClear_.active = true;
+                    startVm(snapshotVm_, kCapture + 1);
+                    snapshotLive_ = true;
+                    captureRequest_ = true;
+                    captureReady_ = false;
                 } else {
                     w.state->extendsGranted = -1;
                 }
@@ -543,6 +582,16 @@ void Gui::update(const World& w, std::uint16_t input, std::uint16_t previousInpu
     bombNameBg_.tick(*w.anm, *w.rng);
     enemyNameBg_.tick(*w.anm, *w.rng);
     captureIndicator_.tick(*w.anm, *w.rng);
+    if (snapshotLive_) snapshotVm_.tick(*w.anm, *w.rng);
+    if (tilesActive_) {
+        bool any = false;
+        for (std::size_t n = 0; n < tiles_.size(); ++n) {
+            if (!tileLive_[n]) continue;
+            if (tiles_[n].tick(*w.anm, *w.rng)) tileLive_[n] = false;
+            else any = true;
+        }
+        tilesActive_ = any;
+    }
     if (stageClear_.active) {
         if (stageClear_.vm.tick(*w.anm, *w.rng)) stageClear_.active = false;
     }
@@ -808,11 +857,17 @@ void Gui::draw(SpriteSink& sink, AnmDrawState& state) {
     }
     if (stageClear_.active) {
         drawVm(sink, stageClear_.vm, state);
+        if (snapshotLive_ && captureReady_) drawVm(sink, snapshotVm_, state);
         if (showLoading_) {
             loadingVm_.selectSprite(*world_->anm, 0x10C);
             loadingVm_.flags |= AnmVm::Visible | AnmVm::Active;
             loadingVm_.position = {304.0f, 448.0f, 0.0f};
             drawVm(sink, loadingVm_, state);
+        }
+    }
+    if (tilesActive_ && captureReady_ && world_->background) {
+        for (std::size_t n = 0; n < tiles_.size(); ++n) {
+            if (tileLive_[n]) world_->background->drawProjected(sink, tiles_[n], state);
         }
     }
     drawBossHud(sink, state);

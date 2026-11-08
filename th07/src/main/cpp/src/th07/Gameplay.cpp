@@ -12,6 +12,34 @@
 namespace touhou::th07 {
 
 Gameplay::Gameplay() : player_(std::make_unique<Player>()) {}
+
+bool Gameplay::takeCaptureRequest() {
+    if (captureOwner_ == CaptureOwner::None) {
+        if (menu_.takeCaptureRequest()) captureOwner_ = CaptureOwner::Menu;
+        else if (gui_ && gui_->takeCaptureRequest()) captureOwner_ = CaptureOwner::Gui;
+    }
+    return captureOwner_ != CaptureOwner::None;
+}
+
+void Gameplay::captureRect(int& x, int& y, int& w, int& h) const {
+    x = y = w = h = 0;
+    if (captureOwner_ == CaptureOwner::Menu) menu_.captureRect(x, y, w, h);
+    else if (captureOwner_ == CaptureOwner::Gui && gui_) gui_->captureRect(x, y, w, h);
+}
+
+void Gameplay::setCaptureReady(bool ready) {
+    switch (captureOwner_) {
+        case CaptureOwner::Menu: menu_.setCaptureReady(ready); break;
+        case CaptureOwner::Gui:
+            if (gui_) gui_->setCaptureReady(ready);
+            break;
+        case CaptureOwner::None:  // GL resources lost: every snapshot is gone
+            menu_.setCaptureReady(false);
+            if (gui_) gui_->setCaptureReady(false);
+            break;
+    }
+    captureOwner_ = CaptureOwner::None;
+}
 Gameplay::~Gameplay() = default;
 
 bool Gameplay::start(const Resources& res, const Setup& setup, std::string* error) {

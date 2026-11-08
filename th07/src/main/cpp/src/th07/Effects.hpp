@@ -75,6 +75,7 @@ class Effects {
     std::array<std::array<std::int16_t, kSlots>, 4> layers_{};
     std::array<int, 4> layerCount_{};
     std::array<float, 4> colorMultiplier_{1.0f, 1.0f, 1.0f, 1.0f};
+    Background* background_ = nullptr;  // the playfield camera for layer 2 (from the World)
 };
 
 }  // namespace touhou::th07

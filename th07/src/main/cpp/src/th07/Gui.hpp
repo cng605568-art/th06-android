@@ -70,6 +70,18 @@ class Gui final : public StageGui, public PopupSink {
     void score(const Vec3f& pos, std::uint32_t value, std::uint32_t color, bool small) override;
     void powerUp(const Vec3f& pos) override;
 
+    // The playfield capture (spec 3.16): the stage-clear snapshot, then at the next stage the
+    // old stage's last frame for the transition tiles. Into capture.anm's texture at the
+    // snapshot sprite's rectangle.
+    bool takeCaptureRequest() {
+        const bool r = captureRequest_;
+        captureRequest_ = false;
+        return r;
+    }
+    void setCaptureReady(bool ready) { captureReady_ = ready; }
+    void captureRect(int& x, int& y, int& w, int& h) const;
+    bool transitionActive() const { return tilesActive_; }
+
     // Text queue (ASCII sprites), drawn at order 16.
     void queueText(float x, float y, const std::string& text, std::uint32_t color, float scaleX = 1.0f, float scaleY = 1.0f,
                    float spacing = 14.0f, bool playfield = false);
@@ -130,6 +142,14 @@ class Gui final : public StageGui, public PopupSink {
     Element stageClear_;
     AnmVm loadingVm_;
     bool showLoading_ = false;
+    // Stage transition (spec 3.16): the snapshot (capture script 0x725) and 14 x 12 tiles
+    // (scripts 0x726/0x727) drawn as projected sprites with the playfield camera.
+    AnmVm snapshotVm_;
+    bool snapshotLive_ = false;
+    std::array<AnmVm, 168> tiles_{};
+    std::array<bool, 168> tileLive_{};
+    bool tilesActive_ = false;
+    bool captureRequest_ = false, captureReady_ = false;
 
     // ASCII manager.
     std::vector<TextItem> text_;

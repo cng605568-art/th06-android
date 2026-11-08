@@ -61,6 +61,13 @@ class Background {
     void drawBillboard(SpriteSink& sink, AnmVm& vm, const AnmDrawState& state) {
         if (vm.sprite) drawFacingQuad(sink, vm, state, vm.sprite->pixelWidth);
     }
+    // The playfield camera's screen-space paths (ANM spec 4.6), drawn on top of everything
+    // (the depth function is "always" outside the stage pass) and clipped to the playfield:
+    // "draw projected" (the VM's 3D-rotated quad, affine textured; the GUI's stage
+    // transition tiles) and "draw billboard" (a camera-facing quad sized by the stage
+    // camera's right vector; the effects' orbiting spell circles). Field coordinates.
+    void drawProjected(SpriteSink& sink, AnmVm& vm, const AnmDrawState& state);
+    void drawPlayfieldBillboard(SpriteSink& sink, AnmVm& vm, const AnmDrawState& state);
     const SpriteRegion* white = nullptr;  // for the darkening rectangle of a starting card
 
     // ECL: resume the script at the matching label (opcode 31).
@@ -132,6 +139,8 @@ class Background {
     void execute(const Record& r);
     void drawLayer(SpriteSink& sink, AnmDrawState& state, int layer);
     void draw3DQuad(SpriteSink& sink, AnmVm& vm, const AnmDrawState& state, int cameraMode);
+    void updateWorldMatrix(AnmVm& vm);
+    void emitScreenQuad(SpriteSink& sink, const AnmVm& vm, const AnmDrawState& state, const float xs[4], const float ys[4]);
     void drawFacingQuad(SpriteSink& sink, AnmVm& vm, const AnmDrawState& state, float width);
     void buildStageCamera();
     void buildPlayfieldCamera();

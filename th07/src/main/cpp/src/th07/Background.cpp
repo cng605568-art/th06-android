@@ -552,17 +552,7 @@ Vertex3D toTarget(const Vec4f& c, const Viewport& vp) {
 
 void Background::draw3DQuad(SpriteSink& sink, AnmVm& vm, const AnmDrawState& state, int cameraMode) {
     if (!vm.sprite || !vm.has(AnmVm::Visible) || !vm.has(AnmVm::Active) || (vm.color >> 24) == 0) return;
-    if (!vm.has(AnmVm::SkipTransform) && (vm.has(AnmVm::ScaleDirty) || vm.has(AnmVm::RotationDirty))) {
-        Mat4 w = vm.spriteMatrix;
-        w[0] *= vm.scale.x;
-        w[5] *= vm.scale.y;
-        vm.set(AnmVm::ScaleDirty, false);
-        if (vm.rotation.x != 0.0f) w = multiply(w, rotationX(vm.rotation.x));
-        if (vm.rotation.y != 0.0f) w = multiply(w, rotationY(vm.rotation.y));
-        if (vm.rotation.z != 0.0f) w = multiply(w, rotationZ(vm.rotation.z));
-        vm.set(AnmVm::RotationDirty, false);
-        vm.worldMatrix = w;
-    }
+    updateWorldMatrix(vm);
     Mat4 world = vm.worldMatrix;
     float tx = vm.position.x, ty = vm.position.y;
     if (vm.anchor() & 1u) tx += std::fabs(vm.sprite->pixelWidth * vm.scale.x / 2.0f);
@@ -613,6 +603,97 @@ void Background::draw3DQuad(SpriteSink& sink, AnmVm& vm, const AnmDrawState& sta
     ds.clipW = viewport.w;
     ds.clipH = viewport.h;
     sink.drawQuad3D(vm.sprite->texture, vm.has(AnmVm::Additive) ? Blend::Additive : Blend::Alpha, v, ds);
+}
+
+// The cached world matrix (spec 2.10 / ANM 4.6 step 1): rebuilt from the sprite matrix, the
+// scale and the X, Y, Z rotations only when a dirty flag is set.
+void Background::updateWorldMatrix(AnmVm& vm) {
+    if (vm.has(AnmVm::SkipTransform) || !(vm.has(AnmVm::ScaleDirty) || vm.has(AnmVm::RotationDirty))) return;
+    Mat4 w = vm.spriteMatrix;
+    w[0] *= vm.scale.x;
+    w[5] *= vm.scale.y;
+    vm.set(AnmVm::ScaleDirty, false);
+    if (vm.rotation.x != 0.0f) w = multiply(w, rotationX(vm.rotation.x));
+    if (vm.rotation.y != 0.0f) w = multiply(w, rotationY(vm.rotation.y));
+    if (vm.rotation.z != 0.0f) w = multiply(w, rotationZ(vm.rotation.z));
+    vm.set(AnmVm::RotationDirty, false);
+    vm.worldMatrix = w;
+}
+
+// Screen-space corners (Direct3D pixels, order top-left, top-right, bottom-left,
+// bottom-right) finished as the 2D path does (ANM 4.5, no rounding): the global offset, the
+// +0.5 GL mapping, the sprite's UVs plus scroll, the effective colour. Depth "always".
+void Background::emitScreenQuad(SpriteSink& sink, const AnmVm& vm, const AnmDrawState& state, const float xs[4], const float ys[4]) {
+    const AnmSprite& sp = *vm.sprite;
+    const float us[4] = {sp.uvStartX, sp.uvEndX, sp.uvStartX, sp.uvEndX};
+    const float vs[4] = {sp.uvStartY, sp.uvStartY, sp.uvEndY, sp.uvEndY};
+    const std::uint32_t color = argbToRgbaBytes(effectiveColor(vm, state));
+    Vertex3D v[4];
+    for (int i = 0; i < 4; ++i) {
+        v[i].x = (xs[i] + state.offsetX + 0.5f) / kTargetW * 2.0f - 1.0f;
+        v[i].y = 1.0f - (ys[i] + state.offsetY + 0.5f) / kTargetH * 2.0f;
+        v[i].z = -1.0f;  // the near end of the 3D depth range: passes against anything
+        v[i].w = 1.0f;   // affine across the two triangles [QUIRK]
+        v[i].u = us[i] + vm.uvScroll.x;
+        v[i].v = vs[i] + vm.uvScroll.y;
+        v[i].color = color;
+        v[i].eyeZ = 0.0f;  // no fog
+    }
+    Draw3DState ds;
+    ds.depthWrite = false;
+    ds.clipX = viewport.x;
+    ds.clipY = viewport.y;
+    ds.clipW = viewport.w;
+    ds.clipH = viewport.h;
+    sink.drawQuad3D(sp.texture, vm.has(AnmVm::Additive) ? Blend::Additive : Blend::Alpha, v, ds);
+}
+
+void Background::drawProjected(SpriteSink& sink, AnmVm& vm, const AnmDrawState& state) {
+    if (!vm.sprite || !vm.has(AnmVm::Visible) || !vm.has(AnmVm::Active) || (vm.color >> 24) == 0) return;
+    updateWorldMatrix(vm);
+    Mat4 world = vm.worldMatrix;
+    float tx = vm.position.x, ty = vm.position.y;
+    if (vm.anchor() & 1u) tx += std::fabs(vm.sprite->pixelWidth * vm.scale.x / 2.0f);
+    if (vm.anchor() & 2u) ty += std::fabs(vm.sprite->pixelHeight * vm.scale.y / 2.0f);
+    world[12] = tx;
+    world[13] = ty;
+    world[14] = vm.position.z;
+    buildPlayfieldCamera();
+    const Mat4 m = multiply(multiply(world, view_), proj_);
+    const Vec3f corners[4] = {{-128, -128, 0}, {128, -128, 0}, {-128, 128, 0}, {128, 128, 0}};
+    float xs[4], ys[4];
+    for (int i = 0; i < 4; ++i) {
+        const Vec4f c = transform(corners[i], m);
+        xs[i] = viewport.x + (1.0f + c.x / c.w) * viewport.w / 2.0f;
+        ys[i] = viewport.y + (1.0f - c.y / c.w) * viewport.h / 2.0f;
+    }
+    emitScreenQuad(sink, vm, state, xs, ys);
+}
+
+void Background::drawPlayfieldBillboard(SpriteSink& sink, AnmVm& vm, const AnmDrawState& state) {
+    if (!vm.sprite || !vm.has(AnmVm::Visible) || !vm.has(AnmVm::Active) || (vm.color >> 24) == 0) return;
+    buildPlayfieldCamera();
+    const Mat4 vpm = multiply(view_, proj_);
+    auto project = [&](const Vec3f& p) {
+        const Vec4f c = transform(p, vpm);
+        return Vec3f{viewport.x + (1.0f + c.x / c.w) * viewport.w / 2.0f, viewport.y + (1.0f - c.y / c.w) * viewport.h / 2.0f, c.z / c.w};
+    };
+    const Vec3f centre = project(vm.position);
+    if (centre.z < 0.0f || centre.z > 1.0f) return;
+    // The stage camera's right vector sets the size, as the original takes it.
+    const Vec3f right = normalize(cross(cam_.facing, cam_.up));
+    const float k = (project(vm.position + right) - centre).length() * 0.5f;
+    const float hw = k * vm.sprite->pixelWidth * vm.scale.x, hh = k * vm.sprite->pixelHeight * vm.scale.y;
+    const float c = std::cos(vm.rotation.z), s = std::sin(vm.rotation.z);
+    const float lx[4] = {-hw, hw, -hw, hw}, ly[4] = {-hh, -hh, hh, hh};
+    float xs[4], ys[4];
+    for (int i = 0; i < 4; ++i) {
+        xs[i] = (lx[i] * c - ly[i] * s) + centre.x;
+        ys[i] = (lx[i] * s + ly[i] * c) + centre.y;
+        if (vm.anchor() & 1u) xs[i] += hw;
+        if (vm.anchor() & 2u) ys[i] += hh;
+    }
+    emitScreenQuad(sink, vm, state, xs, ys);
 }
 
 void Background::drawFacingQuad(SpriteSink& sink, AnmVm& vm, const AnmDrawState& state, float width) {

@@ -254,6 +254,7 @@ bool Effects::runUpdate(const World& w, Effect& e) {
 }
 
 void Effects::update(const World& w) {
+    background_ = w.background;
     active_ = 0;
     layerCount_.fill(0);
     for (int i = 0; i < kSlots - 1; ++i) {
@@ -307,8 +308,13 @@ void Effects::draw(SpriteSink& sink, const AnmDrawState& state) {
         for (int k = 0; k < layerCount_[static_cast<std::size_t>(layer)]; ++k) {
             Effect& e = slots_[static_cast<std::size_t>(layers_[static_cast<std::size_t>(layer)][static_cast<std::size_t>(k)])];
             if (!e.inUse) continue;
-            // Layer 2 (orbit markers) are camera-facing billboards in the original; drawn flat
-            // at their playfield position for now.
+            if (layer == 2 && background_) {
+                // The orbiting spell circles: camera-facing billboards at the raw (field)
+                // position through the playfield camera, so their depth scales them.
+                e.vm.position = e.pos;
+                background_->drawPlayfieldBillboard(sink, e.vm, state);
+                continue;
+            }
             e.vm.position = {e.pos.x + kPlayfieldX, e.pos.y + kPlayfieldY, e.pos.z};
             drawVm(sink, e.vm, state);
         }
