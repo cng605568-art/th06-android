@@ -56,6 +56,8 @@ class Gui final : public StageGui, public PopupSink {
     bool dialogueWait() const override { return msgIndex_ >= 0 && resume_ == 0; }
     void spellCardStart(int card, int portrait, const std::string& name) override;
     void spellCardEnd() override;
+    void bombBanner(int sprite, const std::string& name) override;
+    void bombBannerEnd() override;
     void bonus(std::uint32_t points) override;
     void spellCardBonus(std::uint32_t points) override;
     // PopupSink.

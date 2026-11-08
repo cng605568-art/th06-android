@@ -58,7 +58,11 @@ void Player::startBomb(const World& w) {
 void Player::bombStartUp(const World& w, int invulnerability, int minCost, float scale) {
     GameState& g = *w.state;
     if (w.items) w.items->collectAll();
-    w.playSound(14);  // the bomb banner
+    // The portrait and name banner (it plays the banner sound).
+    static constexpr int kFace[12] = {1, 1, 1, 1, 3, 2, 1, 2, 1, 1, 3, 3};
+    const int which = shotIndex_ * 2 + (bombFocus_ ? 1 : 0);
+    if (w.gui) w.gui->bombBanner(0x4A0 + kFace[which], w.tables ? w.tables->bombNames[static_cast<std::size_t>(which)] : std::string());
+    else w.playSound(14);
     stateTimer_.assign(invulnerability);
     if (w.effects) bombRing_ = &w.effects->spawnSpecial(w, 25, pos_, 0, 0xFFFF8080u);
     std::int32_t d = static_cast<std::int32_t>(static_cast<float>(g.cherry) * scale);
@@ -108,6 +112,7 @@ void Player::bombFrame(const World& w) {
 }
 
 void Player::endBomb(const World& w) {
+    if (w.gui) w.gui->bombBannerEnd();
     bombActive_ = false;
     w.state->bombActive = false;
     moveMulX_ = moveMulY_ = 1.0f;

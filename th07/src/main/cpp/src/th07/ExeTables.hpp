@@ -50,6 +50,8 @@ struct ExeTables {
     std::array<std::uint8_t, kDrops> dropCycle{};
     std::array<std::uint32_t, kSpellCards> spellBonus{};
     std::array<Effect, kEffects> effects{};
+    // The bomb names (Shift-JIS), [shot index * 2 + focused]; empty if not readable.
+    std::array<std::string, 12> bombNames;
 };
 
 // False (with a reason) when `exe` is not th07.exe 1.00b (unless requireKnownVersion is

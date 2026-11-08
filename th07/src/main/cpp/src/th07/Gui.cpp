@@ -276,6 +276,26 @@ void Gui::spellCardStart(int card, int portrait, const std::string& name) {
     w.playSound(14);
 }
 
+void Gui::bombBanner(int sprite, const std::string& name) {
+    const World& w = *world_;
+    startVm(bombPortrait_.vm, kFace + 1);
+    bombPortrait_.vm.selectSprite(*w.anm, sprite);
+    startVm(bombDecorL_.vm, kFace + 4);
+    bombDecorL_.vm.selectSprite(*w.anm, kFace + 12);
+    startVm(bombDecorR_.vm, kFace + 6);
+    bombDecorR_.vm.selectSprite(*w.anm, kFace + 12);
+    startVm(bombName_.vm, kText + 4);
+    bombName_.vm.fontWidth = bombName_.vm.fontHeight = 15;
+    renderText(bombName_.vm, name, 0xF0F0FFu, false);
+    bombNameBg_.interrupt(1);
+    w.playSound(14);
+}
+
+void Gui::bombBannerEnd() {
+    bombName_.vm.interrupt(1);
+    bombNameBg_.interrupt(2);
+}
+
 void Gui::spellCardEnd() {
     enemyName_.vm.interrupt(1);
     enemyNameBg_.interrupt(2);

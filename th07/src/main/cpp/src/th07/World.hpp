@@ -93,6 +93,9 @@ class StageGui {
     // Spell cards: the card's banner (portrait index, -1 none) and its end animation.
     virtual void spellCardStart(int card, int portrait, const std::string& name) { (void)card, (void)portrait, (void)name; }
     virtual void spellCardEnd() {}
+    // The player's bomb banner: portrait sprite (global index) and the bomb's name.
+    virtual void bombBanner(int sprite, const std::string& name) { (void)sprite, (void)name; }
+    virtual void bombBannerEnd() {}
     virtual void bonus(std::uint32_t points) { (void)points; }           // "BONUS n"
     virtual void spellCardBonus(std::uint32_t points) { (void)points; }  // "Spell Card Bonus!"
 };
