@@ -10,9 +10,12 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <vector>
+
+#include <unistd.h>
 
 #include "audio/MusicPlayer.hpp"
 #include "io/Archive.hpp"
@@ -31,6 +34,14 @@
 #include "th07/GameConfig.hpp"
 #include "th07/Player.hpp"
 #include "th07/World.hpp"
+#include "th07/Ending.hpp"
+#include "th07/Flow.hpp"
+#include "th07/MainMenu.hpp"
+#include "th07/MusicRoom.hpp"
+#include "th07/ResultScreen.hpp"
+#include "th07/ScoreFile.hpp"
+#include "th07/Supervisor.hpp"
+#include "io/Lzss.hpp"
 #include "th07/SoundPlayer.hpp"
 #include "th07/Version.hpp"
 
@@ -1854,6 +1865,622 @@ static void testBgm() {
     CHECK(backend.starts == starts && !silent.playing());
 }
 
+// ---- the game flow: LZSS encoder, score.dat, unlock rules, input, supervisor ----------------
+
+static void testLzssEncoder() {
+    auto roundTrip = [](const Bytes& in) {
+        const Bytes packed = lzss::compress(in);
+        Bytes out(in.size(), 0xEE);
+        const std::size_t n = lzss::decompress(packed, out);
+        return n == in.size() && out == in;
+    };
+    CHECK(roundTrip({}));
+    CHECK(roundTrip({42}));
+    CHECK(roundTrip(text("abcabcabcabcabcabcabcabcabc")));
+    Bytes zeros(20000, 0);
+    CHECK(roundTrip(zeros));
+    CHECK(lzss::compress(zeros).size() < 2600);  // 18-byte matches of 18 bits (literals: 22500)
+    ZunRng rng(7);
+    Bytes noise(30000);
+    for (auto& b : noise) b = static_cast<std::uint8_t>(rng.u16() >> 3);
+    CHECK(roundTrip(noise));
+    // Repeats far apart (beyond what the window keeps) and near the 8 KiB wrap.
+    Bytes mixed;
+    for (int i = 0; i < 40000; ++i) mixed.push_back(static_cast<std::uint8_t>((i % 8191) * 7 + (i / 9000)));
+    CHECK(roundTrip(mixed));
+    Bytes records;
+    for (int i = 0; i < 300; ++i) {
+        const Bytes r = text("HSCR(\0(\0\1\0\0\0");
+        records.insert(records.end(), r.begin(), r.end());
+        put32(records, static_cast<std::uint32_t>(i * 1000));
+    }
+    CHECK(roundTrip(records));
+    // The stream ends with the terminator: a decoder given room to spare stops exactly.
+    const Bytes abc = text("hello hello hello");
+    Bytes big(64, 0);
+    CHECK(lzss::decompress(lzss::compress(abc), big) == abc.size());
+}
+
+namespace {
+ScoreEntry entry(std::uint32_t score, const char* name, int stage = 3, int continues = 0) {
+    ScoreEntry e;
+    e.score = score;
+    std::memcpy(e.name.data(), name, std::min<std::size_t>(8, std::strlen(name)));
+    for (std::size_t i = std::strlen(name); i < 8; ++i) e.name[i] = ' ';
+    e.name[8] = 0;
+    e.stage = static_cast<std::uint8_t>(stage);
+    e.continues = static_cast<std::int8_t>(continues);
+    e.date = {'1', '1', '/', '0', '8', 0};
+    e.slow = 1.5f;
+    return e;
+}
+}  // namespace
+
+static void testScoreFile() {
+    // High-score insertion: before the first entry scoring no more (a tie ranks the newer first).
+    ScoreList l;
+    CHECK(ScoreFile::insert(l, entry(500, "A")) == 0);
+    CHECK(ScoreFile::insert(l, entry(700, "B")) == 0);
+    CHECK(ScoreFile::insert(l, entry(500, "C")) == 1);
+    CHECK(l.size() == 3 && l[1].name[0] == 'C' && l[2].name[0] == 'A');
+    std::array<ScoreList, kDifficulties * kShots> lists;
+    ScoreFile::defaultLists(lists);
+    const ScoreList& d = lists[ScoreFile::listIndex(2, 3)];
+    CHECK(d.size() == 10 && d[0].score == 100000 && d[9].score == 10000 && d[0].placeholder && d[0].shot == 3 && d[0].difficulty == 2);
+    CHECK(std::string(d[0].name.data()) == "--------" && std::string(d[0].date.data()) == "--/--");
+    // A file entry equal to a placeholder ranks above it.
+    CHECK(ScoreFile::insert(lists[ScoreFile::listIndex(2, 3)], entry(90000, "TIE")) == 1);
+
+    // A whole file: written, read back.
+    ScoreData data;
+    data.clears[2].noContinue = {3, 99, 1, 1, 6, 0};
+    data.clears[2].reached = {5, 99, 2, 1, 6, 0};
+    data.resetSpells();
+    data.spellDeclared(17, 4, "Test Sign \"Card\"");
+    data.spellCaptured(17, 4, 123450);
+    data.practiceAt(1, 4, 2) = {7, 98760};
+    data.practiceAt(5, 5, 3) = {0, 0};  // not written
+    data.stats.countPlay(1, 0);
+    data.stats.countPlay(3, 5);
+    data.stats.countContinue(3);
+    data.stats.countClear(1);
+    data.stats.play.add(3723004);  // 1:02:03.004
+    data.stats.running.add(7200000);
+    std::array<ScoreList, kDifficulties * kShots> out;
+    ScoreFile::defaultLists(out);
+    for (int i = 0; i < 12; ++i) ScoreFile::insert(out[ScoreFile::listIndex(1, 2)], entry(200000 + 1000 * static_cast<std::uint32_t>(i), "NAME", 99, 1));
+    ScoreFile::insert(out[ScoreFile::listIndex(5, 0)], entry(55555, "PH", 8));
+    ScoreFile::WriteInput in;
+    in.lists = &out;
+    in.data = &data;
+    in.lastName = {'R', 'E', 'I', 'M', 'U', ' ', ' ', ' ', 0, 0, 0, 0};
+    in.exe = {650752, 0x12345678};
+    ZunRng rng(0x1234);
+    ZunRng expect(0x1234);
+    const std::uint8_t key = static_cast<std::uint8_t>(expect.u16() % 256);
+    expect.u16();
+    const Bytes file = ScoreFile::encode(in, rng);
+    CHECK(rng.generations() == 2 && rng.currentSeed() == expect.currentSeed());  // key seed, then filler
+    CHECK(file.size() > 0x1C && file[1] == key);
+    // The plain header and checksum.
+    Bytes plain = file;
+    CHECK(ScoreFile::deobfuscate(plain));
+    CHECK(plain[4] == 11 && plain[5] == 0 && plain[8] == 0x1C && plain[9] == 0);
+    std::uint32_t total = plain[0x10] | plain[0x11] << 8 | plain[0x12] << 16;
+    std::uint32_t body = plain[0x14] | plain[0x15] << 8 | plain[0x16] << 16;
+    std::uint32_t packed = plain[0x18] | plain[0x19] << 8 | plain[0x1A] << 16;
+    CHECK(total == body + 0x1C && packed + 0x1C == file.size());
+    std::uint16_t sum = 0;
+    for (std::size_t i = 4; i < plain.size(); ++i) sum = static_cast<std::uint16_t>(sum + plain[i]);
+    CHECK(sum == (plain[2] | plain[3] << 8));
+    // th06's running key: byte 2 is plain[2] XOR (key rotated left by 3).
+    CHECK(file[2] == static_cast<std::uint8_t>(plain[2] ^ static_cast<std::uint8_t>((key << 3) | (key >> 5))));
+    Bytes again = plain;
+    ScoreFile::obfuscate(again);
+    CHECK(again == file);
+
+    const std::string ver = "0100b 650752 305419896\r\n";
+    const auto img = ScoreFile::decode(file, std::span(reinterpret_cast<const std::uint8_t*>(ver.data()), ver.size()));
+    CHECK(img.has_value());
+    if (img) {
+        std::array<ScoreList, kDifficulties * kShots> back;
+        ScoreFile::defaultLists(back);
+        ScoreFile::readHighScores(*img, back);
+        const ScoreList& b = back[ScoreFile::listIndex(1, 2)];
+        // Only the first 10 nodes are written (placeholders count, none of them here).
+        CHECK(b.size() == 20 && b[0].score == 211000 && b[9].score == 202000 && !b[0].placeholder && b[10].placeholder);
+        CHECK(b[0].stage == 99 && b[0].continues == 1 && std::string(b[0].date.data()) == "11/08" && b[0].slow == 1.5f);
+        CHECK(std::string(b[0].name.data()) == "NAME    ");
+        const ScoreList& p = back[ScoreFile::listIndex(5, 0)];
+        CHECK(p.size() == 11 && p[0].placeholder && p[5].score == 55555 && p[5].stage == 8);
+        CHECK(ScoreFile::hiScore(&*img, 1, 2) == std::make_pair(211000u, 1));
+        CHECK(ScoreFile::hiScore(&*img, 5, 0) == std::make_pair(100000u, 0));  // raised to 100000
+        CHECK(ScoreFile::hiScore(&*img, 0, 0) == std::make_pair(100000u, 0));  // no entries
+        CHECK(ScoreFile::hiScore(nullptr, 0, 0) == std::make_pair(100000u, 0));
+        ScoreData r;
+        ScoreFile::readClears(&*img, r.clears);
+        CHECK(r.clears[2].noContinue == data.clears[2].noContinue && r.clears[2].reached == data.clears[2].reached);
+        CHECK(r.clears[0].noContinue[0] == 1 && r.clears[0].noContinue[5] == 0);
+        ScoreFile::readSpells(*img, r.spells);
+        const SpellRecord& s = r.spells[17];
+        CHECK(s.present && s.attempts[4] == 1 && s.attempts[6] == 1 && s.captures[4] == 1 && s.captures[6] == 1 && s.bestBonus[4] == 123450);
+        CHECK(std::string(reinterpret_cast<const char*>(s.name.data())) == "Test Sign \"Card\"" && s.sum == ScoreData::spellSum(s));
+        CHECK(r.spells[3].present && r.spells[3].attempts[6] == 0);
+        ScoreFile::readPractice(&*img, r);
+        CHECK(r.practiceAt(1, 4, 2).score == 98760 && r.practiceAt(1, 4, 2).plays == 7 && r.practiceAt(0, 0, 0).score == 0);
+        PlayStats st;
+        CHECK(ScoreFile::readPlayStats(*img, st));
+        CHECK(st.play.hours == 1 && st.play.minutes == 2 && st.play.seconds == 3 && st.play.milliseconds == 4 && st.running.hours == 2);
+        CHECK(st.rows[1].plays == 1 && st.rows[3].plays == 1 && st.rows[6].plays == 2 && st.rows[3].playsPerShot[5] == 1 &&
+              st.rows[6].continues == 1 && st.rows[1].clears == 1 && st.rows[6].clears == 0 && st.clearTotal() == 1);
+        std::array<char, 12> name{};
+        CHECK(ScoreFile::readLastName(&*img, name) && std::string(name.data()) == "REIMU   ");
+    }
+    // The VRSM stamp is checked against th07_0100b.ver: another size or checksum discards the
+    // file; no .ver data accepts it.
+    const std::string otherVer = "0100b 650752 1\r\n";
+    CHECK(!ScoreFile::decode(file, std::span(reinterpret_cast<const std::uint8_t*>(otherVer.data()), otherVer.size())));
+    CHECK(ScoreFile::decode(file, {}).has_value());
+    // A damaged byte fails the checksum; a short file is ignored.
+    Bytes bad = file;
+    bad[bad.size() / 2] ^= 0x40;
+    CHECK(!ScoreFile::decode(bad, {}));
+    CHECK(!ScoreFile::decode(Bytes(0x1B, 0), {}));
+    // A wrong version is ignored.
+    Bytes v10 = plain;
+    v10[4] = 10;
+    ScoreFile::obfuscate(v10);
+    CHECK(!ScoreFile::decode(v10, {}));
+
+    // Hand-made images: walks that stop, zero-length records, the last TH7K.
+    auto image = [](const std::vector<Bytes>& records) {
+        Bytes bodyBytes;
+        for (const Bytes& r : records) bodyBytes.insert(bodyBytes.end(), r.begin(), r.end());
+        Bytes f(0x1C, 0);
+        set32(f, 0x08, 0x1C);
+        f[4] = 11;
+        set32(f, 0x10, static_cast<std::uint32_t>(0x1C + bodyBytes.size()));
+        set32(f, 0x14, static_cast<std::uint32_t>(bodyBytes.size()));
+        const Bytes p = lzss::compress(bodyBytes);
+        set32(f, 0x18, static_cast<std::uint32_t>(p.size()));
+        f.insert(f.end(), p.begin(), p.end());
+        f[1] = 0x5A;
+        ScoreFile::obfuscate(f);
+        return f;
+    };
+    auto rec = [](const char* tag, std::uint16_t len, std::uint8_t version = 1) {
+        Bytes r(len, 0);
+        std::memcpy(r.data(), tag, 4);
+        r[4] = static_cast<std::uint8_t>(len), r[5] = static_cast<std::uint8_t>(len >> 8);
+        r[6] = r[4], r[7] = r[5];
+        r[8] = version;
+        return r;
+    };
+    auto clrd = [&](int shot, std::uint8_t v) {
+        Bytes r = rec("CLRD", 0x1C);
+        std::fill(r.begin() + 0x0C, r.begin() + 0x18, v);
+        r[0x18] = static_cast<std::uint8_t>(shot);
+        return r;
+    };
+    {
+        const auto im = ScoreFile::decode(image({rec("TH7K", 12), clrd(0, 7), clrd(9, 5), clrd(1, 8)}), {});
+        CHECK(im.has_value());
+        std::array<ClearRecord, kShots> c;
+        if (im) ScoreFile::readClears(&*im, c);
+        CHECK(c[0].reached[0] == 7 && c[1].reached[0] == 1);  // shot 9 stopped the walk
+        Bytes lsnm1 = rec("LSNM", 0x18), lsnm2 = rec("LSNM", 0x18);
+        std::memcpy(lsnm1.data() + 0x0C, "FIRST", 6);
+        std::memcpy(lsnm2.data() + 0x0C, "SECOND", 7);
+        Bytes pl1 = rec("PLST", 0x160), pl2 = rec("PLST", 0x160);
+        pl1[0x0C] = 1;
+        pl2[0x0C] = 2;
+        const auto im2 = ScoreFile::decode(image({rec("TH7K", 12), lsnm1, pl1, lsnm2, pl2}), {});
+        std::array<char, 12> n{};
+        PlayStats st;
+        CHECK(im2 && ScoreFile::readLastName(&*im2, n) && std::string(n.data()) == "FIRST");
+        CHECK(im2 && ScoreFile::readPlayStats(*im2, st) && st.running.hours == 2);
+        CHECK(!ScoreFile::decode(image({clrd(0, 7)}), {}));                            // no TH7K
+        CHECK(!ScoreFile::decode(image({rec("TH7K", 12), rec("TH7K", 12, 2)}), {}));  // the last one is version 2
+        Bytes zero = rec("XXXX", 12);
+        zero[4] = zero[5] = 0;
+        CHECK(!ScoreFile::decode(image({rec("TH7K", 12), zero}), {}));  // a zero-length record
+        CHECK(ScoreFile::decode(image({rec("TH7K", 12), rec("ABCD", 16)}), {}).has_value());  // unknown tags skipped
+        // CATK: a card number of 141 or more stops the walk; PSCR stops at a bad cell.
+        Bytes cat1 = rec("CATK", 0x78), cat2 = rec("CATK", 0x78), cat3 = rec("CATK", 0x78);
+        cat1[0x28] = 5, cat1[0x5C + 12] = 3;
+        cat2[0x28] = 141;
+        cat3[0x28] = 6;
+        Bytes ps1 = rec("PSCR", 0x18), ps2 = rec("PSCR", 0x18), ps3 = rec("PSCR", 0x18);
+        ps1[0x10] = 50, ps1[0x14] = 2, ps1[0x15] = 1, ps1[0x16] = 3;
+        ps2[0x10] = 60, ps2[0x14] = 1, ps2[0x15] = 5;
+        ps3[0x10] = 70, ps3[0x14] = 0;
+        const auto im3 = ScoreFile::decode(image({rec("TH7K", 12), cat1, cat2, cat3, ps1, ps2, ps3}), {});
+        ScoreData sd;
+        if (im3) {
+            ScoreFile::readSpells(*im3, sd.spells);
+            ScoreFile::readPractice(&*im3, sd);
+        }
+        CHECK(sd.spells[5].present && sd.spells[5].attempts[6] == 3 && !sd.spells[6].present);
+        CHECK(sd.practiceAt(2, 3, 1).score == 50 && sd.practiceAt(0, 0, 0).score == 0);
+    }
+}
+
+static void testUnlockRules() {
+    ScoreData sd;
+    CHECK(!sd.extraUnlocked() && !sd.phantasmUnlocked());
+    CHECK(sd.practiceStages(0, 0) == 1 && sd.practiceStages(0, 5) == 0);
+    // Stage entered: no-continue only without continues; reached always (s - 1).
+    sd.stageEntered(3, 2, 4, false);
+    CHECK(sd.clears[3].noContinue[2] == 3 && sd.clears[3].reached[2] == 3 && sd.practiceStages(3, 2) == 3);
+    sd.stageEntered(3, 2, 6, true);
+    CHECK(sd.clears[3].noContinue[2] == 3 && sd.clears[3].reached[2] == 5);
+    sd.stageEntered(3, 2, 2, false);  // never lowered
+    CHECK(sd.clears[3].reached[2] == 5);
+    // The ending: seen before? and the records at 99.
+    CHECK(!sd.endingReached(3, 2, true) && sd.clears[3].reached[2] == 99 && sd.clears[3].noContinue[2] == 3);
+    CHECK(sd.practiceStages(3, 2) == 6);
+    CHECK(sd.endingReached(3, 2, true));
+    CHECK(!sd.extraUnlocked());
+    CHECK(!sd.endingReached(3, 0, false) && sd.clears[3].noContinue[0] == 99);
+    CHECK(sd.extraUnlocked() && sd.extraShotUnlocked(3) && !sd.extraShotUnlocked(2));
+    CHECK(sd.endingReached(3, 0, false));
+    // Phantasm: the Extra clear plus 60 cards captured at least once in total.
+    sd.clears[3].noContinue[Extra] = 99;
+    sd.resetSpells();
+    for (int c = 0; c < 59; ++c) sd.spells[static_cast<std::size_t>(c)].captures[6] = 1;
+    sd.phantasmCheck();
+    CHECK(!sd.phantasmUnlocked());
+    sd.spells[100].captures[6] = 2;
+    sd.phantasmCheck();
+    CHECK(sd.spellsCapturedOnce() == 60 && sd.phantasmUnlocked() && sd.phantasmShotUnlocked(3) && !sd.phantasmShotUnlocked(0));
+
+    // Spell history: attempts and captures for the shot and the total, best bonus, the sum;
+    // a different name wipes the card.
+    ScoreData h;
+    h.resetSpells();
+    h.spellDeclared(9, 1, "Card A");
+    h.spellDeclared(9, 2, "Card A");
+    h.spellCaptured(9, 2, 5000);
+    h.spellCaptured(9, 2, 3000);
+    const SpellRecord& s = h.spells[9];
+    CHECK(s.attempts[1] == 1 && s.attempts[2] == 1 && s.attempts[6] == 2 && s.captures[2] == 2 && s.captures[6] == 2);
+    CHECK(s.bestBonus[2] == 5000 && s.bestBonus[6] == 5000 && s.sum == ScoreData::spellSum(s));
+    h.spellDeclared(9, 1, "Card B");  // a translated name
+    CHECK(s.attempts[6] == 1 && s.captures[6] == 0 && s.bestBonus[6] == 0 && s.attempts[1] == 1);
+    h.spells[10].attempts = {9999, 0, 0, 0, 0, 0, 9999};
+    h.spells[10].sum = ScoreData::spellSum(h.spells[10]);
+    h.spellDeclared(10, 0, "");
+    CHECK(h.spells[10].attempts[0] == 9999 && h.spells[10].attempts[6] == 9999);
+    // Play statistics stop at 999999; the clock carries.
+    PlayStats st;
+    st.rows[2].retries = 999999;
+    st.countRetry(2);
+    CHECK(st.rows[2].retries == 999999 && st.rows[6].retries == 1);
+    PlayTime t;
+    t.add(59999);
+    t.add(1);
+    t.add(3600000ull * 3);
+    CHECK(t.hours == 3 && t.minutes == 1 && t.seconds == 0 && t.milliseconds == 0);
+}
+
+static void testMenuInput() {
+    MenuInput in;
+    in.sample(BtnShoot);
+    CHECK(in.pressed(BtnShoot) && in.held(BtnShoot) && !in.pressed(BtnBomb));
+    in.sample(BtnShoot | BtnEnter);
+    // A mask counts as pressed when its masked value changed and is not zero.
+    CHECK(!in.pressed(BtnShoot) && in.pressed(BtnEnter) && in.pressed(BtnShoot | BtnEnter));
+    // Releasing one of the pair while holding the other also counts as a press [QUIRK].
+    in.sample(BtnEnter);
+    CHECK(in.pressed(static_cast<std::uint16_t>(BtnShoot | BtnEnter)) && !in.pressed(BtnEnter));
+    // Auto-repeat: the whole word unchanged; the first repeat 33 passes after the change, then
+    // every 8.
+    MenuInput r;
+    r.sample(BtnDown);  // the change
+    std::vector<int> repeats;
+    for (int pass = 1; pass <= 60; ++pass) {
+        r.sample(BtnDown);
+        if (r.repeating()) repeats.push_back(pass);
+        CHECK(r.pressedOrRepeat(BtnDown) == r.repeating());
+    }
+    CHECK(repeats.size() == 4 && repeats[0] == 33 && repeats[1] == 41 && repeats[2] == 49 && repeats[3] == 57);
+    r.sample(BtnDown | BtnFocus);  // any change restarts the count
+    CHECK(!r.repeating() && !r.pressed(BtnDown));
+    r.clear();
+    CHECK(r.current() == 0 && r.previous() == 0 && !r.repeating());
+    r.sample(BtnDown);  // still held after a transition: freshly pressed
+    CHECK(r.pressed(BtnDown));
+}
+
+static void testMusicComments() {
+    const std::string t =
+        "header text, no track\r\n"
+        "@bgm/th07_01.mid\r\n"
+        "No.1 Title One\r\n"
+        "line a\r\n"
+        "\r\n"
+        "line b\r\n"
+        "@bgm/th07_02.mid\r\n\r\n"
+        "No.2 Title Two\r\n"
+        "1\r\n2\r\n3\r\n4\r\n5\r\n6\r\n7\r\n8\r\n9\r\n";
+    const auto tracks = parseMusicComments(text(t));
+    CHECK(tracks.size() == 2);
+    if (tracks.size() == 2) {
+        CHECK(tracks[0].path == "bgm/th07_01.mid" && tracks[0].title == "No.1 Title One");
+        CHECK(tracks[0].lines[0].empty() && tracks[0].lines[1] == "line a" && tracks[0].lines[2] == "line b" && tracks[0].lines[3].empty());
+        CHECK(tracks[1].path == "bgm/th07_02.mid" && tracks[1].title == "No.2 Title Two");
+        CHECK(tracks[1].lines[0].empty() && tracks[1].lines[1] == "1" && tracks[1].lines[7] == "7");
+    }
+}
+
+namespace {
+
+// A synthetic archive for the flow screens: menu ANM files with a few scripts each (set a
+// sprite, wait for interrupts), musiccmt.txt and a short ending.
+struct FlowData {
+    Vfs vfs;
+    TextureLibrary textures;
+    AnmLibrary anm;
+    ZunRng rng{1};
+    std::string dir;
+    std::uint64_t clock = 1000;
+};
+
+Bytes menuAnm(int scripts, int sprites, int format = 1) {
+    EntryDef e;
+    e.width = 64;
+    e.height = 64;
+    e.format = format;
+    for (int i = 0; i < sprites; ++i) e.sprites.push_back({i, 0, static_cast<float>(i % 8) * 8.0f, 64, 8});
+    for (int i = 0; i < scripts; ++i) e.scripts.push_back({i, {{3, 0, {static_cast<std::uint32_t>(i % sprites)}}, {20, 0, {}}}});
+    return anmFile({e});
+}
+
+Bytes endScript() {
+    Bytes b;
+    auto add = [&](const std::string& s) { b.insert(b.end(), s.begin(), s.end()); };
+    add("@s");
+    add(std::string("3\0", 2));
+    add(std::string("0\0", 2));
+    add("\r\n@c");
+    add(std::string("255\0", 4));
+    add("\r\nLINE ONE\r\n@w");
+    add(std::string("5\0", 2));
+    add(std::string("0\0", 2));
+    add("\r\nLINE TWO\r\n@V");
+    add(std::string("-10\0", 4));
+    add(std::string("2\0", 2));
+    add("\r\n@z\r\n");
+    return b;
+}
+
+void mountFlowData(FlowData& f) {
+    std::string err;
+    const std::string music = "@bgm/th07_01.mid\r\nTrack 1\r\ncomment\r\n@bgm/th07_02.mid\r\nTrack 2\r\nmore\r\n";
+    f.vfs.mount(openArchive("th07.dat",
+                            mem(pbg4({{"text.anm", menuAnm(30, 40, 0)},
+                                      {"ascii.anm", menuAnm(8, 130)},
+                                      {"capture.anm", menuAnm(2, 2)},
+                                      {"title01.anm", menuAnm(164, 40)},
+                                      {"result00.anm", menuAnm(41, 20)},
+                                      {"music00.anm", menuAnm(32, 32, 0)},
+                                      {"musiccmt.txt", text(music)},
+                                      {"end00.end", endScript()}})),
+                            &err));
+    f.dir = (std::filesystem::temp_directory_path() / ("th07_flow_test_" + std::to_string(::getpid()))).string() + "/";
+    std::filesystem::remove_all(f.dir);
+    std::filesystem::create_directories(f.dir);
+}
+
+Supervisor::Boot flowBoot(FlowData& f) {
+    Supervisor::Boot b;
+    b.vfs = &f.vfs;
+    b.textures = &f.textures;
+    b.anm = &f.anm;
+    b.rng = &f.rng;
+    b.storageDir = f.dir;
+    b.canPlay = false;  // no th07.exe tables: games cannot start
+    b.clockMs = [&f]() { return f.clock += 16; };
+    return b;
+}
+
+void press(Supervisor& s, std::uint16_t b, int after = 1) {
+    s.pass(b);
+    for (int i = 0; i < after; ++i) s.pass(0);
+}
+void idle(Supervisor& s, int passes) {
+    for (int i = 0; i < passes; ++i) s.pass(0);
+}
+
+}  // namespace
+
+static void testSupervisor() {
+    FlowData f;
+    mountFlowData(f);
+    {
+        Supervisor s;
+        CHECK(s.start(flowBoot(f)));
+        CHECK(s.active() == FlowState::Init && s.requested() == FlowState::MainMenu);
+        CHECK(std::filesystem::exists(f.dir + "th07.cfg"));  // written back at boot
+        s.pass(0);
+        CHECK(s.active() == FlowState::MainMenu && s.previous() == FlowState::Init && s.mainMenu());
+        CHECK(s.mainMenu() && s.mainMenu()->cursor() == 0 && s.context().maxContinues == 3);
+        // Select and Return are ignored for 10 passes.
+        press(s, BtnBomb);
+        CHECK(s.mainMenu()->cursor() == 0);
+        idle(s, 10);
+        // Extra Start is locked: Down steps over it.
+        press(s, BtnDown);
+        CHECK(s.mainMenu()->cursor() == 2);
+        press(s, BtnUp);
+        CHECK(s.mainMenu()->cursor() == 0);
+        press(s, BtnBomb);
+        CHECK(s.mainMenu()->cursor() == 7);  // Return moves to Quit
+
+        // The Result viewer and back: removing it writes score.dat (two RNG draws).
+        press(s, BtnUp);
+        press(s, BtnUp);
+        press(s, BtnUp);
+        CHECK(s.mainMenu()->cursor() == 4);
+        const std::uint32_t writes = s.writes();
+        const std::uint32_t draws = f.rng.generations();
+        s.pass(BtnShoot);
+        CHECK(!s.mainMenu() && s.requested() == FlowState::ResultViewer);
+        s.pass(BtnShoot);  // the transition pass: nothing is held for the screen
+        CHECK(s.active() == FlowState::ResultViewer && s.resultScreen() && s.resultScreen()->mode() == ResultScreen::Mode::Viewer);
+        CHECK(s.resultScreen()->state() == ResultScreen::State::Menu && s.resultScreen()->menuCursor() == 1);
+        idle(s, 21);
+        press(s, BtnUp);
+        press(s, BtnUp);
+        CHECK(s.resultScreen()->menuCursor() == 8);  // Phantasm's row is skipped... (row 5 not crossed here)
+        press(s, BtnShoot);
+        CHECK(s.resultScreen() && s.resultScreen()->state() == ResultScreen::State::Exit);
+        idle(s, 60);
+        CHECK(s.active() == FlowState::MainMenu && s.writes() == writes + 1 && f.rng.generations() == draws + 2);
+        CHECK(std::filesystem::exists(f.dir + "score.dat") && s.readScoreFile().has_value());
+        CHECK(s.mainMenu() && s.mainMenu()->cursor() == 4 && s.previous() == FlowState::ResultViewer);
+
+        // The Music Room: two tracks; Return goes back with the cursor on Music Room.
+        idle(s, 10);
+        press(s, BtnDown);
+        press(s, BtnShoot);
+        CHECK(s.requested() == FlowState::MusicRoom);
+        s.pass(0);
+        CHECK(s.active() == FlowState::MusicRoom && s.musicRoom() && s.musicRoom()->tracks().size() == 2);
+        idle(s, 8);
+        press(s, BtnDown);
+        CHECK(s.musicRoom()->cursor() == 1);
+        press(s, BtnDown);
+        CHECK(s.musicRoom()->cursor() == 0 && s.musicRoom()->top() == 0);
+        press(s, BtnUp);
+        CHECK(s.musicRoom()->cursor() == 1);
+        press(s, BtnShoot);
+        CHECK(s.musicRoom()->selected() == 1);
+        press(s, BtnBomb);
+        CHECK(s.active() == FlowState::MainMenu && s.mainMenu() && s.mainMenu()->cursor() == 5);
+
+        // Option: a 30-pass wait, then Right raises the lives; Return twice leaves; th07.cfg.
+        idle(s, 10);
+        press(s, BtnDown);
+        press(s, BtnShoot);
+        CHECK(s.mainMenu()->state() == MainMenu::State::OptionWait);
+        idle(s, 32);
+        CHECK(s.mainMenu()->state() == MainMenu::State::Option);
+        idle(s, 4);
+        press(s, BtnRight);
+        CHECK(s.config().lives == 3);
+        press(s, BtnBomb);
+        press(s, BtnBomb);
+        CHECK(s.mainMenu()->state() == MainMenu::State::Main && s.mainMenu()->cursor() == 6);
+        {
+            bool exists = false;
+            std::ifstream cfg(f.dir + "th07.cfg", std::ios::binary);
+            Bytes bytes((std::istreambuf_iterator<char>(cfg)), std::istreambuf_iterator<char>());
+            exists = bytes.size() == 0x38;
+            CHECK(exists && bytes[0x1C] == 3);
+        }
+
+        // Start: difficulty, character and shot select, then the game (which cannot start
+        // without th07.exe here: back to the title).
+        press(s, BtnUp);
+        press(s, BtnUp);
+        press(s, BtnUp);
+        press(s, BtnUp);
+        press(s, BtnUp);
+        CHECK(s.mainMenu()->cursor() == 0);
+        idle(s, 10);
+        press(s, BtnShoot);
+        CHECK(s.mainMenu()->state() == MainMenu::State::Difficulty);
+        idle(s, 31);
+        press(s, BtnDown);
+        CHECK(s.mainMenu()->cursor() == 2);
+        press(s, BtnShoot);
+        CHECK(s.config().difficulty == 2 && s.mainMenu()->state() == MainMenu::State::Character);
+        idle(s, 31);
+        press(s, BtnRight);
+        press(s, BtnShoot);
+        CHECK(s.context().character == 1 && s.mainMenu()->state() == MainMenu::State::Shot);
+        idle(s, 31);
+        press(s, BtnDown);
+        s.pass(BtnShoot);
+        CHECK(s.context().shotType == 1 && s.context().shotIndex() == 3 && s.context().stage == 0 && s.requested() == FlowState::Game);
+        s.pass(0);
+        CHECK(s.active() == FlowState::MainMenu && s.mainMenu() && !s.game());
+
+        // Quit: interrupt 1, then Exit after 60 passes.
+        idle(s, 10);
+        press(s, BtnBomb);
+        press(s, BtnShoot);
+        CHECK(s.mainMenu()->state() == MainMenu::State::Quit && !s.quit());
+        idle(s, 62);
+        CHECK(s.quit());
+        s.shutdown();
+    }
+    {
+        // The ending, then the result screen after a game: name entry for a top-10 score.
+        Supervisor s;
+        CHECK(s.start(flowBoot(f)));
+        s.pass(0);
+        CHECK(s.config().lives == 3);  // th07.cfg from the first session
+        s.startEnding(0, Normal, false, 5000000);
+        CHECK(s.active() == FlowState::Ending && s.ending() && s.ending()->script() == "data/end00.end");
+        CHECK(s.scores().clears[0].noContinue[Normal] == 99 && s.scores().clears[0].reached[Normal] == 99 && !s.ending()->seen());
+        s.pass(0);
+        CHECK(s.ending()->lastLine() == "LINE ONE" && s.ending()->colorRef() == 255 && s.ending()->lineSlot() == 1);
+        idle(s, 3);  // the line delay (3)
+        CHECK(s.ending()->lastLine() == "LINE ONE");
+        idle(s, 2);
+        CHECK(s.ending()->lastLine() == "LINE TWO" || s.ending()->lineSlot() >= 1);
+        idle(s, 20);
+        CHECK(s.active() == FlowState::ResultAfterGame && s.resultScreen() && s.resultScreen()->mode() == ResultScreen::Mode::AfterGame);
+        s.pass(0);
+        CHECK(s.resultScreen()->state() == ResultScreen::State::NameEntry && s.resultScreen()->rank() == 0);
+        // A saved LSNM exists: the key cursor starts on END.
+        CHECK(s.resultScreen()->keyCursor() == ResultScreen::kKeyEnd);
+        idle(s, 30);
+        press(s, BtnDown);  // END + 16 wraps to 'P'
+        CHECK(s.resultScreen()->keyCursor() == 15);
+        press(s, BtnShoot);
+        press(s, BtnLeft);
+        press(s, BtnShoot);
+        CHECK(s.resultScreen()->nameCursor() == 2);
+        press(s, BtnBomb);  // backspace
+        CHECK(s.resultScreen()->nameCursor() == 1);
+        press(s, BtnShoot);
+        press(s, BtnRight);
+        press(s, BtnRight);
+        press(s, BtnRight);  // row end wraps to its start
+        CHECK(s.resultScreen()->keyCursor() == 1);
+        press(s, BtnShoot);
+        CHECK(std::string(s.resultScreen()->list(Normal, 0)[0].name.data(), 3) == "POB");
+        // Esc backspaces, then finishes in the same pass [QUIRK].
+        press(s, BtnMenu);
+        CHECK(s.resultScreen()->state() == ResultScreen::State::Statistics && std::string(s.resultScreen()->lastName().data(), 3) == "PO ");
+        idle(s, 90);
+        press(s, BtnShoot);
+        idle(s, 32);
+        CHECK(s.resultScreen() && s.resultScreen()->state() == ResultScreen::State::Leave);
+        idle(s, 61);
+        CHECK(s.active() == FlowState::MainMenu);
+        const auto img = s.readScoreFile();
+        CHECK(img.has_value());
+        if (img) {
+            std::array<char, 12> name{};
+            CHECK(ScoreFile::readLastName(&*img, name) && std::string(name.data()) == "PO      ");
+            CHECK(ScoreFile::hiScore(&*img, Normal, 0).first == 5000000);
+            std::array<ClearRecord, kShots> c;
+            ScoreFile::readClears(&*img, c);
+            CHECK(c[0].noContinue[Normal] == 99);  // the ending's records were saved
+        }
+        // After the result screen the title's cursor is on Start (not Extra/Phantasm).
+        CHECK(s.mainMenu() && s.mainMenu()->cursor() == 0 && s.previous() == FlowState::ResultAfterGame);
+        // The running time was counted.
+        CHECK(s.scores().stats.running.totalSeconds() > 0 || s.scores().stats.running.milliseconds > 0);
+        s.shutdown();
+    }
+    std::filesystem::remove_all(f.dir);
+}
+
 static void dumpSynthetic(const char* dir) {
     const Music m = syntheticMusic();
     const Bytes arc = pbg4({{"th07_0100b.ver", text("0100b 466944 0\n")}, {"thbgm.fmt", m.fmt}});
@@ -1893,6 +2520,12 @@ int main() {
         {"enemies: callbacks, death types, despawn, game speed", testEnemyCallbacks},
         {"enemies: bullet patterns and rank", testEnemyBullets},
         {"enemies: ex routines on the bullet pool", testEnemyExRoutines},
+        {"LZSS encoder: round trips", testLzssEncoder},
+        {"score.dat: layout, codec, walks, VRSM, hi-scores", testScoreFile},
+        {"unlock rules, clear progress, spell history, stats", testUnlockRules},
+        {"menu input: pressed, masks, auto-repeat", testMenuInput},
+        {"Music Room: musiccmt.txt", testMusicComments},
+        {"supervisor: title, results, Music Room, ending", testSupervisor},
     };
     for (const Test& t : tests) {
         const int before = g_failures;
