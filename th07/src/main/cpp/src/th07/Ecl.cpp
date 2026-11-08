@@ -1046,7 +1046,9 @@ EnemyManager::Exec EnemyManager::execute(Enemy& e, std::uint32_t& cur) {
             break;
         }
         case 105: wd.playSound(o.I(0)); break;
-        case 140: eclWarnOnce("the effect colour multiplier (opcode 140) is not drawn yet"); break;
+        case 140:  // render only: effect 20 (weather) is drawn with this colour multiplier
+            if (wd.effects) wd.effects->setColorMultiplier(o.F(0), o.F(1), o.F(2), o.F(3));
+            break;
         case 147: deadStore_ = o.I(0); break;
         case 125:
             if (wd.background) wd.background->setResumeLabel(o.I(0));

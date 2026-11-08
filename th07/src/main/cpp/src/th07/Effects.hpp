@@ -58,6 +58,10 @@ class Effects {
     // Layer 1 (weather and camera-attached effects), from the stage's 3D pass.
     void drawStageLayer(SpriteSink& sink, const AnmDrawState& state, Background& bg);
     int active() const { return active_; }
+    // ECL opcode 140: effect 20's colour is multiplied by (r, g, b, a) while it is drawn
+    // (each channel truncated, at most 255). The stages set (1, 1, 1, 1) on their second
+    // frame and fade it later. Render only.
+    void setColorMultiplier(float r, float g, float b, float a) { colorMultiplier_ = {r, g, b, a}; }
 
   private:
     Effect& fill(const World& w, int id, const Vec3f& pos, const Vec3f& custom, int count, std::uint32_t color, bool zwriteOff);
@@ -70,6 +74,7 @@ class Effects {
     std::uint32_t frames_ = 0;
     std::array<std::array<std::int16_t, kSlots>, 4> layers_{};
     std::array<int, 4> layerCount_{};
+    std::array<float, 4> colorMultiplier_{1.0f, 1.0f, 1.0f, 1.0f};
 };
 
 }  // namespace touhou::th07

@@ -1,5 +1,6 @@
 #include "th07/Effects.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 #include "th07/Background.hpp"
@@ -40,6 +41,7 @@ void Effects::reset() {
     cursor_ = 0;
     active_ = 0;
     frames_ = 0;
+    colorMultiplier_ = {1.0f, 1.0f, 1.0f, 1.0f};  // [GAP] the stages set it before it matters
 }
 
 void Effects::init(const World& w, Effect& e, int id, const Vec3f& pos, std::uint32_t color, const Vec3f& custom, bool zwriteOff) {
@@ -284,9 +286,19 @@ void Effects::drawStageLayer(SpriteSink& sink, const AnmDrawState& state, Backgr
         // The billboard routine rewrites the VM's scale and position for drawing; the
         // effect's own scale must not compound from frame to frame.
         const Vec2f scale = e.vm.scale;
+        const std::uint32_t color = e.vm.color;
+        if (e.id == 20) {
+            const auto channel = [&](int shift, float m) {
+                const float c = static_cast<float>((color >> shift) & 0xFFu) * m;
+                return static_cast<std::uint32_t>(std::clamp(static_cast<int>(c), 0, 255)) << shift;
+            };
+            e.vm.color = channel(16, colorMultiplier_[0]) | channel(8, colorMultiplier_[1]) | channel(0, colorMultiplier_[2]) |
+                         channel(24, colorMultiplier_[3]);
+        }
         e.vm.position = e.pos;
         bg.drawBillboard(sink, e.vm, state);
         e.vm.scale = scale;
+        e.vm.color = color;
     }
 }
 
