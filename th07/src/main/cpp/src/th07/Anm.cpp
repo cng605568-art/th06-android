@@ -143,7 +143,7 @@ bool decodeThtx(std::span<const std::uint8_t> px, int format, int width, int hei
 // ---- the library ------------------------------------------------------------------------
 
 bool AnmLibrary::load(const Vfs& vfs, TextureLibrary& textures, const std::string& path, int slot, int indexOffset,
-                      std::string* error) {
+                      std::string* error, bool cpuPixels) {
     auto fail = [&](const std::string& why) {
         if (error) *error = path + ": " + why;
         return false;
@@ -188,7 +188,13 @@ bool AnmLibrary::load(const Vfs& vfs, TextureLibrary& textures, const std::strin
             texW = static_cast<float>(w);
             texH = static_cast<float>(hgt);
             const std::size_t entryAt = at;
-            texture = textures.add(id, w, hgt, [vfsPtr, path, entryAt]() -> std::optional<Image> {
+            if (cpuPixels) {
+                texture = textures.addDynamic(id + "#cpu", w, hgt);
+                if (Image* img = textures.pixels(texture)) {
+                    decodeThtx(std::span(b).subspan(t + 0x10), format, w, hgt, img->rgba);
+                    textures.touch(texture);
+                }
+            } else texture = textures.add(id, w, hgt, [vfsPtr, path, entryAt]() -> std::optional<Image> {
                     const auto file = vfsPtr->read(path);
                     if (!file || entryAt + kHeaderSize > file->size()) return std::nullopt;
                     const std::size_t thtx = entryAt + static_cast<std::size_t>(rdI32(file->data() + entryAt + 0x30));

@@ -70,8 +70,10 @@ class AnmLibrary {
 
     // Loads `path` into `slot` (and the following slots, one per entry of its chain) with
     // the given base index offset. Re-registers textures with `textures` (bilinear, wrap).
+    // With `cpuPixels` the textures are kept CPU-side (dynamic), for files the game edits at
+    // run time (front.anm's boss name label).
     bool load(const Vfs& vfs, TextureLibrary& textures, const std::string& path, int slot, int indexOffset,
-              std::string* error);
+              std::string* error, bool cpuPixels = false);
     void release(int slot);
 
     const AnmSprite* sprite(int index) const;  // null when empty or out of range

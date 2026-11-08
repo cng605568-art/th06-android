@@ -108,6 +108,7 @@ class Gui final : public StageGui, public PopupSink {
                     float step, const AnmDrawState& state);
     void rect(SpriteSink& sink, float x0, float y0, float x1, float y1, std::uint32_t argb);
     void computeStageBonus(const World& w);
+    void copyBossName(int k);
     void queueTally(const World& w);
 
     const World* world_ = nullptr;

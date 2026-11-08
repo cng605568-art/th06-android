@@ -62,7 +62,7 @@ bool Gui::stageStart(const World& w, const Resources& res, bool firstStage, std:
     static constexpr const char* kFaces[3] = {"data/face_rm00.anm", "data/face_mr00.anm", "data/face_sk00.anm"};
     static constexpr const char* kLoadings[3] = {"data/loading.anm", "data/loading2.anm", "data/loading3.anm"};
     if (firstStage || !frontLoaded_) {
-        if (!load("data/front.anm", 21, kFront)) return false;
+        if (!lib.load(*res.vfs, *res.textures, "data/front.anm", 21, kFront, error, true)) return false;
         if (!load(kFaces[std::clamp(g.character(), 0, 2)], 25, kFace)) return false;
         if (!load(kLoadings[std::clamp(g.character(), 0, 2)], 23, kLoading)) return false;
         frontLoaded_ = true;
@@ -130,7 +130,33 @@ bool Gui::stageStart(const World& w, const Resources& res, bool firstStage, std:
     text_.clear();
     gaugeVm_.interrupt(gaugeState_ == 0 ? 3 : 2);
     for (int b = 0; b < 3; ++b) markerVms_[static_cast<std::size_t>(b)].interrupt(2);
+    copyBossName(2 * (stage_ - 1));  // the mid-boss
     return true;
+}
+
+// The boss name label shows front sprite 0x609, whose texels are overwritten with the
+// current boss's name sprite (0x60E + k, in front.anm's second texture).
+void Gui::copyBossName(int k) {
+    if (!world_ || !res_.textures) return;
+    const AnmSprite* name = world_->anm->sprite(kFront + 14 + k);
+    const AnmSprite* frame = world_->anm->sprite(kFront + 9);
+    if (!name || !frame) return;
+    Image* src = res_.textures->pixels(name->texture);
+    Image* dst = res_.textures->pixels(frame->texture);
+    if (!src || !dst) return;
+    const int sx0 = static_cast<int>(name->startX), sy0 = static_cast<int>(name->startY);
+    const int sw = static_cast<int>(name->endX) - sx0, sh = static_cast<int>(name->endY) - sy0;
+    const int dx0 = static_cast<int>(frame->startX), dy0 = static_cast<int>(frame->startY);
+    const int dw = static_cast<int>(frame->endX) - dx0, dh = static_cast<int>(frame->endY) - dy0;
+    if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0) return;
+    for (int y = 0; y < dh; ++y) {
+        for (int x = 0; x < dw; ++x) {
+            const int px = sx0 + x * sw / dw, py = sy0 + y * sh / dh;  // a scaled copy if the sizes differ
+            if (px < 0 || py < 0 || px >= src->width || py >= src->height || dx0 + x >= dst->width || dy0 + y >= dst->height) continue;
+            std::memcpy(dst->pixel(dx0 + x, dy0 + y), src->pixel(px, py), 4);
+        }
+    }
+    res_.textures->touch(frame->texture);
 }
 
 void Gui::stageEnd(const World& w) {
@@ -323,7 +349,10 @@ void Gui::startDialogue(int number) {
     }
     // (All enemies removed, no score: the enemy manager hooks in here.)
     if (w.onDialogueStart) w.onDialogueStart();
-    if (number % 10 == 0 && w.bulletManager && (stage_ >= 6)) w.bulletManager->setCancelItemType(ItemField::Star);
+    if (number % 10 == 0) {
+        copyBossName(2 * (stage_ - 1) + 1);
+        if (w.bulletManager && stage_ >= 6) w.bulletManager->setCancelItemType(ItemField::Star);
+    }
 }
 
 void Gui::runDialogue(const World& w, std::uint16_t input, std::uint16_t previousInput) {
