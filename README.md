@@ -123,8 +123,14 @@ Extra Start (and Phantasm), Practice Start, Result (high scores per difficulty a
 spell card history, Player Data), Music Room, Option and Quit, with the original's select
 screens, unlock rules, name entry, result statistics, endings and staff roll. Scores, clear
 progress, spell history and play statistics are kept in `score.dat` (the PC game's format, in
-the app's storage) and the settings in `th07.cfg`. Replays and the attract demo are not
-ported yet.
+the app's storage) and the settings in `th07.cfg`. Every game is recorded in the PC game's
+`.rpy` format; after a game without continues the result screen offers to save it into one of
+15 slots (`replay/th7_01.rpy` … `th7_15.rpy` in the app's storage, named on the key grid).
+**Replay** on the title lists those and any `th7_ud????.rpy` copied into that folder, then the
+file's stages and the three playback modes (normal, the recorded slowdown, fast outside boss
+fights; dialogue always plays fast). Fifteen idle seconds on the title start the attract demo
+(the three demo replays in `th07.dat`, in turn). Files saved by the PC game load and play;
+whether they stay in sync for long depends on the simulation matching the PC's exactly.
 
 * **Get it:** every CI run also builds it, signed with the same key, as its own artifact
   `th07-android-<version>` (it is not attached to GitHub Releases yet). Locally, with the
@@ -151,7 +157,10 @@ ported yet.
   then `./build-th07/th07_desktop /path/to/game/folder` (the title), or add `--play 1 --shot 0
   --difficulty 1 [--practice] [--lives N]` to start a stage, `--ending SHOT [--continued]
   [--score N]` to watch an ending, `--unlock-all` to unlock Extra, Phantasm and every practice
-  stage.
+  stage, `--replay FILE [--replay-stage 1-7] [--replay-mode 0-2]` to play a replay or `--demo
+  0-2` an attract demo; `--replay-check` compares every played frame's event flags with the
+  recorded ones and logs where they first differ, `--replay-log N` logs the state every N
+  frames.
 
 ## Languages
 
@@ -240,7 +249,8 @@ th07/                         Perfect Cherry Blossom: the second Android app mod
                               checks th07.dat / th07.exe / thbgm.dat), GameActivity (SDL host + JNI)
   src/main/cpp/               CMakeLists.txt (libSDL2.so + libmain.so, desktop build), th07.cmake,
                               src/th07/ (Th07Game hosts the Supervisor: title and select
-                              screens, games, results, ending, Music Room, score.dat)
+                              screens, games, results, ending, Music Room, score.dat,
+                              replays and the attract demo)
 tests/                        host tests run by CI before every APK build (engine core, th06, th07)
 ```
 
