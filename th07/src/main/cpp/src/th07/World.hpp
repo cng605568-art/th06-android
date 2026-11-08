@@ -134,7 +134,8 @@ struct GameState {
     int stage = 0;      // 1-6, 7 Extra, 8 Phantasm (stage - 1 before the set-up)
     bool practice = false;
     bool replay = false;
-    int lifeCount = 2;  // the configuration copy's life setting (0-4)
+    std::uint8_t replayStages = 0;  // playback: the stage blocks present (bit i: stage index i)
+    int lifeCount = 2;  // the configuration copy's life setting (0-4; 8 in practice)
     bool slowMode = false;
 
     // The guarded values (read as integers by truncation).

@@ -30,6 +30,7 @@ add_library(th07_game STATIC
   ${TH07_SRC}/th07/MainMenu.cpp
   ${TH07_SRC}/th07/MusicRoom.cpp
   ${TH07_SRC}/th07/Player.cpp
+  ${TH07_SRC}/th07/Replay.cpp
   ${TH07_SRC}/th07/ResultScreen.cpp
   ${TH07_SRC}/th07/ScoreFile.cpp
   ${TH07_SRC}/th07/ShotData.cpp

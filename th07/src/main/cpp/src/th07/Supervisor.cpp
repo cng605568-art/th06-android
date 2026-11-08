@@ -84,6 +84,10 @@ bool Supervisor::start(const Boot& boot) {
                               const std::array<std::uint8_t, 0x1C>* header) { writeScores(lists, name, header); };
     ctx_.saveConfig = [this]() { saveConfig(); };
     ctx_.refreshRunningTime = [this]() { refreshRunningTime(); };
+    ctx_.replayDir = boot_.storageDir.empty() ? std::string() : boot_.storageDir + "replay/";
+    ctx_.verFile = boot_.verFile;
+    ctx_.saveReplay = [this](const std::string& path, const std::string& name) { return saveReplay(path, name); };
+    ctx_.replayRecorded = [this]() { return recorder_.active(); };
 
     // th07.cfg: read, rebuilt if invalid, written back at once.
     std::vector<std::uint8_t> cfg;
@@ -193,18 +197,39 @@ void Supervisor::playTimeRebase() { playBase_ = now(); }
 // ---- the pass -------------------------------------------------------------------------------
 
 void Supervisor::pass(std::uint16_t raw) {
-    if (!started_ || quit_) return;
-    input_.sample(static_cast<std::uint16_t>(raw | injected_));
+    passesLastCall_ = 0;
+    // A replay's fast-forward re-runs the whole logic list, input sampling included, within
+    // the same displayed frame (at most 5 passes; the guard only protects against a loop).
+    for (int run = 0; run < 8; ++run) {
+        ++passesLastCall_;
+        if (!passOnce(raw, run == 0)) break;
+    }
+}
+
+bool Supervisor::passOnce(std::uint16_t raw, bool first) {
+    if (!started_ || quit_) return false;
+    const std::uint16_t sample = static_cast<std::uint16_t>(raw | (first ? injected_ : 0));
     injected_ = 0;
+    // After a pass slow mode skipped, the new sample is merged in (spec 1.5.4).
+    if (active_ == FlowState::Game && game_ && game_->running() && game_->slowSkipped()) input_.merge(sample);
+    else input_.sample(sample);
+    bool transitioned = false;
+    if (zeroNextPass_) {  // a game started without a transition: its first pass sees nothing held
+        zeroNextPass_ = false;
+        input_.clear();
+        transitioned = true;
+    }
     if (requested_ != active_) {
         previous_ = active_;
         ctx_.previous = previous_;
         log::debug("th07: state {} -> {} (pass {})", static_cast<int>(active_), static_cast<int>(requested_), passes_);
         transition(active_);
         input_.clear();  // nothing is held for the rest of this pass
+        transitioned = true;
     }
     active_ = requested_;
     ++passes_;
+    bool again = false;
     switch (active_) {
         case FlowState::Exit:
         case FlowState::ExitError: quit_ = true; break;
@@ -216,13 +241,17 @@ void Supervisor::pass(std::uint16_t raw) {
             break;
         case FlowState::Game:
             if (game_ && game_->running()) {
-                game_->tick(static_cast<std::uint16_t>(input_.current() | (game_->paused() ? 0 : gameExtras_)));
+                // The port's held buttons (launcher, desktop) join live play's raw input, but
+                // not in the pass of a transition (nothing is held then) nor in playback.
+                const bool extras = !transitioned && !game_->paused() && !game_->replay();
+                again = game_->tick(static_cast<std::uint16_t>(input_.current() | (extras ? gameExtras_ : 0)));
                 if (game_->nextStagePending()) requested_ = FlowState::NextStage;
                 switch (game_->outcome()) {
                     case Gameplay::Outcome::Title: requested_ = FlowState::MainMenu; break;
                     case Gameplay::Outcome::Restart: requested_ = FlowState::RestartGame; break;
                     case Gameplay::Outcome::Results: requested_ = FlowState::ResultAfterGame; break;
                     case Gameplay::Outcome::Ending: requested_ = FlowState::Ending; break;
+                    case Gameplay::Outcome::ReplayEnd: requested_ = FlowState::ReplayEnd; break;
                     case Gameplay::Outcome::None: break;
                 }
             } else {
@@ -259,6 +288,7 @@ void Supervisor::pass(std::uint16_t raw) {
             break;
         default: break;
     }
+    return again;
 }
 
 void Supervisor::transition(FlowState from) {
@@ -295,6 +325,7 @@ void Supervisor::transition(FlowState from) {
             switch (to) {
                 case FlowState::MainMenu:
                     cutGame();
+                    dropReplay();
                     openMainMenu();
                     break;
                 case FlowState::ResultAfterGame: {
@@ -315,6 +346,7 @@ void Supervisor::transition(FlowState from) {
                 case FlowState::RestartGame:
                 case FlowState::RestartStage:
                     cutGame();
+                    dropReplay();
                     requested_ = FlowState::Game;
                     openGame(true, true);
                     break;
@@ -333,6 +365,7 @@ void Supervisor::transition(FlowState from) {
                     break;
                 case FlowState::ReplayEnd:
                     cutGame();
+                    dropReplay();
                     requested_ = FlowState::MainMenu;
                     openMainMenu();
                     break;
@@ -345,8 +378,12 @@ void Supervisor::transition(FlowState from) {
             }
             break;
         }
-        case FlowState::ResultViewer:
         case FlowState::ResultAfterGame:
+            closeScreens();
+            dropReplay();  // an unsaved recording is discarded
+            if (to == FlowState::MainMenu) openMainMenu();
+            break;
+        case FlowState::ResultViewer:
         case FlowState::MusicRoom:
             closeScreens();
             if (to == FlowState::MainMenu) openMainMenu();
@@ -407,6 +444,21 @@ bool Supervisor::openGame(bool fresh, bool restart) {
         s = setup_;
         if (!s.practice && s.difficulty < Extra) s.stage = 1;
         s.restart = true;
+    } else if (ctx_.replay && ctx_.replayFile) {
+        // A replay from the replay menu or the demo: who, what and from where come from the
+        // file (the remembered difficulty is not changed).
+        const ReplayFile& f = *ctx_.replayFile;
+        s.stage = ctx_.stage + 1;
+        s.shotIndex = std::clamp(f.summary.shot(), 0, 5);
+        s.difficulty = std::clamp(f.summary.difficulty(), 0, 5);
+        s.practice = false;
+        s.lifeCount = f.summary.lifeCount();
+        s.slowMode = false;
+        s.restart = false;
+        s.playback = ctx_.replayFile.get();
+        s.playbackMode = ctx_.demo ? 0 : ctx_.playbackMode;
+        s.demo = ctx_.demo;
+        s.demoIndex = ctx_.demoIndex;
     } else {
         s.stage = ctx_.stage + 1;
         s.shotIndex = ctx_.shotIndex();
@@ -417,6 +469,10 @@ bool Supervisor::openGame(bool fresh, bool restart) {
         s.restart = false;
     }
     s.maxContinues = ctx_.maxContinues;
+    s.config = config_;
+    s.exe = boot_.exe;
+    s.recorder = s.playback ? nullptr : &recorder_;
+    if (s.playback) recorder_.drop();
     setup_ = s;
     if (!boot_.canPlay || !boot_.vfs) {
         log::warn("Cannot start a game: th07.exe 1.00b or the 1.00b th07.dat is missing");
@@ -500,6 +556,61 @@ void Supervisor::gameHooks(Gameplay& game) {
     h.playTimeAdd = [this]() { playTimeAdd(); };
     h.playTimeRebase = [this]() { playTimeRebase(); };
     game.setHooks(std::move(h));
+    game.onPlaybackFrame = playbackObserver_;
+}
+
+void Supervisor::dropReplay() {
+    recorder_.drop();
+    if (!(game_ && game_->running())) ctx_.replayFile.reset();
+}
+
+bool Supervisor::saveReplay(const std::string& path, const std::string& name) {
+    bool written = false;
+    if (recorder_.active()) {
+        const GameState& g = ctx_.lastGame;
+        const ReplaySummary& sum = recorder_.file().summary;
+        const std::vector<std::uint8_t> live = config_.save();
+        const bool mainGame = !g.practice && g.difficulty < Extra;
+        const bool same = std::equal(live.begin(), live.end(), sum.config().begin(), sum.config().end());
+        if (mainGame && !same) {
+            log::warn("Replay not saved: the configuration changed during the game");
+        } else if (sum.slowModeRecorded()) {
+            log::warn("Replay not saved: recorded in slow mode");
+        } else {
+            const auto date = todayDate();
+            const std::vector<std::uint8_t> bytes = recorder_.save(g.score, g.guiScore, ctx_.lastSlow, name, std::string_view(date.data(), 5), *boot_.rng);
+            if (!path.empty()) {
+                std::error_code ec;
+                std::filesystem::create_directories(std::filesystem::path(path).parent_path(), ec);
+                written = writeWholeFile(path, bytes);
+                if (written) log::info("Replay saved: {} ({} bytes)", path, bytes.size());
+                else log::warn("Could not write {}", path);
+            }
+        }
+    }
+    recorder_.drop();  // freed in every case
+    return written;
+}
+
+bool Supervisor::startReplay(std::shared_ptr<const ReplayFile> file, int stageIndex, int mode, bool demo, int demoIndex) {
+    if (!started_ || !file) return false;
+    if (stageIndex < 0 || !file->hasStage(stageIndex)) stageIndex = file->firstStage();
+    if (stageIndex < 0) return false;
+    ctx_.replayFile = std::move(file);
+    ctx_.replay = true;
+    ctx_.demo = demo;
+    ctx_.demoIndex = std::clamp(demoIndex, 0, 2);
+    ctx_.playbackMode = std::clamp(mode, 0, 2);
+    ctx_.stage = ctx_.replayFile->summary.difficulty() == Phantasm ? 7 : stageIndex;
+    ctx_.character = std::clamp(ctx_.replayFile->summary.shot(), 0, 5) / 2;
+    ctx_.shotType = ctx_.replayFile->summary.shot() & 1;
+    previous_ = ctx_.previous = FlowState::MainMenu;
+    const std::uint32_t hours = scores_.stats.play.hours;
+    ctx_.maxContinues = hours < 7 ? 3 : hours < 14 ? 4 : 5;
+    if (!openGame(true, false)) return false;
+    active_ = requested_ = FlowState::Game;
+    zeroNextPass_ = true;
+    return true;
 }
 
 bool Supervisor::startGame(const Gameplay::Setup& setup) {
@@ -508,10 +619,19 @@ bool Supervisor::startGame(const Gameplay::Setup& setup) {
     ctx_.shotType = setup.shotIndex & 1;
     ctx_.practice = setup.practice;
     ctx_.stage = setup.stage - 1;
-    config_.difficulty = static_cast<std::uint8_t>(std::clamp(setup.difficulty, 0, 5));  // as if chosen on the title
+    ctx_.replay = ctx_.demo = false;
+    // The difficulty and the life count as if chosen on the title (a recording's copy of the
+    // configuration must match the live one to be saved).
+    config_.difficulty = static_cast<std::uint8_t>(std::clamp(setup.difficulty, 0, 5));
+    config_.lives = static_cast<std::uint8_t>(std::clamp(setup.lifeCount, 0, 4));
+    config_.slowMode = setup.slowMode ? 1 : 0;
     previous_ = ctx_.previous = FlowState::Init;
     setup_ = setup;
     setup_.restart = false;
+    setup_.config = config_;
+    setup_.exe = boot_.exe;
+    setup_.recorder = &recorder_;
+    setup_.playback = nullptr;
     // (The maximum continues come from the play time, as the title would set them.)
     const std::uint32_t hours = scores_.stats.play.hours;
     ctx_.maxContinues = hours < 7 ? 3 : hours < 14 ? 4 : 5;
@@ -538,6 +658,7 @@ bool Supervisor::startGame(const Gameplay::Setup& setup) {
         return false;
     }
     active_ = requested_ = FlowState::Game;
+    zeroNextPass_ = true;
     return true;
 }
 
@@ -604,6 +725,7 @@ void Supervisor::shutdown() {
     if (statsReady_) rewriteScoreFile();
     if (result_) result_->finish();
     if (game_ && game_->running()) cutGame();
+    dropReplay();
     saveConfig();
 }
 

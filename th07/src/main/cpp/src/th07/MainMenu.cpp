@@ -1,10 +1,14 @@
 #include "th07/MainMenu.hpp"
 
 #include <algorithm>
+#include <filesystem>
 #include <format>
+#include <fstream>
+#include <iterator>
 
 #include "core/Log.hpp"
 #include "gfx/SpriteSink.hpp"
+#include "io/Vfs.hpp"
 #include "th07/Bgm.hpp"
 #include "th07/Player.hpp"
 #include "th07/SoundPlayer.hpp"
@@ -52,6 +56,7 @@ void MainMenu::setState(State s) {
     prevState_ = state_;
     state_ = s;
     timer_ = 0;
+    idle_ = 0;
     entered_ = false;
     stateChanged_ = true;
 }
@@ -62,11 +67,14 @@ bool MainMenu::create(std::string* error) {
         return false;
     }
     ScoreData& sd = *ctx_.scores;
-    // A replay or the demo resets the remembered character (replays are not ported yet).
+    // A replay or the demo resets the remembered character (the shot type stays); after a
+    // replay (not the demo) the menu opens on the replay list.
     if (ctx_.replay) {
         ctx_.character = 0;
         if (ctx_.demo) ctx_.replay = false;
     }
+    afterReplay_ = ctx_.replay;
+    ctx_.replayFile.reset();
     // score.dat: the clear records, practice bests and spell history over memory (an unsaved
     // game's progress is discarded here).
     const auto img = ctx_.readScores ? ctx_.readScores() : std::nullopt;
@@ -293,6 +301,8 @@ bool MainMenu::handle(const MenuInput& in) {
         case State::Shot: return shot(in);
         case State::PracticeStage: return practiceStage(in);
         case State::Replay: return replay(in);
+        case State::ReplayStages: return replayStages(in);
+        case State::ReplayMode: return replayMode(in);
         case State::ReplayLeave:
             if (timer_ >= 30) {
                 cursor_ = 3;
@@ -337,6 +347,14 @@ bool MainMenu::mainMenu(const MenuInput& in) {
         }
         sendAll(2);
         highlightRows(1, 8, cursor_ + 1);
+        if (afterReplay_) {
+            afterReplay_ = false;
+            ctx_.replay = false;
+            sendAll(13);
+            hideDescription();
+            setState(State::Replay);
+            return false;
+        }
         if (autoPractice_) {
             variant_ = Variant::Practice;
             sendAll(5);
@@ -352,9 +370,9 @@ bool MainMenu::mainMenu(const MenuInput& in) {
         highlightRows(1, 8, cursor_ + 1);
         showDescription(cursor_);
     }
-    // The attract demo after 15 idle seconds needs replays, which are not ported yet.
+    // The attract demo after more than 900 passes with no button held (spec 3.5).
     if (in.current() != 0) idle_ = 0;
-    else if (++idle_ > 900) idle_ = 0;
+    else if (++idle_ > 900 && tryDemo()) return false;
     if (timer_ < 10) return false;
     if (in.pressed(kSelect)) {
         ctx_.playSound(kSndSelect);
@@ -764,20 +782,235 @@ bool MainMenu::practiceStage(const MenuInput& in) {
     return false;
 }
 
+// ---- the replay menu (spec 3.10) and the attract demo (3.5) ---------------------------------
+
+namespace {
+
+std::optional<std::vector<std::uint8_t>> readFile(const std::filesystem::path& path) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return std::nullopt;
+    return std::vector<std::uint8_t>((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+}
+
+}  // namespace
+
+std::vector<MainMenu::ReplayItem> MainMenu::scanReplays(const std::string& dir, std::span<const std::uint8_t> verFile) {
+    std::vector<ReplayItem> items;
+    if (dir.empty()) return items;
+    auto add = [&](const std::filesystem::path& p, std::string label) {
+        const auto bytes = readFile(p);
+        if (!bytes) return;
+        auto f = ReplayFile::parse(*bytes, verFile, nullptr, true);
+        if (f) items.push_back({std::move(label), p.string(), std::move(*f)});
+    };
+    for (int n = 1; n <= kReplaySlots; ++n) add(std::filesystem::path(dir) / std::format("th7_{:02d}.rpy", n), std::format("No.{:02d}", n));
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    std::vector<std::filesystem::path> user;
+    for (const auto& e : std::filesystem::directory_iterator(dir, ec)) {
+        const std::string name = e.path().filename().string();
+        if (name.size() == 14 && name.starts_with("th7_ud") && name.ends_with(".rpy")) user.push_back(e.path());
+    }
+    std::sort(user.begin(), user.end());
+    int added = 0;
+    for (const auto& p : user) {
+        if (added >= kReplayUserFiles) break;
+        const std::size_t before = items.size();
+        add(p, "User ");
+        if (items.size() > before) ++added;
+    }
+    return items;
+}
+
+bool MainMenu::tryDemo() {
+    ctx_.demoIndex = (ctx_.demoIndex + 1) % 3;
+    const auto bytes = ctx_.vfs ? ctx_.vfs->read(std::format("data/demo/demorpy{}.rpy", ctx_.demoIndex)) : std::nullopt;
+    std::string err;
+    auto f = bytes ? ReplayFile::parse(*bytes, ctx_.verFile, &err) : std::nullopt;
+    if (!f || f->firstStage() < 0) {
+        if (bytes) log::warn("Demo {}: {}", ctx_.demoIndex, f ? "no stage" : err);
+        idle_ = 0;
+        return false;
+    }
+    ctx_.replay = ctx_.demo = true;
+    ctx_.playbackMode = 0;
+    ctx_.character = std::clamp(f->summary.shot(), 0, 5) / 2;
+    ctx_.shotType = f->summary.shot() & 1;
+    ctx_.stage = f->firstStage();
+    ctx_.replayFile = std::make_shared<ReplayFile>(std::move(*f));
+    hideDescription();
+    ctx_.request(FlowState::Game);
+    done_ = true;
+    return true;
+}
+
 bool MainMenu::replay(const MenuInput& in) {
     if (!entered_) {
         entered_ = true;
-        if (prevState_ != State::Replay && prevState_ != State::ReplayLeave) loadBackground("data/title/select00.jpg");
-        sendAll(14);
+        // Sub-state 0: the list is rebuilt (not when coming back from the stage list).
+        if (prevState_ != State::ReplayStages) {
+            if (prevState_ != State::Replay && prevState_ != State::ReplayLeave) loadBackground("data/title/select00.jpg");
+            sendAll(14);
+            cursor_ = 0;
+            replays_ = scanReplays(ctx_.replayDir, ctx_.verFile);
+        } else {
+            sendAll(14);
+            cursor_ = replayIndex_;
+            timer_ = 30;  // (the scan's 30 passes are over)
+        }
+        chosen_.reset();
         return false;
     }
     if (timer_ < 30) return false;
+    const int n = static_cast<int>(replays_.size());
+    if (verticalMove(in, n) == 0 && n > 15) {
+        if (in.pressedOrRepeat(BtnLeft)) cursor_ = wrap(cursor_ - 15, n), ctx_.playSound(kSndMove);
+        else if (in.pressedOrRepeat(BtnRight)) cursor_ = wrap(cursor_ + 15, n), ctx_.playSound(kSndMove);
+    }
+    if (in.pressed(kSelect) && timer_ >= 40 && n > 0) {
+        const ReplayItem& item = replays_[static_cast<std::size_t>(cursor_)];
+        // The whole file, validated again (it may have changed since the scan).
+        const auto bytes = readFile(item.path);
+        std::string err;
+        auto f = bytes ? ReplayFile::parse(*bytes, ctx_.verFile, &err) : std::nullopt;
+        if (!f || f->firstStage() < 0) {
+            log::warn("Replay {}: {}", item.path, f ? "no stage" : err);
+            ctx_.playSound(kSndBack);
+            return false;
+        }
+        ctx_.playSound(kSndSelect);
+        sendAll(15);
+        const int row = 135 + cursor_ % 15;
+        if (has_[static_cast<std::size_t>(row)]) vm_[static_cast<std::size_t>(row)].interrupt(17);
+        replayIndex_ = cursor_;
+        chosen_ = std::make_shared<ReplayFile>(std::move(*f));
+        cursor_ = chosen_->firstStage();
+        setState(State::ReplayStages);
+        return false;
+    }
     if (in.pressed(kReturn)) {
         ctx_.playSound(kSndBack);
         sendAll(16);
+        replays_.clear();
         setState(State::ReplayLeave);
     }
     return false;
+}
+
+bool MainMenu::replayStages(const MenuInput& in) {
+    if (!chosen_) {
+        setState(State::Replay);
+        return false;
+    }
+    if (!entered_) {
+        entered_ = true;
+        return false;
+    }
+    // Absent stages are skipped in the direction of the move.
+    const int d = verticalMove(in, kReplayStages);
+    for (int k = 0; d != 0 && k < kReplayStages && !chosen_->hasStage(cursor_); ++k) cursor_ = wrap(cursor_ + d, kReplayStages);
+    if (in.pressed(kSelect) && chosen_->hasStage(cursor_)) {
+        ctx_.playSound(kSndSelect);
+        sendAll(19);
+        const int row = 135 + replayIndex_ % 15;
+        if (has_[static_cast<std::size_t>(row)]) vm_[static_cast<std::size_t>(row)].interrupt(17);
+        ctx_.stage = cursor_;
+        cursor_ = 0;
+        for (int i = 0; i < 3; ++i) {
+            if (has_[static_cast<std::size_t>(158 + i)]) vm_[static_cast<std::size_t>(158 + i)].interrupt(i == 0 ? 20 : 21);
+        }
+        setState(State::ReplayMode);
+        return false;
+    }
+    if (in.pressed(kReturn)) {
+        ctx_.playSound(kSndBack);
+        chosen_.reset();
+        setState(State::Replay);
+    }
+    return false;
+}
+
+bool MainMenu::replayMode(const MenuInput& in) {
+    if (!chosen_) {
+        setState(State::Replay);
+        return false;
+    }
+    if (!entered_) {
+        entered_ = true;
+        return false;
+    }
+    if (verticalMove(in, 3) != 0) {
+        for (int i = 0; i < 3; ++i) {
+            if (has_[static_cast<std::size_t>(158 + i)]) vm_[static_cast<std::size_t>(158 + i)].interrupt(i == cursor_ ? 20 : 21);
+        }
+    }
+    if (in.pressed(kSelect)) {
+        ctx_.playSound(kSndSelect);
+        ctx_.replay = true;
+        ctx_.demo = false;
+        ctx_.character = std::clamp(chosen_->summary.shot(), 0, 5) / 2;
+        ctx_.shotType = chosen_->summary.shot() & 1;
+        if (chosen_->summary.difficulty() == Phantasm) ctx_.stage = 7;  // the set-up makes it 8
+        ctx_.playbackMode = cursor_;
+        ctx_.replayFile = chosen_;
+        ctx_.request(FlowState::Game);
+        if (ctx_.music) ctx_.music->stop();
+        done_ = true;
+        return false;
+    }
+    if (in.pressed(kReturn)) {
+        ctx_.playSound(kSndBack);
+        cursor_ = ctx_.stage;
+        sendAll(15);
+        const int row = 135 + replayIndex_ % 15;
+        if (has_[static_cast<std::size_t>(row)]) vm_[static_cast<std::size_t>(row)].interrupt(17);
+        setState(State::ReplayStages);
+        entered_ = true;
+    }
+    return false;
+}
+
+void MainMenu::drawReplayMenu() {
+    if (!instancesMade_) return;
+    const bool stages = state_ == State::ReplayStages || state_ == State::ReplayMode;
+    if (state_ == State::Replay || stages) {
+        const AnmVm& h = vm_[134];
+        text_.add(h.position.x, h.position.y, "No.   Name     Date  Player  Rank", 0xFFFFFFFFu);
+        const int page = (stages ? replayIndex_ : cursor_) / 15;
+        for (int i = 0; i < 15; ++i) {
+            const int k = page * 15 + i;
+            if (k >= static_cast<int>(replays_.size())) break;
+            const ReplayItem& it = replays_[static_cast<std::size_t>(k)];
+            const AnmVm& at = vm_[static_cast<std::size_t>(135 + i)];
+            const bool lit = stages ? k == replayIndex_ : k == cursor_;
+            std::string name = it.file.summary.name();
+            name.resize(8, ' ');
+            std::string date = it.file.summary.date();
+            date.resize(5, ' ');
+            std::string diff(difficultyName(it.file.summary.difficulty()));
+            diff.resize(8, ' ');
+            text_.add(at.position.x, at.position.y,
+                      std::format("{} {} {} {} {}", it.label, name, date, shotName7(it.file.summary.shot()), diff),
+                      lit ? 0xFFFFFFFFu : 0xFF808080u);
+        }
+    }
+    if (stages && chosen_) {
+        const std::uint32_t dim = state_ == State::ReplayMode ? 0x60FFFFFFu : 0xFFFFFFFFu;
+        const AnmVm& s = vm_[133];
+        text_.add(s.position.x, s.position.y, std::format("Slow {:2.3f}%", chosen_->summary.slowdown()), dim);
+        const AnmVm& h = vm_[150];
+        text_.add(h.position.x, h.position.y, "Stage    LastScore", dim);
+        static constexpr const char* kNames[6] = {"Stage1  ", "Stage2  ", "Stage3  ", "Stage4  ", "Stage5  ", "Stage6  "};
+        for (int i = 0; i < kReplayStages; ++i) {
+            const AnmVm& at = vm_[static_cast<std::size_t>(151 + i)];
+            const std::string label = i < 6 ? kNames[i] : chosen_->summary.difficulty() == Phantasm ? "Phantasm" : "Extra   ";
+            const ReplayStage& st = chosen_->stages[static_cast<std::size_t>(i)];
+            const std::string score = st.present ? std::format("{:9d}0", st.endScore) : std::string("----------");
+            std::uint32_t c = i == cursor_ && state_ == State::ReplayStages ? 0xFFFFFFFFu : 0xFF808080u;
+            if (state_ == State::ReplayMode) c = (i == ctx_.stage || (ctx_.stage == 7 && i == 6)) ? 0x60FFFFFFu : 0x60808080u;
+            text_.add(at.position.x, at.position.y, label + " " + score, c);
+        }
+    }
 }
 
 // ---- drawing --------------------------------------------------------------------------------
@@ -813,10 +1046,7 @@ void MainMenu::draw(SpriteSink& sink) {
             text_.add(x, y0 + 16.0f * static_cast<float>(i + 1), std::format("Stage{}  {:9d}0({:3d})", i + 1, r.score, r.plays), color);
         }
     }
-    if (state_ == State::Replay || state_ == State::ReplayLeave) {
-        text_.add(96.0f, 200.0f, "Replays are not available", 0xFFFFFFFFu);
-        text_.add(96.0f, 220.0f, "in this port yet.", 0xFFFFFFFFu);
-    }
+    drawReplayMenu();
     text_.draw(sink, *ctx_.anm);
     if (fade_ >= 0) fillScreen(sink, ctx_.ui, (static_cast<std::uint32_t>(255 - fade_ * 255 / 70) << 24) | 0xFFFFFFu);
 }

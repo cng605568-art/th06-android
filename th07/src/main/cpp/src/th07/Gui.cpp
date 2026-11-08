@@ -148,7 +148,7 @@ bool Gui::stageStart(const World& w, const Resources& res, bool firstStage, std:
     msgIndex_ = -1;
     clearState_ = 0;
     bonus_.shown = status_.shown = spellBonus_.shown = false;
-    nextStage_ = false;
+    nextStage_ = nextStageRaised_ = false;
     gameFinished_ = false;
     endRequest_ = EndRequest::None;
     for (Popup& p : popups_) p.live = false;
@@ -239,6 +239,22 @@ void Gui::asciiUpdate(const World& w) {
         m.tick(*w.anm, *w.rng);
     }
     borderVm_.tick(*w.anm, *w.rng);
+    // The demo marker (started on its first pass without resetting the VM's position; its
+    // script places it).
+    if (demo_) {
+        if (!demoStarted_) {
+            demoMarker_.start(*w.anm, *w.rng, 7);
+            demoStarted_ = true;
+        }
+        demoMarker_.tick(*w.anm, *w.rng);
+    }
+}
+
+void Gui::drawDemoMarker(SpriteSink& sink) {
+    if (!demo_ || !demoStarted_) return;
+    AnmVm vm = demoMarker_;
+    vm.rotation = {};
+    drawVm(sink, vm, AnmDrawState{});
 }
 
 void Gui::score(const Vec3f& pos, std::uint32_t value, std::uint32_t color, bool small) {
@@ -496,20 +512,30 @@ void Gui::runDialogue(const World& w, std::uint16_t input, std::uint16_t previou
             case 10: advance = false, stalled = true; break;
             case 11: {
                 // Next level (spec 4.10): practice goes to the results; stages 1-5 to the next
-                // stage; stage 6 to the ending; Extra and Phantasm to the results (their clear
-                // records are kept by the supervisor). Replays are not ported.
-                w.state->guiScore = w.state->score;
-                if (w.state->practice) {
+                // stage (a replay without the next stage's block ends); stage 6 to the ending;
+                // Extra and Phantasm to the results (their clear records are kept by the
+                // supervisor); a replay's last stage ends the playback. (The original rewrites
+                // a Phantasm replay whose score differs: the port never modifies a file it
+                // plays.)
+                const GameState& g = *w.state;
+                w.state->guiScore = g.score;
+                if (g.practice) {
                     gameFinished_ = true;
                     endRequest_ = EndRequest::Results;
-                } else if (stage_ >= 6) {
+                } else if (stage_ <= 5 && g.replay && !(g.replayStages & (1u << stage_))) {
+                    gameFinished_ = true;
+                    endRequest_ = EndRequest::ReplayEnd;
+                } else if (stage_ <= 5) {
+                    showLoading_ = true;
+                    nextStageRaised_ = true;  // the request follows at the next update
+                    msgIndex_ = -2;
+                } else if (g.replay) {
+                    gameFinished_ = true;
+                    endRequest_ = EndRequest::ReplayEnd;
+                } else {
                     gameFinished_ = true;
                     w.state->finished = true;
                     endRequest_ = stage_ == 6 ? EndRequest::Ending : EndRequest::Results;
-                } else {
-                    showLoading_ = true;
-                    nextStage_ = true;
-                    msgIndex_ = -2;
                 }
                 advance = false;
                 stalled = true;
@@ -571,6 +597,11 @@ void Gui::bossHudUpdate() {
 
 void Gui::update(const World& w, std::uint16_t input, std::uint16_t previousInput) {
     world_ = &w;
+    // Step 2: the "go to the next stage" request raised at the last next-level opcode.
+    if (nextStageRaised_) {
+        nextStageRaised_ = false;
+        nextStage_ = true;
+    }
     if (msgIndex_ < 0) bossHudUpdate();
     for (AnmVm& vm : front_) vm.tick(*w.anm, *w.rng);
     for (int i = 0; i < 5; ++i) {
@@ -610,7 +641,11 @@ void Gui::update(const World& w, std::uint16_t input, std::uint16_t previousInpu
 void Gui::computeStageBonus(const World& w) {
     GameState& g = *w.state;
     std::int32_t b = g.stage * 100000 + static_cast<std::int32_t>(clearGraze_) * 50 + static_cast<std::int32_t>(clearPoints_) * 5000 + clearCherryMax_;
-    if (g.stage >= 7 || (g.stage == 6 && !g.practice)) b += g.livesI() * 2000000 + g.bombsI() * 400000;
+    // The lives and bombs part: Extra and Phantasm, or stage 6 outside practice, in live play
+    // or in a replay that contains stage 5 (spec 4.4).
+    if (g.stage >= 7 || (g.stage == 6 && !g.practice && (!g.replay || (g.replayStages & 0x10) != 0))) {
+        b += g.livesI() * 2000000 + g.bombsI() * 400000;
+    }
     switch (g.difficulty) {
         case Easy: b /= 2; break;
         case Hard: b = b * 12 / 10; break;

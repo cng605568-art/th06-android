@@ -18,6 +18,7 @@
 #include "th07/Flow.hpp"
 #include "th07/GameConfig.hpp"
 #include "th07/Gameplay.hpp"
+#include "th07/Replay.hpp"
 #include "th07/ScoreFile.hpp"
 #include "th07/Version.hpp"
 
@@ -77,8 +78,13 @@ class Supervisor {
     // Developer aid: every clear record at 99 (the result screen's hidden code), saved; the
     // next title shows the Phantasm splash.
     void unlockAll();
+    // A replay's playback from stage index `stageIndex` (0-6; -1 its first stage) in
+    // `mode` (0-2), or as attract demo `demoIndex` (mode 0), straight from the command line;
+    // afterwards the flow goes on as after a replay chosen in the menu.
+    bool startReplay(std::shared_ptr<const ReplayFile> file, int stageIndex, int mode, bool demo = false, int demoIndex = 0);
 
-    // One logic pass with the raw 16-bit button word.
+    // One logic pass with the raw 16-bit button word (a replay's fast-forward runs several
+    // passes in it, spec 7.8.6).
     void pass(std::uint16_t raw);
     void draw(SpriteSink& sink);
     // Program exit (spec 1.4.5): score.dat rewritten with the current statistics, th07.cfg
@@ -119,7 +125,22 @@ class Supervisor {
     // the file rewritten at once.
     void rewriteScoreFile();
 
+    // The recording of the live game (kept until the result screen saves it or it is dropped).
+    const ReplayRecorder& recorder() const { return recorder_; }
+    ReplayRecorder& recorder() { return recorder_; }
+    // Spec 7.6: saves the recording into `path` under `name` (false: the write was skipped,
+    // spec 7.6.2, or failed); the recording is freed in every case.
+    bool saveReplay(const std::string& path, const std::string& name);
+    // Logic passes run in the last pass() call (more than one while fast-forwarding).
+    int passesLastCall() const { return passesLastCall_; }
+    // Desync diagnostics for every game played back (see Gameplay::onPlaybackFrame).
+    void setPlaybackObserver(std::function<void(int, std::int32_t, const ReplayEntry&, std::uint32_t)> f) {
+        playbackObserver_ = std::move(f);
+    }
+
   private:
+    bool passOnce(std::uint16_t raw, bool first);
+    void dropReplay();
     void transition(FlowState from);
     void openMainMenu();
     bool openGame(bool fresh, bool restart);
@@ -158,6 +179,10 @@ class Supervisor {
     std::array<std::uint8_t, 0x1C> lastHeader_{};
     bool haveHeader_ = false;
     std::uint32_t writes_ = 0;
+    ReplayRecorder recorder_;
+    int passesLastCall_ = 0;
+    bool zeroNextPass_ = false;
+    std::function<void(int, std::int32_t, const ReplayEntry&, std::uint32_t)> playbackObserver_;
     std::uint64_t runningBase_ = 0, playBase_ = 0;
 };
 

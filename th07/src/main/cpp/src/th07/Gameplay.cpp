@@ -53,6 +53,15 @@ bool Gameplay::start(const Resources& res, const Setup& setup, std::string* erro
     state_.lifeCount = setup.lifeCount;
     state_.slowMode = setup.slowMode;
     state_.stage = setup.stage - 1;
+    playback_ = setup.playback;
+    recorder_ = playback_ ? nullptr : setup.recorder;
+    playbackMode_ = playback_ ? std::clamp(setup.playbackMode, 0, 2) : 0;
+    demo_ = playback_ && setup.demo;
+    demoIndex_ = std::clamp(setup.demoIndex, 0, 2);
+    demoFrame_ = 0;
+    state_.replay = playback_ != nullptr;
+    state_.replayStages = playback_ ? playback_->stageMask() : 0;
+    if (playback_) state_.practice = false;  // (practice replays play as ordinary games)
     world_ = World{};
     world_.state = &state_;
     world_.rng = res.rng;
@@ -85,14 +94,20 @@ bool Gameplay::start(const Resources& res, const Setup& setup, std::string* erro
     enemies_->setMusic(res.music);
     outcome_ = Outcome::None;
     // (The object is reused for every game: nothing of the last one carries over.)
-    prevInput_ = 0;
+    prevRaw_ = 0;
+    gameInput_ = prevGameInput_ = 0;
+    wasPaused_ = slowSkip_ = false;
+    slowLag_ = replayLag_ = 0;
     pauseRequested_ = false;
     menu_ = InGameMenu{};
+    gui_->setDemo(demo_);
     return setUpStage(true, error);
 }
 
 bool Gameplay::nextStage(std::string* error) {
     if (!running_) return false;
+    // (The original cuts the game manager between stages: its teardown closes the block.)
+    if (recorder_) recorder_->closeBlock();
     releaseStageFiles();
     return setUpStage(false, error);
 }
@@ -138,6 +153,7 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
         for (int i = 0; i < 15; ++i) rng.u32InRange(100000);
         for (int i = 0; i < 9; ++i) rng.f32ZeroToOne();
         for (int i = 0; i < 5; ++i) rng.u32InRange(100000);
+        config_ = setup_.config;  // the configuration copy
         g.fullPowerChain = 0;
         if (g.difficulty >= Extra) g.lifeCount = 2;
         else if (g.practice) g.lifeCount = 8;
@@ -172,6 +188,8 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
         // Step 8: a play is counted (live play, slow mode off).
         if (!g.replay && !g.slowMode && hooks_.countPlay) hooks_.countPlay(g, setup_.restart);
         if (g.replay) g.slowMode = false;
+        config_.lives = static_cast<std::uint8_t>(g.lifeCount);
+        config_.slowMode = g.slowMode ? 1 : 0;
     } else {
         g.guiScore = g.score;
         g.rollSpeed = 0;
@@ -183,6 +201,10 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
     ++g.stage;
     if (!g.replay && hooks_.stageEntered) hooks_.stageEntered(g);
     if (g.practice && g.stage >= 2) w.setPower(128.0f);
+    // Step 11: playback restores the stage's block (it sets the RNG seed). The shadow values
+    // are then regenerated with the seed saved and restored around it: no net effect.
+    if (playback_) restoreReplayStage();
+    // Step 13: the stage seed.
     stageSeed_ = rng.currentSeed();
 
     if (!etamaLoaded_) {
@@ -214,6 +236,11 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
         if (!gui_->stageStart(w, gr, fresh, error)) return false;
     }
     player_->stageStart(w);
+    // Step 15: live play records into a block of the recording (the first stage creates it).
+    if (recorder_) {
+        if (fresh) recorder_->create(g.shotIndex, g.difficulty, config_, setup_.exe);
+        startRecordingBlock();
+    }
 
     if (res_.music) {
         res_.music->load(0, background_.songPath(0));
@@ -234,6 +261,38 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
     return true;
 }
 
+void Gameplay::restoreReplayStage() {
+    GameState& g = state_;
+    const int index = g.stage >= 7 ? 6 : std::max(0, g.stage - 1);
+    g.setDifficulty(g.difficulty);  // the rank is initialised, then set from the block
+    th07::restoreReplayStage(world_, *playback_, index, config_);
+    feed_.start(playback_->hasStage(index) ? &playback_->stages[static_cast<std::size_t>(index)] : nullptr);
+    gameInput_ = prevGameInput_ = 0;
+    replayLag_ = 0;
+}
+
+void Gameplay::startRecordingBlock() {
+    const GameState& g = state_;
+    ReplayRecorder::StageStart v;
+    v.seed = stageSeed_;
+    v.score = g.score;
+    v.extendPoints = static_cast<std::int32_t>(g.extendPoints);
+    v.cherry = g.cherry;
+    v.cherryMax = g.cherryMax;
+    v.cherryPlus = g.cherryPlus;
+    v.totalGraze = static_cast<std::int32_t>(g.totalGraze);
+    v.extendsGranted = g.extendsGranted;
+    v.nextExtend = g.nextExtend;
+    v.power = g.powerI();
+    v.lives = g.livesI();
+    v.bombs = g.bombsI();
+    v.rank = g.rank;
+    v.chain = g.fullPowerChain;
+    v.spells = g.spellsCaptured;
+    recorder_->startBlock(g.stage >= 7 ? 6 : g.stage - 1, v);
+    gameInput_ = prevGameInput_ = 0;
+}
+
 void Gameplay::end() {
     if (!running_) return;
     releaseStageFiles();
@@ -242,20 +301,31 @@ void Gameplay::end() {
     if (etamaLoaded_) res_.anm->release(11);
     etamaLoaded_ = false;
     if (res_.music) res_.music->stop();
+    // Teardown step 3: the current block gets its terminator.
+    if (recorder_) recorder_->closeBlock();
     running_ = false;
 }
 
-void Gameplay::tick(std::uint16_t input) {
-    if (!running_) return;
+bool Gameplay::tick(std::uint16_t raw) {
+    if (!running_) return false;
     GameState& g = state_;
-    g.eventFlags = 0;
     g.dialogue = gui_->dialogueCurrent();
-    const std::uint16_t pressed = static_cast<std::uint16_t>(input & ~prevInput_);
+    const std::uint16_t pressed = static_cast<std::uint16_t>(raw & ~prevRaw_);
+    // "Any button" as a mask: the word is non-zero and differs from the last pass's.
+    const bool anyPressed = raw != 0 && raw != prevRaw_;
+    struct Done {  // the previous raw input is kept on every way out of the pass
+        Gameplay& self;
+        std::uint16_t raw;
+        ~Done() { self.prevRaw_ = raw; }
+    } done{*this, raw};
     // The text/menu manager (priority 1): a pause or continue menu runs instead of the
-    // popups, and the game manager then stops the pass while it is up.
-    if (menu_.active()) {
+    // popups, and the game manager then stops the pass while it is up. A menu's last update
+    // clears its flag, so the game manager proceeds in that pass (spec 2.2): also when it
+    // leaves the game (its state request is acted on at the next pass), and when the continue
+    // menu exits at once (practice, replays: one more frame is simulated and recorded).
+    const bool menuWasUp = menu_.active();
+    if (menuWasUp) {
         const InGameMenu::Request r = menu_.update(world_, pressed);
-        prevInput_ = input;
         switch (r) {
             case InGameMenu::Request::Resume:
                 if (res_.music && !(g.stage == 6 && gui_->frame() < 300)) res_.music->resume();
@@ -269,35 +339,98 @@ void Gameplay::tick(std::uint16_t input) {
             case InGameMenu::Request::Title:
                 if (hooks_.playTimeRebase) hooks_.playTimeRebase();
                 outcome_ = Outcome::Title;
-                return;
+                break;
             case InGameMenu::Request::Results:
+                // A replay's game over ends the playback (spec 2.4.2).
+                if (playback_) {
+                    outcome_ = Outcome::ReplayEnd;
+                    break;
+                }
                 g.guiScore = g.score;
                 if (hooks_.playTimeRebase) hooks_.playTimeRebase();
                 outcome_ = Outcome::Results;
-                return;
+                break;
             case InGameMenu::Request::Restart:
                 if (hooks_.playTimeRebase) hooks_.playTimeRebase();
                 outcome_ = Outcome::Restart;
-                return;
-            case InGameMenu::Request::None: return;
+                break;
+            case InGameMenu::Request::None: return false;
         }
     } else if (outcome_ != Outcome::None) {
-        prevInput_ = input;
-        return;  // waiting for the supervisor
-    } else if ((pressed & BtnMenu) || pauseRequested_) {
+        return false;  // waiting for the supervisor
+    } else {
+        gui_->asciiUpdate(world_);  // the popups (no menu up)
+    }
+
+    // The game manager (priority 2). 1: the pause check (not in the demo, nor in the pass
+    // after a slow-mode skip).
+    if (!menu_.active() && !demo_ && !slowSkip_ && ((pressed & BtnMenu) || pauseRequested_)) {
         pauseRequested_ = false;
         menu_.openPause(world_);
+        wasPaused_ = true;
         if (res_.music && !(g.stage == 6 && gui_->frame() < 300)) res_.music->pause();
         if (hooks_.playTimeAdd) hooks_.playTimeAdd();
-        prevInput_ = input;
-        return;
+        return false;
     }
-    // ASCII manager (priority 1), game manager (priority 2).
-    gui_->asciiUpdate(world_);
+    // 3: playback mode 1 reproduces the recorded slowdown by stopping passes (no input is
+    // consumed), outside dialogue.
+    if (playback_ && playbackMode_ == 1 && !g.dialogue) {
+        ++replayLag_;
+        const int fps = feed_.fps();
+        const bool stop = fps < 20   ? replayLag_ % 3 != 0
+                          : fps < 30 ? replayLag_ % 2 != 0
+                          : fps < 40 ? replayLag_ % 3 == 0
+                          : fps < 50 ? replayLag_ % 6 == 0
+                                     : false;
+        if (stop) return false;
+    }
+    // 4: the attract demo: any press, or its end frame, returns to the title; a fade to
+    // black and a music fade 120 frames before the end.
+    if (demo_) {
+        if (anyPressed || pauseRequested_) {
+            pauseRequested_ = false;
+            outcome_ = Outcome::Title;
+            return false;
+        }
+        static constexpr std::int32_t kFade[3] = {8100, 7020, 4620}, kEnd[3] = {8220, 7140, 4740};
+        ++demoFrame_;
+        if (demoFrame_ == kFade[demoIndex_]) {
+            screenFx_.fade(2, 120, 0x000000u);
+            if (res_.music) res_.music->fadeOut(3.0f);
+        }
+        if (demoFrame_ >= kEnd[demoIndex_]) {
+            outcome_ = Outcome::Title;
+            return false;
+        }
+    }
+    // 7: a menu up (the continue menu opened last pass) stops the pass.
+    if (menu_.active()) return false;
+    // 8: the score roll; 9: slow mode (the configuration copy) skips passes with many bullets.
     g.rollScore();
+    slowSkip_ = false;
+    if (g.slowMode) {
+        ++slowLag_;
+        const int n = bullets_->liveBullets();
+        if ((n >= 320 && slowLag_ % 3 == 0) || (n >= 224 && n < 320 && slowLag_ % 4 == 0) || (n >= 128 && n < 224 && slowLag_ % 5 == 0)) {
+            slowSkip_ = true;
+            return false;
+        }
+        if (n < 128) slowLag_ = 0;
+    }
+    // 10: the stage frame counter.
     ++g.stageFrame;
+    // Replay playback's feed (priority 5): this frame's game input is the next entry.
+    if (playback_ && !g.slowMode) {
+        prevGameInput_ = gameInput_;
+        gameInput_ = feed_.next();
+    }
+    // The recorder's reset hook (priority 6): the event flags, and "paused" after a pause.
+    g.eventFlags = 0;
+    if (recorder_ && wasPaused_) g.eventFlags |= kReplayEventPaused;
+    wasPaused_ = false;
     // Stage background (7), player (8), enemies (10), effects (11), bullets and items (12),
-    // GUI (13), screen effects (15).
+    // GUI (13), screen effects (15): the player, bombs and dialogue read the game input.
+    const std::uint16_t input = gameInput_;
     background_.update(*res_.anm, *res_.rng);
     player_->update(world_, input);
     if (player_->continueMenuRequested()) {
@@ -326,15 +459,36 @@ void Gameplay::tick(std::uint16_t input) {
     }
     effects_.update(world_);
     bullets_->update(world_);
-    gui_->update(world_, input, prevInput_);
+    gui_->update(world_, input, prevGameInput_);
     switch (gui_->endRequest()) {
         case Gui::EndRequest::Results: outcome_ = Outcome::Results; break;
         case Gui::EndRequest::Ending: outcome_ = Outcome::Ending; break;
+        case Gui::EndRequest::ReplayEnd: outcome_ = Outcome::ReplayEnd; break;
         default: break;
     }
-    prevInput_ = input;
     drawState_.offsetX = drawState_.offsetY = 0.0f;
     screenFx_.update(*res_.rng, g, drawState_.offsetX, drawState_.offsetY);
+    // The recorder's record hook (priority 16), after all gameplay: the game input is latched
+    // (even in slow mode), then the raw input and the event flags are written. Its "menu up"
+    // test reads the game manager's step 6 flag, so the frame in which the player opens the
+    // continue menu is still recorded (ZUN's demo files show it).
+    if (!playback_) {
+        prevGameInput_ = gameInput_;
+        gameInput_ = raw;
+        if (recorder_ && !g.slowMode) recorder_->write(raw, static_cast<std::uint16_t>(g.eventFlags));
+    }
+    if (playback_ && onPlaybackFrame) onPlaybackFrame(g.stage, feed_.frame(), feed_.upcoming(), g.eventFlags);
+    // The playback's fast-forward hook (priority 17).
+    return playback_ && outcome_ == Outcome::None && !menu_.active() && fastForward();
+}
+
+// Spec 7.8.6: dialogue (skippable) runs three frames per displayed frame in every playback
+// mode; mode 2 runs five outside boss fights.
+bool Gameplay::fastForward() const {
+    const std::int32_t f = feed_.frame();
+    if (gui_->dialogueCurrent() && gui_->dialogueSkippable() && f % 3 != 2) return true;
+    if (playbackMode_ == 2 && !state_.boss.present && f % 5 != 4) return true;
+    return false;
 }
 
 void Gameplay::draw(SpriteSink& sink) {
@@ -352,10 +506,8 @@ void Gameplay::draw(SpriteSink& sink) {
     gui_->draw(sink, drawState_);
     gui_->drawText(sink);
     menu_.draw(sink);
+    gui_->drawDemoMarker(sink);
     if (res_.ui) screenFx_.draw(sink, res_.ui->white);
-    if (gui_->nextStageRequested()) {
-        // (Acted on after the frame by tick's caller.)
-    }
 }
 
 void Gameplay::applyContinue() {

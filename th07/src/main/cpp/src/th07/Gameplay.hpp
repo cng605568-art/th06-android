@@ -15,9 +15,11 @@
 #include "th07/Bullets.hpp"
 #include "th07/Effects.hpp"
 #include "th07/Enemies.hpp"
+#include "th07/GameConfig.hpp"
 #include "th07/Gui.hpp"
 #include "th07/InGameMenu.hpp"
 #include "th07/Player.hpp"
+#include "th07/Replay.hpp"
 #include "th07/ScreenEffects.hpp"
 #include "th07/World.hpp"
 
@@ -46,6 +48,18 @@ class Gameplay {
         bool slowMode = false;
         int maxContinues = 3;  // credits by total play time (3, 4 or 5)
         bool restart = false;  // a pause-menu restart (counts a retry)
+        // The live configuration: the game's configuration copy is made from it (with the
+        // life count and slow mode above), and a recording stores that copy.
+        GameConfig config;
+        // Live play: the recording (owned by the supervisor; it outlives the game). Null: none.
+        ReplayRecorder* recorder = nullptr;
+        ExeIdentity exe;  // what a recording's summary carries
+        // Playback: the replay (owned by the supervisor), its playback mode (0 normal, 1 the
+        // recorded slowdown, 2 fast-forward outside boss fights) and the attract demo.
+        const ReplayFile* playback = nullptr;
+        int playbackMode = 0;
+        bool demo = false;
+        int demoIndex = 0;
     };
     // What the flow around the game provides (all optional): score.dat and the play
     // statistics, at the points of the stage set-up and play where the original touches them.
@@ -67,7 +81,7 @@ class Gameplay {
         std::function<void()> playTimeRebase;
     };
     // What the game asks the supervisor for (once set, it stays until the next start).
-    enum class Outcome : std::uint8_t { None, Title, Restart, Results, Ending };
+    enum class Outcome : std::uint8_t { None, Title, Restart, Results, Ending, ReplayEnd };
     struct Resources {
         const Vfs* vfs = nullptr;
         TextureLibrary* textures = nullptr;
@@ -90,7 +104,9 @@ class Gameplay {
 
     void setHooks(Hooks hooks) { hooks_ = std::move(hooks); }
 
-    void tick(std::uint16_t input);
+    // One pass with the raw button word. True: the replay's fast-forward asks for the whole
+    // logic list to run again in this displayed frame (spec 7.8.6).
+    bool tick(std::uint16_t raw);
     // The GUI's "go to the next stage" request (stages 1-5), acted on by the supervisor.
     bool nextStagePending() const { return running_ && gui_->nextStageRequested(); }
     // After a tick: performs a pending next-stage request at once (no supervisor).
@@ -99,6 +115,18 @@ class Gameplay {
     bool running() const { return running_; }
     bool finished() const { return outcome_ != Outcome::None; }
     bool paused() const { return menu_.active(); }
+    // The pass was stopped by slow mode (the supervisor merges the next pass's input).
+    bool slowSkipped() const { return slowSkip_; }
+    bool replay() const { return playback_ != nullptr; }
+    bool demo() const { return demo_; }
+    std::int32_t demoFrame() const { return demoFrame_; }
+    // The game input the player, bombs and dialogue read (spec 1.5.2).
+    std::uint16_t gameInput() const { return gameInput_; }
+    const ReplayFeed& feed() const { return feed_; }
+    // Desync diagnostics: after each played-back frame (1-based within the stage), the entry
+    // recorded in that frame and this frame's own event flags (the flags match while the
+    // simulation follows the recording, apart from 0x0100 "paused").
+    std::function<void(int stage, std::int32_t frame, const ReplayEntry& recorded, std::uint32_t flags)> onPlaybackFrame;
     // The pause and continue menus.
     InGameMenu& inGameMenu() { return menu_; }
     // The host's playfield capture, one request at a time: the pause/continue menus' backdrop
@@ -120,6 +148,9 @@ class Gameplay {
 
   private:
     bool setUpStage(bool fresh, std::string* error);
+    void restoreReplayStage();
+    void startRecordingBlock();
+    bool fastForward() const;
     bool loadEffectFiles(std::string* error);
     void releaseStageFiles();
 
@@ -134,7 +165,21 @@ class Gameplay {
     Background background_;
     ScreenEffects screenFx_;
     std::unique_ptr<Gui> gui_ = std::make_unique<Gui>();
-    std::uint16_t prevInput_ = 0;
+    std::uint16_t prevRaw_ = 0;
+    // The game input (latched at the end of a live pass, fed at its start in playback) and
+    // the previous pass's.
+    std::uint16_t gameInput_ = 0, prevGameInput_ = 0;
+    GameConfig config_;  // the configuration copy
+    ReplayRecorder* recorder_ = nullptr;
+    const ReplayFile* playback_ = nullptr;
+    ReplayFeed feed_;
+    int playbackMode_ = 0;
+    bool demo_ = false;
+    int demoIndex_ = 0;
+    std::int32_t demoFrame_ = 0;
+    bool wasPaused_ = false;  // the "was paused" flag of the recorder
+    bool slowSkip_ = false;
+    int slowLag_ = 0, replayLag_ = 0;
     InGameMenu menu_;
     enum class CaptureOwner : std::uint8_t { None, Menu, Gui };
     CaptureOwner captureOwner_ = CaptureOwner::None;
