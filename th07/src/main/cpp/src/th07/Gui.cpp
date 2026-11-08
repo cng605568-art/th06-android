@@ -68,7 +68,6 @@ bool Gui::stageStart(const World& w, const Resources& res, bool firstStage, std:
         frontLoaded_ = true;
         for (int k = 0; k < 33; ++k) startVm(front_[static_cast<std::size_t>(k)], kFront + k);
         startVm(gaugeVm_, 4);
-        gaugeVm_.interrupt(1);
         gaugeState_ = 0;
         startVm(cherryDigitVm_, 3);
         startVm(borderVm_, 5);
@@ -128,7 +127,10 @@ bool Gui::stageStart(const World& w, const Resources& res, bool firstStage, std:
     gameFinished_ = false;
     for (Popup& p : popups_) p.live = false;
     text_.clear();
+    // The ASCII manager re-sends the gauge's fade state at every stage start; on the first
+    // stage of a game the fade-in (interrupt 1, which also slides it into place) follows.
     gaugeVm_.interrupt(gaugeState_ == 0 ? 3 : 2);
+    if (firstStage) gaugeVm_.interrupt(1);
     for (int b = 0; b < 3; ++b) markerVms_[static_cast<std::size_t>(b)].interrupt(2);
     copyBossName(2 * (stage_ - 1));  // the mid-boss
     return true;
