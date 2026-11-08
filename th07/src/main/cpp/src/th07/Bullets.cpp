@@ -684,6 +684,10 @@ void BulletManager::collectAll() {
     }
 }
 
+void BulletManager::removeItems() {
+    for (Item& it : items_) it.inUse = false;
+}
+
 void BulletManager::stopHoming() {
     for (Item& it : items_) {
         if (!it.inUse || it.state != AutoCollect) continue;

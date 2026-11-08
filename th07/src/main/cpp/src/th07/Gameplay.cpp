@@ -56,6 +56,14 @@ bool Gameplay::start(const Resources& res, const Setup& setup, std::string* erro
     world_.bullets = bullets_.get();
     world_.bulletManager = bullets_.get();
     world_.items = bullets_.get();
+    world_.gui = gui_.get();
+    world_.popups = gui_.get();
+    world_.onMusic = [this](int track) {
+        if (res_.music) res_.music->playLoaded(track);
+    };
+    world_.onMusicFade = [this](float seconds) {
+        if (res_.music) res_.music->fadeOut(seconds);
+    };
     return setUpStage(true, error);
 }
 
@@ -89,6 +97,7 @@ bool Gameplay::loadEffectFiles(std::string* error) {
 
 void Gameplay::releaseStageFiles() {
     background_.release(*res_.anm);
+    gui_->stageEnd(world_);
     for (int slot : {17, 18, 19, 20}) res_.anm->release(slot);
 }
 
@@ -155,6 +164,14 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
     effects_.reset();
     if (!loadEffectFiles(error)) return false;
     shake_.clear();
+    {
+        Gui::Resources gr;
+        gr.vfs = res_.vfs;
+        gr.textures = res_.textures;
+        gr.text = res_.text;
+        gr.ui = res_.ui;
+        if (!gui_->stageStart(w, gr, fresh, error)) return false;
+    }
     player_->stageStart(w);
 
     if (res_.music) {
@@ -180,6 +197,7 @@ void Gameplay::end() {
     if (!running_) return;
     releaseStageFiles();
     player_->releaseAnm(*res_.anm);
+    gui_->gameEnd(world_);
     if (etamaLoaded_) res_.anm->release(11);
     etamaLoaded_ = false;
     if (res_.music) res_.music->stop();
@@ -190,7 +208,9 @@ void Gameplay::tick(std::uint16_t input) {
     if (!running_) return;
     GameState& g = state_;
     g.eventFlags = 0;
-    // Game manager (priority 2).
+    g.dialogue = gui_->dialogueCurrent();
+    // ASCII manager (priority 1), game manager (priority 2).
+    gui_->asciiUpdate(world_);
     g.rollScore();
     ++g.stageFrame;
     // Stage background (7), player (8), enemies (10), effects (11), bullets and items (12),
@@ -216,6 +236,8 @@ void Gameplay::tick(std::uint16_t input) {
     }
     effects_.update(world_);
     bullets_->update(world_);
+    gui_->update(world_, input, prevInput_);
+    prevInput_ = input;
     drawState_.offsetX = drawState_.offsetY = 0.0f;
     shake_.update(*res_.rng, g.stageFrame, drawState_.offsetX, drawState_.offsetY);
 }
@@ -228,6 +250,18 @@ void Gameplay::draw(SpriteSink& sink) {
     player_->drawHigh(sink, drawState_);
     effects_.draw(sink, drawState_);
     bullets_->draw(sink, drawState_);
+    gui_->drawPopups(sink);
+    gui_->draw(sink, drawState_);
+    gui_->drawText(sink);
+    if (gui_->nextStageRequested()) {
+        // (Acted on after the frame by tick's caller.)
+    }
+}
+
+bool Gameplay::stageAdvance(std::string* error) {
+    if (!gui_->nextStageRequested()) return true;
+    gui_->clearNextStageRequest();
+    return nextStage(error);
 }
 
 }  // namespace touhou::th07

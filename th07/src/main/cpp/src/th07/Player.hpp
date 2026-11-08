@@ -114,6 +114,10 @@ class Player {
 
     void requestBorder(const World& w);  // cherry plus filled
     void breakBorder(const World& w);
+    // A dialogue frame ends a ready or active border the natural way (with its bonus).
+    void endBorderForDialogue(const World& w) {
+        if (border_ != BorderFlag::None) endBorderNaturally(w);
+    }
 
     const Vec3f& position() const { return pos_; }
     State state() const { return state_; }

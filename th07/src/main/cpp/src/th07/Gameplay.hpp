@@ -13,13 +13,16 @@
 #include "th07/Background.hpp"
 #include "th07/Bullets.hpp"
 #include "th07/Effects.hpp"
+#include "th07/Gui.hpp"
 #include "th07/Player.hpp"
 #include "th07/World.hpp"
 
 namespace touhou {
 class SpriteSink;
+class TextRenderer;
 class TextureLibrary;
 class Vfs;
+struct UiArt;
 }  // namespace touhou
 
 namespace touhou::th07 {
@@ -62,6 +65,8 @@ class Gameplay {
         const ExeTables* tables = nullptr;
         SoundPlayer* sound = nullptr;
         BgmPlayer* music = nullptr;
+        TextRenderer* text = nullptr;
+        const UiArt* ui = nullptr;
     };
 
     Gameplay();
@@ -73,6 +78,9 @@ class Gameplay {
     void end();
 
     void tick(std::uint16_t input);
+    // After a tick: the GUI's "go to the next stage" request (the supervisor's next pass).
+    bool stageAdvance(std::string* error);
+    bool finished() const { return gui_->gameFinished(); }
     void draw(SpriteSink& sink);
 
     const GameState& state() const { return state_; }
@@ -96,6 +104,8 @@ class Gameplay {
     std::unique_ptr<BulletManager> bullets_ = std::make_unique<BulletManager>();
     Background background_;
     ScreenShake shake_;
+    std::unique_ptr<Gui> gui_ = std::make_unique<Gui>();
+    std::uint16_t prevInput_ = 0;
     AnmDrawState drawState_;
     std::uint16_t stageSeed_ = 0;
     bool running_ = false;

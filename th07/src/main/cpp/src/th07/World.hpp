@@ -11,6 +11,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <string>
 
 #include "audio/Sound.hpp"
@@ -188,6 +189,11 @@ struct World {
     PopupSink* popups = nullptr;
     ShakeSink* shakes = nullptr;
     StageGui* gui = nullptr;
+    // Hooks the game manager provides: a dialogue started (all enemies leave, no score), the
+    // dialogue plays preloaded music slot n, the music fades out over some seconds.
+    std::function<void()> onDialogueStart;
+    std::function<void(int)> onMusic;
+    std::function<void(float)> onMusicFade;
 
     void playSound(int id) const {
         if (sound && id >= 0) sound->playSound(id);

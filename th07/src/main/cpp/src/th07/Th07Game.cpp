@@ -100,6 +100,8 @@ bool Th07Game::start(const GameContext& ctx) {
         res.tables = &tables_;
         res.sound = sound_.get();
         res.music = music_.get();
+        res.text = ctx.text;
+        res.ui = ctx.ui;
         game_ = std::make_unique<Gameplay>();
         std::string err;
         if (!game_->start(res, play, &err)) {
@@ -168,6 +170,8 @@ void Th07Game::tick(const InputState& input) {
         if (autoFire_) word |= BtnShoot;
         if (holdFocus_) word |= BtnFocus;
         game_->tick(word);
+        std::string err;
+        if (!game_->stageAdvance(&err)) log::warn("Next stage: {}", err);
         if (music_) {
             music_->fadeStep();
             music_->pump();
