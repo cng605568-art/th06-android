@@ -16,7 +16,9 @@ namespace touhou {
 
 class Vfs;
 
-enum class TextureFilter : std::uint8_t { Nearest, Linear };
+// Nearest wraps (th06 game art), Linear clamps (generated UI shapes), LinearWrap is
+// bilinear with wrapping (th07 game art, as Direct3D samples it there).
+enum class TextureFilter : std::uint8_t { Nearest, Linear, LinearWrap };
 
 // CPU-side registry of every texture the game uses. Each entry keeps a producer that
 // (re)builds its pixels: decoding from the player's archives on demand, or generating

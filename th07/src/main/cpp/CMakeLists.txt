@@ -28,6 +28,12 @@ set(SDL2_DISABLE_INSTALL ON CACHE BOOL "" FORCE)
 set(SDL2_DISABLE_UNINSTALL ON CACHE BOOL "" FORCE)
 add_subdirectory("${TOUHOU_THIRD_PARTY}/SDL2" "${CMAKE_CURRENT_BINARY_DIR}/SDL2")
 
+# PCB's simulation needs single-precision arithmetic in the original's order, so nothing in
+# this build may fuse multiply-adds (ARM compilers would by default).
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+  add_compile_options(-ffp-contract=off)
+endif()
+
 # ---- the shared engine (core + SDL host) and the game ----------------------------------
 include("${TOUHOU_ROOT}/engine/native/engine.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/th07.cmake")

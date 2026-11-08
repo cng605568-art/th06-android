@@ -17,6 +17,9 @@
 #include "io/Archive.hpp"
 #include "io/MappedFile.hpp"
 #include "io/Vfs.hpp"
+#include "gfx/SpriteSink.hpp"
+#include "gfx/TextureLibrary.hpp"
+#include "th07/Anm.hpp"
 #include "th07/Bgm.hpp"
 #include "th07/ExeTables.hpp"
 #include "th07/SoundPlayer.hpp"
@@ -244,6 +247,118 @@ struct RecordingSamples final : SampleBackend {
     void playSample(int voice, int sample, float gain) override { plays.push_back({voice, sample, gain}); }
 };
 
+
+}  // namespace
+
+namespace {
+
+// ---- synthetic version-2 ANM files ---------------------------------------------------------
+
+// One instruction: opcode, time, operand mask, 4-byte argument cells.
+struct Ins {
+    std::int16_t op;
+    std::int16_t time;
+    std::vector<std::uint32_t> args;
+    std::uint16_t mask = 0;
+};
+std::uint32_t fbits(float f) {
+    std::uint32_t v;
+    std::memcpy(&v, &f, 4);
+    return v;
+}
+Bytes encode(const std::vector<Ins>& script) {
+    Bytes b;
+    for (const Ins& i : script) {
+        put16(b, static_cast<std::uint16_t>(i.op));
+        put16(b, static_cast<std::uint16_t>(8 + 4 * i.args.size()));
+        put16(b, static_cast<std::uint16_t>(i.time));
+        put16(b, i.mask);
+        for (std::uint32_t a : i.args) put32(b, a);
+    }
+    return b;
+}
+struct SpriteDef {
+    int id;
+    float x, y, w, h;
+};
+struct EntryDef {
+    std::vector<SpriteDef> sprites;
+    std::vector<std::pair<int, std::vector<Ins>>> scripts;
+    int width = 16, height = 16, format = 1;  // THTX format; 0: blank '@' texture
+};
+// A chain of entries; each embeds a width x height texture whose pixel (x, y) has the bytes
+// (x, y, entry, 255) in format 1.
+Bytes anmFile(const std::vector<EntryDef>& entries) {
+    Bytes file;
+    for (std::size_t e = 0; e < entries.size(); ++e) {
+        const EntryDef& d = entries[e];
+        Bytes ent(0x40, 0);
+        const std::size_t tables = 0x40 + 4 * d.sprites.size() + 8 * d.scripts.size();
+        ent.resize(tables, 0);
+        set32(ent, 0x00, static_cast<std::uint32_t>(d.sprites.size()));
+        set32(ent, 0x04, static_cast<std::uint32_t>(d.scripts.size()));
+        set32(ent, 0x0C, static_cast<std::uint32_t>(d.width));
+        set32(ent, 0x10, static_cast<std::uint32_t>(d.height));
+        set32(ent, 0x14, static_cast<std::uint32_t>(d.format));
+        set32(ent, 0x28, 2);
+        for (std::size_t i = 0; i < d.sprites.size(); ++i) {
+            set32(ent, 0x40 + 4 * i, static_cast<std::uint32_t>(ent.size()));
+            put32(ent, static_cast<std::uint32_t>(d.sprites[i].id));
+            for (float f : {d.sprites[i].x, d.sprites[i].y, d.sprites[i].w, d.sprites[i].h}) put32(ent, fbits(f));
+        }
+        for (std::size_t i = 0; i < d.scripts.size(); ++i) {
+            const std::size_t pair = 0x40 + 4 * d.sprites.size() + 8 * i;
+            set32(ent, pair, static_cast<std::uint32_t>(d.scripts[i].first));
+            set32(ent, pair + 4, static_cast<std::uint32_t>(ent.size()));
+            const Bytes code = encode(d.scripts[i].second);
+            ent.insert(ent.end(), code.begin(), code.end());
+        }
+        set32(ent, 0x1C, static_cast<std::uint32_t>(ent.size()));
+        const std::string name = d.format ? "data/test.png" : "@";
+        ent.insert(ent.end(), name.begin(), name.end());
+        ent.push_back(0);
+        while (ent.size() % 4) ent.push_back(0);
+        if (d.format) {
+            set32(ent, 0x30, static_cast<std::uint32_t>(ent.size()));
+            ent[0x34] = 1;
+            const Bytes magic = text("THTX");
+            ent.insert(ent.end(), magic.begin(), magic.end());
+            put16(ent, 0);
+            put16(ent, static_cast<std::uint16_t>(d.format));
+            put16(ent, static_cast<std::uint16_t>(d.width));
+            put16(ent, static_cast<std::uint16_t>(d.height));
+            put32(ent, 0);
+            for (int y = 0; y < d.height; ++y) {
+                for (int x = 0; x < d.width; ++x) {
+                    if (d.format == 1) {  // bytes B, G, R, A
+                        ent.push_back(static_cast<std::uint8_t>(e));
+                        ent.push_back(static_cast<std::uint8_t>(y));
+                        ent.push_back(static_cast<std::uint8_t>(x));
+                        ent.push_back(255);
+                    } else if (d.format == 3) {
+                        put16(ent, 0xF800);  // pure red
+                    } else {
+                        put16(ent, 0x80F0);  // A4R4G4B4: alpha 8, red 0, green 15, blue 0
+                    }
+                }
+            }
+        }
+        if (e + 1 < entries.size()) set32(ent, 0x38, static_cast<std::uint32_t>(ent.size()));
+        file.insert(file.end(), ent.begin(), ent.end());
+    }
+    return file;
+}
+
+struct RecordingSink final : SpriteSink {
+    struct Item {
+        std::uint16_t texture;
+        Blend blend;
+        SpriteInstance s;
+    };
+    std::vector<Item> items;
+    void draw(std::uint16_t texture, Blend blend, const SpriteInstance& s) override { items.push_back({texture, blend, s}); }
+};
+
 }  // namespace
 
 static void testExeTablesAndSound() {
@@ -282,6 +397,238 @@ static void testExeTablesAndSound() {
     sound.setEnabled(true);
     sound.flush();
     CHECK(backend.plays.size() == 5 && backend.plays[4].voice == 14);
+}
+
+
+static void testAnmLoad() {
+    // Two chained entries: entry 0 (sprites 0, 1; script 0) and entry 1 (sprite 0, script 0).
+    EntryDef a;
+    a.sprites = {{0, 0, 0, 8, 4}, {1, 4, 8, 4, 8}};
+    a.scripts = {{0, {{3, 0, {0}}, {2, 0, {}}}}};
+    EntryDef b;
+    b.width = 32;
+    b.height = 8;
+    b.format = 3;
+    b.sprites = {{0, 8, 0, 16, 8}};
+    b.scripts = {{0, {{3, 0, {0}}, {-1, 1, {}}}}};
+    EntryDef c;
+    c.format = 0;  // a blank '@' texture
+    Vfs vfs;
+    std::string err;
+    vfs.mount(openArchive("th07.dat", mem(pbg4({{"test.anm", anmFile({a, b, c})}})), &err));
+    TextureLibrary textures;
+    AnmLibrary lib;
+    CHECK(lib.load(vfs, textures, "data/test.anm", 5, 0x300, &err));
+    if (!err.empty()) std::fprintf(stderr, "  %s\n", err.c_str());
+    CHECK(lib.loaded(5) && lib.loaded(6) && lib.loaded(7) && !lib.loaded(8));
+    CHECK(lib.slotIndexOffset(5) == 0x300 && lib.slotIndexOffset(6) == 0x302 && lib.slotIndexOffset(7) == 0x303);
+    const auto* s1 = lib.sprite(0x301);
+    CHECK(s1 && s1->pixelWidth == 4.0f && s1->pixelHeight == 8.0f && s1->uvStartX == 0.25f && s1->uvEndY == 1.0f);
+    const auto* s2 = lib.sprite(0x302);
+    CHECK(s2 && s2->uvStartX == 0.25f && s2->uvEndX == 0.75f && s2->textureWidth == 32.0f);
+    CHECK(lib.script(0x300) && lib.script(0x302) && lib.scriptEntryOffset(0x302) == 0x302 && !lib.script(0x303));
+    // Textures: format 1 (B, G, R, A bytes), format 3 (R5G6B5), and the blank one.
+    const auto img0 = textures.build(lib.slotTexture(5));
+    CHECK(img0 && img0->width == 16 && img0->pixel(3, 2)[0] == 3 && img0->pixel(3, 2)[1] == 2 && img0->pixel(3, 2)[2] == 0 &&
+          img0->pixel(3, 2)[3] == 255);
+    const auto img1 = textures.build(lib.slotTexture(6));
+    CHECK(img1 && img1->pixel(1, 1)[0] == 255 && img1->pixel(1, 1)[1] == 0 && img1->pixel(1, 1)[3] == 255);
+    CHECK(textures.pixels(lib.slotTexture(7)) != nullptr);
+    std::vector<std::uint8_t> rgba;
+    const Bytes px4444 = {0xF0, 0x80};
+    CHECK(decodeThtx(px4444, 5, 1, 1, rgba) && rgba[0] == 0 && rgba[1] == 255 && rgba[2] == 0 && rgba[3] == 136);
+    CHECK(!decodeThtx(px4444, 0, 1, 1, rgba) && !decodeThtx(px4444, 1, 1, 1, rgba));
+    // Releasing the first slot releases the chain.
+    lib.release(5);
+    CHECK(!lib.loaded(5) && !lib.loaded(6) && !lib.loaded(7) && !lib.sprite(0x301) && !lib.script(0x302));
+    // Version 0 (th06) files are refused.
+    Bytes old = anmFile({a});
+    set32(old, 0x28, 0);
+    Vfs vfs2;
+    vfs2.mount(openArchive("th07.dat", mem(pbg4({{"old.anm", old}})), &err));
+    CHECK(!lib.load(vfs2, textures, "old.anm", 5, 0, &err));
+}
+
+static void testAnmVm() {
+    g_timing = Timing{};
+    const float f10 = 10.0f;
+    EntryDef e;
+    e.sprites = {{0, 0, 0, 8, 8}, {1, 8, 8, 8, 8}};
+    // 0: timing, alpha, stop, interrupt labels.
+    e.scripts.push_back({0, {{3, 0, {0}},
+                             {6, 0, {fbits(10), fbits(20), fbits(0)}},
+                             {8, 5, {128}},
+                             {20, 10, {}},
+                             {21, 10, {3}},
+                             {3, 10, {1}},
+                             {20, 10, {}},
+                             {21, 10, {0xFFFFFFFFu}},
+                             {9, 10, {0x123456}},
+                             {20, 10, {}}}});
+    // 1: eased move, wait, then finish keeping the last frame.
+    e.scripts.push_back({1, {{3, 0, {0}},
+                             {32, 0, {4, 4, fbits(100), fbits(0), fbits(0)}},
+                             {79, 0, {3}},
+                             {9, 0, {0xABCDEF}},
+                             {2, 1, {}}}});
+    // 2: registers, a register loop, a literal-counter loop (self-modifying), RNG.
+    e.scripts.push_back({2, {{37, 0, {10000, 3}, 1},          // I0 = 3
+                             {39, 0, {10001, 1}, 1},          // I1 += 1   (offset 16)
+                             {5, 0, {10000, 16, 0}, 1},       // loop on I0
+                             {39, 0, {10002, 1}, 1},          // I2 += 1   (offset 52)
+                             {5, 0, {3, 52, 0}},              // loop on the literal 3
+                             {59, 0, {10003, 0}, 1},          // I3 = random [0, 0): no draw
+                             {59, 0, {10008, 100}, 1},        // J0 = random [0, 100): two draws
+                             {60, 0, {fbits(10004), fbits(f10)}, 1},  // F0 = random float * 10: two draws
+                             {38, 0, {fbits(10005), fbits(2.5f)}, 1},  // F1 = 2.5
+                             {44, 0, {fbits(10005), fbits(10005)}, 3},  // F1 *= F1
+                             {67, 0, {10002, 99, 0, 0}, 1},   // if I2 == 99 restart (never)
+                             {2, 0, {}}}});
+    // 3: colour (0x00BBGGRR cell), alpha and scale channels, flip.
+    e.scripts.push_back({3, {{3, 0, {0}},
+                             {9, 0, {0x000000}},
+                             {33, 0, {2, 0, 0x00FF8040u}},
+                             {34, 0, {4, 1, 0}},
+                             {10, 0, {}},
+                             {36, 0, {2, 0, fbits(3), fbits(3)}},
+                             {20, 1, {}}}});
+    Vfs vfs;
+    std::string err;
+    vfs.mount(openArchive("th07.dat", mem(pbg4({{"t.anm", anmFile({e})}})), &err));
+    TextureLibrary textures;
+    AnmLibrary lib;
+    CHECK(lib.load(vfs, textures, "t.anm", 10, 0x400, &err));
+    ZunRng rng(1);
+
+    // Starting runs the time-0 instructions at once and leaves the clock at 1.
+    th07::AnmVm vm;
+    vm.start(lib, rng, 0x400);
+    CHECK(vm.clock.current == 1 && vm.activeSprite == 0x400 && vm.position.x == 10.0f && vm.has(th07::AnmVm::Visible));
+    for (int i = 0; i < 4; ++i) vm.tick(lib, rng);
+    CHECK((vm.color >> 24) == 0xFF && vm.clock.current == 5);
+    vm.tick(lib, rng);
+    CHECK((vm.color >> 24) == 128);
+    for (int i = 0; i < 6; ++i) vm.tick(lib, rng);
+    CHECK(vm.has(th07::AnmVm::Stopped) && vm.clock.current == 10);  // held at the stop
+    vm.tick(lib, rng);
+    CHECK(vm.clock.current == 10);
+    // Interrupt 3: jumps past its label (sprite 1), visible again, then stops again.
+    vm.interrupt(3);
+    vm.tick(lib, rng);
+    CHECK(vm.activeSprite == 0x401 && !vm.pendingInterrupt);
+    // An unknown interrupt falls back to the last -1 label (colour 0x123456).
+    vm.interrupt(9);
+    vm.tick(lib, rng);
+    CHECK((vm.color & 0xFFFFFF) == 0x123456);
+
+    // Eased move (mode 4, 4 ticks): the first tick after the set-up already uses t = 1/4.
+    th07::AnmVm mv;
+    mv.start(lib, rng, 0x401);
+    auto ease4 = [](float t) {
+        float u = 1.0f - t;
+        u = u * u;
+        return 1.0f - u;
+    };
+    CHECK(mv.position.x == 100.0f * ease4(0.25f));
+    mv.tick(lib, rng);
+    CHECK(mv.position.x == 100.0f * ease4(0.5f));
+    // Wait 3: the start loaded it, two ticks count it down, the 3rd following tick continues.
+    mv.tick(lib, rng);
+    CHECK((mv.color & 0xFFFFFF) == 0xFFFFFF && mv.clock.current == 0);
+    mv.tick(lib, rng);
+    CHECK(mv.position.x == 100.0f && mv.duration[0].current == 0);
+    CHECK((mv.color & 0xFFFFFF) == 0xABCDEF && mv.clock.current == 1);
+    CHECK(mv.tick(lib, rng) && mv.finished() && mv.has(th07::AnmVm::Visible));  // opcode 2 keeps the last frame
+
+    // Registers and loops: I0 counts 3 -> 0, I1 = 3; the literal loop runs 3 times the first
+    // time; RNG draws: none for range 0, two for each random int and float.
+    th07::AnmVm r;
+    const std::uint32_t gens = rng.generations();
+    r.start(lib, rng, 0x402);
+    CHECK(r.intRegs[0] == 0 && r.intRegs[1] == 3 && r.intRegs[2] == 3 && r.intRegs[3] == 0);
+    CHECK(rng.generations() == gens + 4 && r.intRegs2[0] >= 0 && r.intRegs2[0] < 100);
+    CHECK(r.floatRegs[0] >= 0.0f && r.floatRegs[0] < 10.0f && r.floatRegs[1] == 6.25f);
+    // The literal counter was written into the script bytes: the next run loops once.
+    th07::AnmVm r2;
+    r2.start(lib, rng, 0x402);
+    CHECK(r2.intRegs[2] == 1);
+
+    // Colour channel: the target cell is 0x00BBGGRR; alpha fades to 0 with ease 1; scale
+    // interpolation does not re-apply the flip.
+    th07::AnmVm c;
+    c.start(lib, rng, 0x403);
+    c.tick(lib, rng);
+    CHECK((c.color & 0xFFFFFF) == 0x4080FF);
+    CHECK(c.scale.x == 3.0f && c.flip() == 1);
+    c.tick(lib, rng);
+    c.tick(lib, rng);
+    CHECK((c.color >> 24) == 0);
+
+    // Timers under the game-speed multiplier and the force-integer flag.
+    g_timing.speed = 0.5f;
+    Timer t;
+    t.tick();
+    CHECK(t.current == 0 && t.sub == 0.5f);
+    t.tick();
+    CHECK(t.current == 1 && t.sub == 0.0f);
+    t.decrement(1);
+    CHECK(t.current == 0 && t.sub == 0.5f);
+    g_timing = Timing{};
+    g_timing.forceInteger = true;
+    Timer u;
+    u.assign(10);
+    u.decrement(3);
+    CHECK(u.current == 6);  // v + 1
+    u.increment(2);
+    CHECK(u.current == 9);
+    g_timing = Timing{};
+}
+
+static void testAnmDraw() {
+    g_timing = Timing{};
+    EntryDef e;
+    e.width = 64;
+    e.height = 64;
+    e.sprites = {{0, 0, 0, 33, 16}};
+    e.scripts = {{0, {{3, 0, {0}}, {2, 0, {}}}}};
+    Vfs vfs;
+    std::string err;
+    vfs.mount(openArchive("th07.dat", mem(pbg4({{"d.anm", anmFile({e})}})), &err));
+    TextureLibrary textures;
+    AnmLibrary lib;
+    CHECK(lib.load(vfs, textures, "d.anm", 0, 0, &err));
+    ZunRng rng;
+    th07::AnmVm vm;
+    vm.start(lib, rng, 0);
+    vm.position = {100.25f, 50.0f, 0.0f};
+    RecordingSink sink;
+    AnmDrawState state;
+    // Unrotated: rounded to the pixel grid (half-even). Left 100.25 - 16.5 = 83.75 -> 84, right 116.75 -> 117.
+    drawVm(sink, vm, state);
+    CHECK(sink.items.size() == 1 && sink.items[0].s.w == 33.0f && sink.items[0].s.x == 100.5f && sink.items[0].s.h == 16.0f &&
+          sink.items[0].s.y == 50.0f && sink.items[0].blend == Blend::Alpha);
+    CHECK(sink.items[0].s.u1 == 33.0f / 64.0f && sink.items[0].s.v1 == 0.25f);
+    // Anchored top-left, additive, shaken by the global offset.
+    vm.flags |= th07::AnmVm::AnchorLeft | th07::AnmVm::AnchorTop | th07::AnmVm::Additive;
+    state.offsetX = 2.0f;
+    drawVm(sink, vm, state);
+    CHECK(sink.items[1].s.x == 102.0f + 16.5f && sink.items[1].s.y == 58.0f && sink.items[1].blend == Blend::Additive);
+    // Rotated: not rounded, +0.5 for GL's pixel centres.
+    vm.flags &= ~(th07::AnmVm::AnchorLeft | th07::AnmVm::AnchorTop);
+    state.offsetX = 0;
+    vm.rotation.z = 0.5f;
+    drawVm(sink, vm, state);
+    CHECK(sink.items[2].s.x == 100.75f && sink.items[2].s.y == 50.5f && sink.items[2].s.angle == 0.5f);
+    // Colour: alternative colour, then the stage multiplier (0x80 = identity, 0xFF ~ x2).
+    vm.altColor = 0x80402010u;
+    vm.flags |= th07::AnmVm::UseAltColor;
+    state.multiply = true;
+    state.multiplyColor = 0x80FF8040u;
+    CHECK(effectiveColor(vm, state) == 0x807F2008u);
+    // Not drawn when invisible, inactive or with a zero primary alpha.
+    vm.color &= 0x00FFFFFFu;
+    drawVm(sink, vm, state);
+    CHECK(sink.items.size() == 3);
 }
 
 static void testPbg4() {
@@ -474,6 +821,9 @@ int main() {
         {"version file and executable checksum", testVersionFile},
         {"music: thbgm.fmt, queue timing, fades, pause", testBgm},
         {"th07.exe tables, sound effects", testExeTablesAndSound},
+        {"ANM: version-2 chains, THTX textures, slots", testAnmLoad},
+        {"ANM VM: timing, waits, loops, registers, RNG, channels", testAnmVm},
+        {"ANM drawing: rounding, anchors, rotation, colour", testAnmDraw},
     };
     for (const Test& t : tests) {
         const int before = g_failures;

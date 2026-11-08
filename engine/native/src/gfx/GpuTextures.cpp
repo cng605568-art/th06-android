@@ -10,7 +10,7 @@ GLuint upload(int w, int h, const void* rgba, TextureFilter filter) {
     GLuint tex = 0;
     glGenTextures(1, &tex);
     glBindTexture(GL_TEXTURE_2D, tex);
-    const GLint f = filter == TextureFilter::Linear ? GL_LINEAR : GL_NEAREST;
+    const GLint f = filter == TextureFilter::Nearest ? GL_NEAREST : GL_LINEAR;
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, f);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, f);
     // Game art wraps, as Direct3D's default texture addressing did: scrolling ANM sprites

@@ -9,6 +9,7 @@
 #include <string>
 
 #include "host/Game.hpp"
+#include "th07/Anm.hpp"
 #include "th07/Bgm.hpp"
 #include "th07/ExeTables.hpp"
 #include "th07/SoundPlayer.hpp"
@@ -50,6 +51,14 @@ class Th07Game final : public Game {
     std::unique_ptr<SoundPlayer> sound_;
     int soundsLoaded_ = 0;
     bool lastShoot_ = false;
+
+    // Desktop developer option --anm-preview FILE [--anm-bg PICTURE]: every script of an ANM
+    // file running side by side over a background, to check the ANM system on real data.
+    void startPreview(const GameContext& ctx, const std::string& file, const std::string& background);
+    AnmLibrary anm_;
+    ZunRng rng_;
+    std::vector<AnmVm> previewVms_;
+    int previewBackground_ = -1;  // texture id
     bool titleSongRequested_ = false;
     std::uint64_t frame_ = 0;
     bool quit_ = false;

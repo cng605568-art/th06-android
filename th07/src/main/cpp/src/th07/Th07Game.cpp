@@ -3,7 +3,9 @@
 #include <format>
 
 #include "core/Log.hpp"
+#include "gfx/Image.hpp"
 #include "gfx/ProceduralArt.hpp"
+#include "gfx/TextureLibrary.hpp"
 #include "gfx/SpriteSink.hpp"
 #include "io/Vfs.hpp"
 #include "th07/Version.hpp"
@@ -62,10 +64,49 @@ bool Th07Game::start(const GameContext& ctx) {
             music_->load(8, "bgm/th07_01.mid");  // the title song
         }
     }
+#if !defined(__ANDROID__)
+    std::string previewFile, previewBackground;
+    for (int i = 1; i + 1 < ctx.argc; ++i) {
+        const std::string a = ctx.argv[i] ? ctx.argv[i] : "";
+        if (a == "--anm-preview") previewFile = ctx.argv[i + 1];
+        else if (a == "--anm-bg") previewBackground = ctx.argv[i + 1];
+    }
+    if (!previewFile.empty() && ctx.vfs) startPreview(ctx, previewFile, previewBackground);
+#endif
     return true;
 }
 
+void Th07Game::startPreview(const GameContext& ctx, const std::string& file, const std::string& background) {
+    std::string err;
+    if (!anm_.load(*ctx.vfs, *ctx.textures, file, 32, 0x900, &err)) {
+        log::warn("ANM preview: {}", err);
+        return;
+    }
+    if (!background.empty()) {
+        const Vfs* vfs = ctx.vfs;
+        if (auto bytes = vfs->read(background)) {
+            if (auto img = decodeImage(*bytes, &err)) {
+                const int w = img->width, h = img->height;
+                previewBackground_ = ctx.textures->add("th07-preview:" + background, w, h,
+                                                       [vfs, background]() -> std::optional<Image> {
+                                                           std::string e;
+                                                           const auto b = vfs->read(background);
+                                                           return b ? decodeImage(*b, &e) : std::nullopt;
+                                                       });
+            }
+        }
+    }
+    for (int idx = 0x900; idx < AnmLibrary::kIndices; ++idx) {
+        if (!anm_.script(idx)) continue;
+        AnmVm vm;
+        vm.startFresh(anm_, rng_, idx);
+        previewVms_.push_back(vm);
+    }
+    log::info("ANM preview: {} scripts of {}", previewVms_.size(), file);
+}
+
 void Th07Game::tick(const InputState& input) {
+    for (AnmVm& vm : previewVms_) vm.tick(anm_, rng_);
     if (music_) music_->fadeStep();
     ++frame_;
     if (input.quit) quit_ = true;
@@ -82,6 +123,16 @@ void Th07Game::tick(const InputState& input) {
 
 void Th07Game::render(SpriteSink& sink, float, const FrameInfo&) {
     if (!ui_) return;
+    if (!previewVms_.empty()) {
+        if (previewBackground_ >= 0) {
+            SpriteInstance s;
+            s.x = 320, s.y = 240, s.w = 640, s.h = 480;
+            sink.draw(static_cast<std::uint16_t>(previewBackground_), Blend::Alpha, s);
+        }
+        const AnmDrawState state;
+        for (const AnmVm& vm : previewVms_) drawVm(sink, vm, state);
+        return;
+    }
     const std::uint32_t pink = rgba(255, 183, 197), white = rgba(255, 255, 255), grey = rgba(170, 170, 170);
     const std::uint32_t good = rgba(140, 230, 140), bad = rgba(255, 140, 140);
     drawText(sink, *ui_, 112, 120, "PERFECT CHERRY BLOSSOM", 3.0f, pink);
