@@ -339,6 +339,7 @@ void Gameplay::tick(std::uint16_t input) {
 
 void Gameplay::draw(SpriteSink& sink) {
     if (!running_) return;
+    background_.stageFinished = gui_->stageFinished();
     background_.drawHigh(sink, drawState_);
     background_.drawLow(sink, drawState_);
     enemies_->drawLow(sink, drawState_);

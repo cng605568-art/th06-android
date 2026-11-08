@@ -69,6 +69,7 @@ class Background {
     void drawProjected(SpriteSink& sink, AnmVm& vm, const AnmDrawState& state);
     void drawPlayfieldBillboard(SpriteSink& sink, AnmVm& vm, const AnmDrawState& state);
     const SpriteRegion* white = nullptr;  // for the darkening rectangle of a starting card
+    bool stageFinished = false;  // set by the game before drawing: the stage-clear picture stopped
 
     // ECL: resume the script at the matching label (opcode 31).
     void setResumeLabel(std::int32_t label) { resumeLabel_ = label; }

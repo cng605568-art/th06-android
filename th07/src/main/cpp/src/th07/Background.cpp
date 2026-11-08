@@ -482,7 +482,9 @@ void Background::drawHigh(SpriteSink& sink, AnmDrawState& state) {
     currentCamera_ = -1;
     uvCacheSprite_ = nullptr;
     if (!loaded()) return;
-    const bool stageVisible = spellState_ != SpellState::Active;
+    // Nothing of the stage while a card's background covers it or the stage has finished
+    // (the stage-clear picture stopped; spec 2.11, 3.16).
+    const bool stageVisible = spellState_ != SpellState::Active && !stageFinished;
     if (stageVisible && backdropA_.activeSprite > 0) drawVm(sink, backdropA_, state);
     if (stageVisible && backdropB_.activeSprite > 0) drawVm(sink, backdropB_, state);
     // The clear colour (if set) erases the backdrops; otherwise only depth is cleared.
@@ -495,7 +497,7 @@ void Background::drawHigh(SpriteSink& sink, AnmDrawState& state) {
 
 void Background::drawLow(SpriteSink& sink, AnmDrawState& state) {
     if (!loaded()) return;
-    if (spellState_ != SpellState::Active) {
+    if (spellState_ != SpellState::Active && !stageFinished) {
         drawLayer(sink, state, 2);
         drawLayer(sink, state, 3);
         if (drawWeather) drawWeather(sink, state);
