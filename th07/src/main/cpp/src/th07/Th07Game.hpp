@@ -41,9 +41,11 @@ class Th07Game final : public Game {
     bool back() override { return flow_ ? flow_->back() : false; }
     int takeVibration() override { return 0; }
 
-    bool takeCaptureRequest() override { return false; }
-    int captureTexture() const override { return -1; }
-    void setCaptureReady(bool) override {}
+    // The pause and continue menus' playfield snapshot, into capture.anm's texture.
+    bool takeCaptureRequest() override;
+    int captureTexture() const override;
+    void setCaptureReady(bool ready) override;
+    CaptureRect captureRect() const override;
 
     void logStatus(const FrameInfo& frame) const override;
     void logSummary() const override {}

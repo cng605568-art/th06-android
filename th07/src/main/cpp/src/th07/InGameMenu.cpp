@@ -7,13 +7,35 @@ namespace touhou::th07 {
 
 namespace {
 constexpr int kScripts = 0x0FE;
+constexpr int kBackground = 0x724;  // capture.anm
 constexpr int kSelect = 10, kMove = 12, kShooting = 0, kPaused = 37;
+constexpr std::uint32_t kLit = 0xFFFFFFFFu, kDim = 0x80303030u, kYesNoLit = 0xFFFF8080u, kYesNoDim = 0x80808080u;
 }  // namespace
 
 void InGameMenu::interruptAll(int which, int from, int to) {
     for (int i = from; i <= to; ++i) {
         if (visible_[static_cast<std::size_t>(i)]) vms_[static_cast<std::size_t>(i)].interrupt(which);
     }
+}
+
+void InGameMenu::startBackground(const World& w) {
+    background_ = AnmVm{};
+    backgroundLive_ = w.anm->script(kBackground) != nullptr;
+    captureReady_ = false;
+    if (!backgroundLive_) return;
+    background_.startFresh(*w.anm, *w.rng, kBackground);
+    background_.position = Vec3f{static_cast<float>(kPlayfieldX), static_cast<float>(kPlayfieldY), 0.0f};
+    captureRequest_ = true;
+}
+
+void InGameMenu::captureRect(int& x, int& y, int& w, int& h) const {
+    x = y = w = h = 0;
+    if (!backgroundLive_ || !background_.sprite) return;
+    const AnmSprite& sp = *background_.sprite;
+    x = static_cast<int>(sp.startX);
+    y = static_cast<int>(sp.startY);
+    w = static_cast<int>(sp.endY - sp.startY);  // [QUIRK] height as the width
+    h = static_cast<int>(sp.endX - sp.startX);
 }
 
 void InGameMenu::openPause(const World& w) {
@@ -44,6 +66,7 @@ InGameMenu::Request InGameMenu::update(const World& w, std::uint16_t pressed) {
         if ((pressed & BtnMenu) && !closingResume) {
             w.playSound(kSelect);
             interruptAll(2, 0, 9);
+            background_.interrupt(1);
             setState(State::ClosingResume);
             hot = true;
         }
@@ -71,11 +94,14 @@ InGameMenu::Request InGameMenu::update(const World& w, std::uint16_t pressed) {
                 visible_[8] = g.practice;
                 visible_[9] = g.slowMode;
                 if (g.replay) vms_[3].current = nullptr;
+                startBackground(w);
                 setState(State::OnResume);
-                break;
+                [[fallthrough]];
             case State::OnResume:
             case State::OnReturn:
-            case State::OnRestart:
+            case State::OnRestart: {
+                const int lit = state_ == State::OnResume ? 1 : state_ == State::OnReturn ? 2 : 3;
+                for (int i = 1; i <= 3; ++i) vms_[static_cast<std::size_t>(i)].color = i == lit ? kLit : kDim;
                 if (timer_ < 4) break;
                 if (up || down) {
                     w.playSound(kShooting);
@@ -86,6 +112,7 @@ InGameMenu::Request InGameMenu::update(const World& w, std::uint16_t pressed) {
                     w.playSound(kSelect);
                     interruptAll(2, 0, 3);
                     if (state_ == State::OnResume) {
+                        background_.interrupt(1);
                         setState(State::ClosingResume);
                     } else {
                         for (int i = 4; i <= 6; ++i) vms_[static_cast<std::size_t>(i)].interrupt(1);
@@ -94,8 +121,11 @@ InGameMenu::Request InGameMenu::update(const World& w, std::uint16_t pressed) {
                     }
                 }
                 break;
+            }
             case State::ConfirmReturn:
             case State::ConfirmRestart:
+                vms_[5].color = confirmYes_ ? kYesNoLit : kYesNoDim;
+                vms_[6].color = confirmYes_ ? kYesNoDim : kYesNoLit;
                 if (timer_ < 4) break;
                 if (up || down) {
                     confirmYes_ = !confirmYes_;
@@ -139,16 +169,24 @@ InGameMenu::Request InGameMenu::update(const World& w, std::uint16_t pressed) {
                     visible_[static_cast<std::size_t>(10 + i)] = true;
                 }
                 vms_[14].selectSprite(lib, 0x092 + 116 + (maxContinues_ - g.continues));
+                startBackground(w);
+                // [QUIRK] The state moves on to "cursor on No", but this pass still runs the
+                // "cursor on Yes" colours (input is locked at timer 0 anyway).
                 setState(State::OnNo);
+                vms_[12].color = kYesNoLit;
+                vms_[13].color = kYesNoDim;
                 break;
             case State::OnYes:
             case State::OnNo:
+                vms_[12].color = state_ == State::OnYes ? kYesNoLit : kYesNoDim;
+                vms_[13].color = state_ == State::OnYes ? kYesNoDim : kYesNoLit;
                 if ((up || down) && timer_ >= (state_ == State::OnNo ? 30 : 4)) {
                     w.playSound(kMove);
                     state_ = state_ == State::OnNo ? State::OnYes : State::OnNo;
                 } else if (select && timer_ >= (state_ == State::OnNo ? 30 : 4)) {
                     w.playSound(kSelect);
                     interruptAll(2, 10, 14);
+                    if (state_ == State::OnYes) background_.interrupt(1);
                     setState(state_ == State::OnYes ? State::Continuing : State::GivingUp);
                 }
                 break;
@@ -172,6 +210,7 @@ InGameMenu::Request InGameMenu::update(const World& w, std::uint16_t pressed) {
     for (std::size_t i = 0; i < vms_.size(); ++i) {
         if (visible_[i]) vms_[i].tick(lib, rng);
     }
+    if (backgroundLive_) background_.tick(lib, rng);
     ++timer_;
     return done;
 }
@@ -180,36 +219,21 @@ void InGameMenu::draw(SpriteSink& sink) {
     if (!active() || !world_) return;
     AnmDrawState none;
     sink.setClip(kPlayfieldX, kPlayfieldY, kPlayfieldW, kPlayfieldH);
-    auto drawItem = [&](int i, bool selected, std::uint32_t dim, std::uint32_t lit) {
-        if (!visible_[static_cast<std::size_t>(i)]) return;
-        AnmVm vm = vms_[static_cast<std::size_t>(i)];
-        if (selected) {
-            vm.position.x -= 4.0f;
-            vm.position.y -= 4.0f;
-            vm.color = lit;
-        } else if (dim != 0) {
-            vm.color = dim;
-        }
-        drawVm(sink, vm, none);
+    // Colours were set by the cursor states. [QUIRK] The (-4, -4) offsets the original
+    // stores on the highlighted rows are never drawn.
+    auto drawItem = [&](int i) {
+        if (visible_[static_cast<std::size_t>(i)]) drawVm(sink, vms_[static_cast<std::size_t>(i)], none);
     };
+    const bool snapshot = captureReady_ && backgroundLive_;
     if (mode_ == Mode::Pause) {
-        const bool rows = state_ == State::OnResume || state_ == State::OnReturn || state_ == State::OnRestart;
-        drawItem(0, false, 0, 0);
-        drawItem(1, state_ == State::OnResume, rows ? 0x80303030u : 0, 0xFFFFFFFFu);
-        drawItem(2, state_ == State::OnReturn, rows ? 0x80303030u : 0, 0xFFFFFFFFu);
-        drawItem(3, state_ == State::OnRestart, rows ? 0x80303030u : 0, 0xFFFFFFFFu);
-        const bool confirm = state_ == State::ConfirmReturn || state_ == State::ConfirmRestart;
-        drawItem(4, false, 0, 0);
-        drawItem(5, confirm && confirmYes_, confirm ? 0x80808080u : 0, 0xFFFF8080u);
-        drawItem(6, confirm && !confirmYes_, confirm ? 0x80808080u : 0, 0xFFFF8080u);
-        for (int i = 7; i <= 9; ++i) drawItem(i, false, 0, 0);
+        if (snapshot && state_ != State::Opening) drawVm(sink, background_, none);
+        for (int i = 0; i <= 9; ++i) drawItem(i);
     } else {
-        const bool rows = state_ == State::OnYes || state_ == State::OnNo;
-        drawItem(10, false, 0, 0);
-        drawItem(11, false, 0, 0);
-        drawItem(12, rows && state_ == State::OnYes, rows ? 0x80808080u : 0, 0xFFFF8080u);
-        drawItem(13, rows && state_ == State::OnNo, rows ? 0x80808080u : 0, 0xFFFF8080u);
-        drawItem(14, false, 0, 0);
+        if (snapshot && (state_ != State::Opening || timer_ > 2)) drawVm(sink, background_, none);
+        // [QUIRK] The credits sprite is drawn once more while a cursor is shown (its blend
+        // doubles).
+        if (state_ == State::OnYes || state_ == State::OnNo) drawItem(14);
+        for (int i = 10; i <= 14; ++i) drawItem(i);
     }
     sink.clearClip();
 }

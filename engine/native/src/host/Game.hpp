@@ -100,6 +100,12 @@ class Game {
     virtual bool takeCaptureRequest() = 0;
     virtual int captureTexture() const = 0;
     virtual void setCaptureReady(bool ready) = 0;
+    // Where in that texture the playfield goes, in texture pixels from the top-left corner;
+    // the rest of the texture is left alone. A zero width means the whole texture.
+    struct CaptureRect {
+        int x = 0, y = 0, w = 0, h = 0;
+    };
+    virtual CaptureRect captureRect() const { return {}; }
 
     // A status line for the log every few seconds, and a summary when a desktop test run
     // ends.

@@ -29,6 +29,19 @@ class InGameMenu {
     Request update(const World& w, std::uint16_t pressed);
     void draw(SpriteSink& sink);
 
+    // The playfield snapshot behind both menus (capture.anm script 0x724): asked for on a
+    // menu's opening pass, copied by the host from the frame just shown into `captureRect`
+    // of capture.anm's texture.
+    bool takeCaptureRequest() {
+        const bool r = captureRequest_;
+        captureRequest_ = false;
+        return r;
+    }
+    void setCaptureReady(bool ready) { captureReady_ = ready; }
+    // x, y = the backdrop sprite's start pixel, w = its pixel height and h = its width (the
+    // original swaps them; capture.anm's sprite is square). Zero size before a menu opened.
+    void captureRect(int& x, int& y, int& w, int& h) const;
+
   private:
     enum class Mode : std::uint8_t { None, Pause, Continue };
     enum class State : std::uint8_t {
@@ -40,6 +53,7 @@ class InGameMenu {
         timer_ = 0;
     }
     void interruptAll(int which, int from, int to);
+    void startBackground(const World& w);
 
     const World* world_ = nullptr;
     Mode mode_ = Mode::None;
@@ -49,6 +63,10 @@ class InGameMenu {
     int maxContinues_ = 3;
     std::array<AnmVm, 15> vms_{};
     std::array<bool, 15> visible_{};
+    AnmVm background_;
+    bool backgroundLive_ = false;
+    bool captureRequest_ = false;
+    bool captureReady_ = false;
 };
 
 }  // namespace touhou::th07

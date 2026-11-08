@@ -114,6 +114,8 @@ class Gameplay {
     bool running() const { return running_; }
     bool finished() const { return outcome_ != Outcome::None; }
     bool paused() const { return menu_.active(); }
+    // The pause and continue menus (their playfield snapshot goes through the host).
+    InGameMenu& inGameMenu() { return menu_; }
     // Opens the pause menu (Android back button), as Menu pressed would.
     void requestPause() { pauseRequested_ = true; }
     void draw(SpriteSink& sink);

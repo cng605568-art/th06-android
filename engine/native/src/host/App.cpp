@@ -533,15 +533,26 @@ bool App::capturePlayfield() {
     if (id < 0 || frameCount_ == 0) return false;  // no capture.anm, or nothing rendered yet
     const auto tid = static_cast<std::uint16_t>(id);
     const GLuint tex = gpu_.get(tid);
-    const int w = textures_.width(tid), h = textures_.height(tid);
+    const int texW = textures_.width(tid), texH = textures_.height(tid);
+    // The destination rectangle, clipped to the texture. Texture row y is framebuffer row y
+    // here (see below), so the rectangle needs no flip.
+    Game::CaptureRect r = game_->captureRect();
+    if (r.w <= 0 || r.h <= 0) r = {0, 0, texW, texH};
+    r.w = std::min(r.w, texW - r.x);
+    r.h = std::min(r.h, texH - r.y);
+    if (r.x < 0 || r.y < 0 || r.w <= 0 || r.h <= 0) return false;
+    const int w = r.w, h = r.h;
     if (!captureFbo_) glGenFramebuffers(1, &captureFbo_);
     glBindFramebuffer(GL_FRAMEBUFFER, captureFbo_);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
     const bool ok = glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
     if (ok) {
-        glViewport(0, 0, w, h);
+        glViewport(r.x, r.y, w, h);
+        glEnable(GL_SCISSOR_TEST);
+        glScissor(r.x, r.y, w, h);
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT);
+        glDisable(GL_SCISSOR_TEST);
         batch_.begin(static_cast<float>(w), static_cast<float>(h), &gpu_);
         // The game target still holds the last frame, bottom-up. Drawn into the texture's
         // framebuffer the quad's bottom edge becomes texture row 0, so it samples the

@@ -189,7 +189,7 @@ bool AnmLibrary::load(const Vfs& vfs, TextureLibrary& textures, const std::strin
             texH = static_cast<float>(hgt);
             const std::size_t entryAt = at;
             if (cpuPixels) {
-                texture = textures.addDynamic(id + "#cpu", w, hgt);
+                texture = textures.addDynamic(id + "#cpu", w, hgt, TextureFilter::LinearWrap);
                 if (Image* img = textures.pixels(texture)) {
                     decodeThtx(std::span(b).subspan(t + 0x10), format, w, hgt, img->rgba);
                     textures.touch(texture);
@@ -206,7 +206,9 @@ bool AnmLibrary::load(const Vfs& vfs, TextureLibrary& textures, const std::strin
                 }, TextureFilter::LinearWrap);
         } else {
             if (texName.empty() || texName[0] != '@') log::warn("{}: entry {} names an external image ({}); drawn blank", path, entries, texName);
-            texture = textures.addDynamic(id, nominalW, nominalH);
+            // A blank texture the game fills at run time (capture.anm's playfield snapshot),
+            // sampled like every other th07 texture.
+            texture = textures.addDynamic(id, nominalW, nominalH, TextureFilter::LinearWrap);
         }
 
         Slot& sl = slots_[static_cast<std::size_t>(s)];

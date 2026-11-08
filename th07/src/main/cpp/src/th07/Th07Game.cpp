@@ -295,6 +295,26 @@ void Th07Game::render(SpriteSink& sink, float, const FrameInfo&) {
     drawText(sink, *ui_, 136, 416, std::format("{} FILES IN THE GAME FOLDER", files_), 2.0f, grey);
 }
 
+bool Th07Game::takeCaptureRequest() {
+    Gameplay* g = flow_ ? flow_->game() : nullptr;
+    return g && g->inGameMenu().takeCaptureRequest();
+}
+
+int Th07Game::captureTexture() const {
+    const std::uint16_t id = anm_.slotTexture(4);  // capture.anm, loaded at boot
+    return id != 0 ? id : -1;
+}
+
+void Th07Game::setCaptureReady(bool ready) {
+    if (Gameplay* g = flow_ ? flow_->game() : nullptr) g->inGameMenu().setCaptureReady(ready);
+}
+
+Game::CaptureRect Th07Game::captureRect() const {
+    CaptureRect r;
+    if (Gameplay* g = flow_ ? flow_->game() : nullptr) g->inGameMenu().captureRect(r.x, r.y, r.w, r.h);
+    return r;
+}
+
 void Th07Game::logStatus(const FrameInfo& frame) const {
     if (!flow_) {
         log::info("fps {:.1f} | ticks {} | status screen", frame.fps, frame.ticks);

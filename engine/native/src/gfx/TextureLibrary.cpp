@@ -19,14 +19,15 @@ std::uint16_t TextureLibrary::add(std::string name, int width, int height, Produ
     return static_cast<std::uint16_t>(items_.size() - 1);
 }
 
-std::uint16_t TextureLibrary::addDynamic(std::string name, int width, int height) {
+std::uint16_t TextureLibrary::addDynamic(std::string name, int width, int height, TextureFilter filter) {
     for (std::size_t i = 0; i < items_.size(); ++i) {
         const Item& it = items_[i];
-        if (it.dynamic && it.name == name && it.width == width && it.height == height) return static_cast<std::uint16_t>(i);
+        if (it.dynamic && it.name == name && it.width == width && it.height == height && it.filter == filter) {
+            return static_cast<std::uint16_t>(i);
+        }
     }
     auto image = std::make_shared<Image>(width, height);  // fully transparent
-    Item item{std::move(name), width, height, [image]() -> std::optional<Image> { return *image; }, TextureFilter::Nearest,
-              image, 0};
+    Item item{std::move(name), width, height, [image]() -> std::optional<Image> { return *image; }, filter, image, 0};
     items_.push_back(std::move(item));
     return static_cast<std::uint16_t>(items_.size() - 1);
 }

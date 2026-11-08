@@ -32,6 +32,7 @@
 #include "th07/Enemies.hpp"
 #include "th07/ExeTables.hpp"
 #include "th07/GameConfig.hpp"
+#include "th07/InGameMenu.hpp"
 #include "th07/Player.hpp"
 #include "th07/World.hpp"
 #include "th07/Ending.hpp"
@@ -1867,6 +1868,74 @@ static void testBgm() {
 
 // ---- the game flow: LZSS encoder, score.dat, unlock rules, input, supervisor ----------------
 
+static void testInGameMenus() {
+    g_timing = Timing{};
+    // capture.anm's shape: a blank 512x512 texture and a 128x128 backdrop sprite at the origin.
+    EntryDef e;
+    e.width = e.height = 512;
+    e.format = 0;
+    e.sprites = {{0, 0, 0, 128, 128}};
+    e.scripts.push_back({0, {{3, 0, {0}}, {7, 0, {fbits(3.0f), fbits(3.5f)}}}});
+    Vfs vfs;
+    std::string err;
+    vfs.mount(openArchive("th07.dat", mem(pbg4({{"capture.anm", anmFile({e})}})), &err));
+    TextureLibrary textures;
+    AnmLibrary lib;
+    CHECK(lib.load(vfs, textures, "capture.anm", 4, 0x724, &err));
+    if (!lib.loaded(4)) return;
+    // The snapshot is magnified 3 x 3.5: sampled bilinearly, as every th07 texture is.
+    CHECK(textures.filter(lib.slotTexture(4)) == TextureFilter::LinearWrap);
+    ZunRng rng(3);
+    GameState g;
+    g.setDifficulty(Normal);
+    World w;
+    w.state = &g;
+    w.rng = &rng;
+    w.anm = &lib;
+    using R = InGameMenu::Request;
+    auto run = [&](InGameMenu& m, std::uint16_t pressed, int limit, int& passes) {
+        passes = 0;
+        R r = R::None;
+        while (r == R::None && passes < limit) {
+            r = m.update(w, pressed);
+            ++passes;
+        }
+        return r;
+    };
+
+    InGameMenu m;
+    int x = -1, y = -1, cw = -1, ch = -1;
+    m.captureRect(x, y, cw, ch);
+    CHECK(cw == 0 && ch == 0 && !m.takeCaptureRequest());
+    // Pause: the opening pass asks for one snapshot of the backdrop sprite's rectangle.
+    m.openPause(w);
+    CHECK(m.active() && m.pauseMenu());
+    CHECK(m.update(w, 0) == R::None);
+    CHECK(m.takeCaptureRequest() && !m.takeCaptureRequest());
+    m.captureRect(x, y, cw, ch);
+    CHECK(x == 0 && y == 0 && cw == 128 && ch == 128);
+    // Menu closes it 20 passes later.
+    CHECK(m.update(w, BtnMenu) == R::None);
+    int passes = 0;
+    CHECK(run(m, 0, 100, passes) == R::Resume && passes == 20 && !m.active());
+
+    // Continue: the cursor starts on No, which takes input from 30 passes on; giving up
+    // reaches the results 20 passes after the choice.
+    m.openContinue(w, 3);
+    CHECK(m.update(w, 0) == R::None && m.takeCaptureRequest());
+    CHECK(run(m, BtnShoot, 200, passes) == R::Results && passes == 29 + 1 + 20);
+    // Moving to Yes (no timer reset) and confirming continues 30 passes later.
+    m.openContinue(w, 3);
+    CHECK(m.update(w, 0) == R::None);
+    for (int i = 0; i < 29; ++i) m.update(w, BtnUp);  // locked
+    CHECK(m.update(w, BtnUp) == R::None);              // to Yes
+    CHECK(run(m, BtnShoot, 200, passes) == R::Continue && passes == 1 + 30);
+    // No credits left: the results at once.
+    g.continues = 3;
+    m.openContinue(w, 3);
+    CHECK(m.update(w, 0) == R::Results && !m.active());
+}
+
 static void testLzssEncoder() {
     auto roundTrip = [](const Bytes& in) {
         const Bytes packed = lzss::compress(in);
@@ -2578,6 +2647,7 @@ int main() {
         {"menu input: pressed, masks, auto-repeat", testMenuInput},
         {"Music Room: musiccmt.txt", testMusicComments},
         {"supervisor: title, results, Music Room, ending", testSupervisor},
+        {"pause and continue menus: snapshot, locks", testInGameMenus},
     };
     for (const Test& t : tests) {
         const int before = g_failures;
