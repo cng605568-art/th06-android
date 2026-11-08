@@ -2478,6 +2478,58 @@ static void testSupervisor() {
         CHECK(s.scores().stats.running.totalSeconds() > 0 || s.scores().stats.running.milliseconds > 0);
         s.shutdown();
     }
+    {
+        // The Result viewer's hidden code on the Hard page, Focus held: Up x3, D x2, Down x2,
+        // Q x3 sets every clear record of every shot and difficulty to 99 (saved on exit).
+        Supervisor s;
+        CHECK(s.start(flowBoot(f)));
+        s.pass(0);
+        idle(s, 10);
+        for (int i = 0; i < 8 && s.mainMenu() && s.mainMenu()->cursor() != 4; ++i) press(s, BtnDown);
+        CHECK(s.mainMenu() && s.mainMenu()->cursor() == 4);
+        press(s, BtnShoot);
+        idle(s, 21);
+        press(s, BtnDown);
+        CHECK(s.resultScreen() && s.resultScreen()->menuCursor() == 2);
+        press(s, BtnShoot);
+        CHECK(s.resultScreen()->state() == ResultScreen::State::ScorePage);
+        idle(s, 31);
+        const std::uint16_t seq[10] = {BtnUp, BtnUp, BtnUp, BtnD, BtnD, BtnDown, BtnDown, BtnQ, BtnQ, BtnQ};
+        // A wrong key (Shoot) resets the sequence.
+        s.pass(BtnFocus | BtnUp);
+        s.pass(BtnFocus);
+        s.pass(BtnFocus | BtnShoot);
+        s.pass(BtnFocus);
+        for (int i = 0; i < 9; ++i) {
+            s.pass(static_cast<std::uint16_t>(BtnFocus | seq[i]));
+            s.pass(BtnFocus);
+        }
+        CHECK(s.scores().clears[5].noContinue[3] != 99);
+        s.pass(static_cast<std::uint16_t>(BtnFocus | seq[9]));
+        s.pass(BtnFocus);
+        bool all = true;
+        for (const ClearRecord& c : s.scores().clears) {
+            for (int d = 0; d < kDifficulties; ++d) all = all && c.noContinue[static_cast<std::size_t>(d)] == 99 && c.reached[static_cast<std::size_t>(d)] == 99;
+        }
+        CHECK(all && s.scores().phantasmUnlocked());
+        press(s, BtnBomb);  // back to the menu
+        CHECK(s.resultScreen()->state() == ResultScreen::State::Menu && s.resultScreen()->menuCursor() == 2);
+        // With Phantasm unlocked, row 5 is selectable.
+        idle(s, 21);
+        press(s, BtnDown);
+        press(s, BtnDown);
+        press(s, BtnDown);
+        CHECK(s.resultScreen()->menuCursor() == 5);
+        press(s, BtnBomb);
+        press(s, BtnShoot);  // Exit
+        idle(s, 62);
+        CHECK(s.active() == FlowState::MainMenu);
+        const auto img = s.readScoreFile();
+        std::array<ClearRecord, kShots> c;
+        ScoreFile::readClears(img ? &*img : nullptr, c);
+        CHECK(c[4].noContinue[Phantasm] == 99 && c[1].reached[Hard] == 99);
+        s.shutdown();
+    }
     std::filesystem::remove_all(f.dir);
 }
 
