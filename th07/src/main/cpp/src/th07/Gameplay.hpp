@@ -18,6 +18,7 @@
 #include "th07/Gui.hpp"
 #include "th07/InGameMenu.hpp"
 #include "th07/Player.hpp"
+#include "th07/ScreenEffects.hpp"
 #include "th07/World.hpp"
 
 namespace touhou {
@@ -33,22 +34,6 @@ namespace touhou::th07 {
 class BgmPlayer;
 class SoundPlayer;
 struct ExeTables;
-
-// Screen shake jobs (the screen-effect pass, priority 15): each job draws two u32 values in
-// range 3 per frame; the last job's offset moves everything drawn before the GUI.
-class ScreenShake final : public ShakeSink {
-  public:
-    void shake(int duration, float from, float to) override { jobs_.push_back({duration, 0, from, to}); }
-    void update(ZunRng& rng, std::uint32_t stageFrame, float& offsetX, float& offsetY);
-    void clear() { jobs_.clear(); }
-
-  private:
-    struct Job {
-        int duration, timer;
-        float from, to;
-    };
-    std::vector<Job> jobs_;
-};
 
 class Gameplay {
   public:
@@ -142,7 +127,7 @@ class Gameplay {
     std::unique_ptr<BulletManager> bullets_ = std::make_unique<BulletManager>();
     std::unique_ptr<EnemyManager> enemies_ = std::make_unique<EnemyManager>();
     Background background_;
-    ScreenShake shake_;
+    ScreenEffects screenFx_;
     std::unique_ptr<Gui> gui_ = std::make_unique<Gui>();
     std::uint16_t prevInput_ = 0;
     InGameMenu menu_;

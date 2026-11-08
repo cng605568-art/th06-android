@@ -480,6 +480,9 @@ void Gui::runDialogue(const World& w, std::uint16_t input, std::uint16_t previou
                 if (w.onMusicFade) w.onMusicFade(4.0f);
                 break;
             case 13: skippable_ = at(a) != 0; break;
+            case 14:  // a white fade over the whole screen, 402 frames
+                if (w.shakes) w.shakes->fade(4, 402, 0x00FFFFFFu);
+                break;
             default: break;
         }
         if (!advance) break;

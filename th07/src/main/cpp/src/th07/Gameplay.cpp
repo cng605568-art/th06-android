@@ -11,25 +11,6 @@
 
 namespace touhou::th07 {
 
-void ScreenShake::update(ZunRng& rng, std::uint32_t stageFrame, float& offsetX, float& offsetY) {
-    if (stageFrame <= 1) {
-        jobs_.clear();
-        return;
-    }
-    for (std::size_t i = 0; i < jobs_.size();) {
-        Job& j = jobs_[i];
-        if (++j.timer >= j.duration) {
-            jobs_.erase(jobs_.begin() + static_cast<std::ptrdiff_t>(i));
-            continue;
-        }
-        const float o = j.from + (j.to - j.from) * static_cast<float>(j.timer) / static_cast<float>(j.duration);
-        const auto pick = [&](std::uint32_t r) { return r == 0 ? 0.0f : r == 1 ? o : -o; };
-        offsetX = pick(rng.u32InRange(3));
-        offsetY = pick(rng.u32InRange(3));
-        ++i;
-    }
-}
-
 Gameplay::Gameplay() : player_(std::make_unique<Player>()) {}
 Gameplay::~Gameplay() = default;
 
@@ -53,7 +34,7 @@ bool Gameplay::start(const Resources& res, const Setup& setup, std::string* erro
     world_.player = player_.get();
     world_.effects = res.tables ? &effects_ : nullptr;
     world_.background = &background_;
-    world_.shakes = &shake_;
+    world_.shakes = &screenFx_;
     world_.bullets = bullets_.get();
     world_.bulletManager = bullets_.get();
     world_.items = bullets_.get();
@@ -194,7 +175,7 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
     if (!enemies_->stageStart(w, *res_.vfs, *res_.textures, g.stage, error)) return false;
     effects_.reset();
     if (!loadEffectFiles(error)) return false;
-    shake_.clear();
+    screenFx_.clear();
     if (hooks_.playTimeRebase) hooks_.playTimeRebase();
     {
         Gui::Resources gr;
@@ -325,7 +306,7 @@ void Gameplay::tick(std::uint16_t input) {
     }
     prevInput_ = input;
     drawState_.offsetX = drawState_.offsetY = 0.0f;
-    shake_.update(*res_.rng, g.stageFrame, drawState_.offsetX, drawState_.offsetY);
+    screenFx_.update(*res_.rng, g, drawState_.offsetX, drawState_.offsetY);
 }
 
 void Gameplay::draw(SpriteSink& sink) {
@@ -342,6 +323,7 @@ void Gameplay::draw(SpriteSink& sink) {
     gui_->draw(sink, drawState_);
     gui_->drawText(sink);
     menu_.draw(sink);
+    if (res_.ui) screenFx_.draw(sink, res_.ui->white);
     if (gui_->nextStageRequested()) {
         // (Acted on after the frame by tick's caller.)
     }

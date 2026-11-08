@@ -97,7 +97,9 @@ void EnemyManager::exRoutine(Enemy& e, int routine, const std::uint8_t* ins) {
     auto shake = [&](int duration, float px) {
         if (wd.shakes) wd.shakes->shake(duration, px, 0.0f);
     };
-    auto pulse = [&]() { eclWarnOnce("screen pulses (ex routines) are not drawn yet"); };
+    auto pulse = [&](int duration, int count, std::uint32_t argb) {
+        if (wd.shakes) wd.shakes->pulse(duration, count, argb);
+    };
     auto fire = [&](const Shooter& s) {
         if (bm) bm->fire(wd, s);
     };
@@ -118,7 +120,7 @@ void EnemyManager::exRoutine(Enemy& e, int routine, const std::uint8_t* ins) {
         }
         case 1: {
             shake(30, 12.0f);
-            pulse();
+            pulse(4, 3, 0x80FFCFCFu);
             float angle = 0.0f;  // uninitialised in the original until a matching colour [QUIRK]
             bool angleSet = false;
             for (int i = 0; i < BulletManager::kBullets; ++i) {
@@ -148,7 +150,7 @@ void EnemyManager::exRoutine(Enemy& e, int routine, const std::uint8_t* ins) {
                 case 0:
                     radius = 128.0f;
                     shake(32, 12.0f);
-                    pulse();
+                    pulse(4, 1, 0x80CFCFFFu);
                     break;
                 case 1: radius = 192.0f; break;
                 case 2: radius = 256.0f; break;
@@ -334,7 +336,7 @@ void EnemyManager::exRoutine(Enemy& e, int routine, const std::uint8_t* ins) {
         }
         case 12:
         case 21: {
-            pulse();
+            pulse(8, 1, 0x50CFCFFFu);
             const int n = routine == 21 ? 15 : difficulty == Easy ? 10 : difficulty == Normal ? 18 : difficulty == Hard ? 22 : 25;
             const float band = routine == 21 ? (difficulty == Hard ? 128.0f : 180.0f) : (difficulty < Hard ? 64.0f : 48.0f);
             for (int i = 0; i < BulletManager::kBullets; ++i) {
@@ -376,7 +378,7 @@ void EnemyManager::exRoutine(Enemy& e, int routine, const std::uint8_t* ins) {
             break;
         }
         case 14: {
-            pulse();
+            pulse(16, 1, 0x50CFCFFFu);
             for (int i = 0; i < BulletManager::kBullets; ++i) {
                 Bullet& b = bm->bullet(i);
                 if (!nonFree(b) || b.tag != 1) continue;
@@ -386,7 +388,7 @@ void EnemyManager::exRoutine(Enemy& e, int routine, const std::uint8_t* ins) {
             }
             break;
         }
-        case 15: pulse(); break;
+        case 15: pulse(a, 1, 0xD0CFCFFFu); break;
         case 16: {
             for (int i = 0; i < BulletManager::kBullets; ++i) {
                 Bullet& b = bm->bullet(i);
@@ -409,7 +411,7 @@ void EnemyManager::exRoutine(Enemy& e, int routine, const std::uint8_t* ins) {
         case 17: {
             EclArgs copy = e.ctx.args;
             float offset = -kPi;
-            pulse();
+            pulse(12, 1, 0x80CFCFFFu);
             const int sub = e.ctx.sub + 1;
             for (int i = 0; i < BulletManager::kBullets; ++i) {
                 Bullet& b = bm->bullet(i);

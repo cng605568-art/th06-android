@@ -46,11 +46,20 @@ class BulletField {
     virtual int liveBullets() const = 0;
 };
 
-// Screen shake jobs (the screen-effect pass).
+// The screen effects (logic priority 15, drawn last): shakes, pulses over the playfield
+// (`count` cycles of `duration` frames, fading from the colour's alpha) and colour fades
+// (type 0 from the colour over the screen, 2 to it over the playfield, 4 to it over the
+// screen).
 class ShakeSink {
   public:
     virtual ~ShakeSink() = default;
     virtual void shake(int duration, float from, float to) = 0;
+    virtual void pulse(int duration, int count, std::uint32_t argb) {
+        (void)duration, (void)count, (void)argb;
+    }
+    virtual void fade(int type, int duration, std::uint32_t rgb) {
+        (void)type, (void)duration, (void)rgb;
+    }
 };
 
 // Items as the player sees them (implemented by the item manager).

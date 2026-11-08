@@ -26,6 +26,7 @@ add_library(th07_game STATIC
   ${TH07_SRC}/th07/Gameplay.cpp
   ${TH07_SRC}/th07/Gui.cpp
   ${TH07_SRC}/th07/InGameMenu.cpp
+  ${TH07_SRC}/th07/ScreenEffects.cpp
   ${TH07_SRC}/th07/MainMenu.cpp
   ${TH07_SRC}/th07/MusicRoom.cpp
   ${TH07_SRC}/th07/Player.cpp

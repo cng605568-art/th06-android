@@ -41,6 +41,7 @@
 #include "th07/MusicRoom.hpp"
 #include "th07/ResultScreen.hpp"
 #include "th07/ScoreFile.hpp"
+#include "th07/ScreenEffects.hpp"
 #include "th07/Supervisor.hpp"
 #include "io/Lzss.hpp"
 #include "th07/SoundPlayer.hpp"
@@ -1868,6 +1869,103 @@ static void testBgm() {
 
 // ---- the game flow: LZSS encoder, score.dat, unlock rules, input, supervisor ----------------
 
+static void testScreenEffects() {
+    g_timing = Timing{};
+    // Number of 16-bit draws between two generator states.
+    auto drawsBetween = [](std::uint16_t from, std::uint16_t to) {
+        ZunRng r(from);
+        for (int n = 0; n < 100000; ++n) {
+            if (r.currentSeed() == to) return n;
+            r.u16();
+        }
+        return -1;
+    };
+    GameState g;
+    g.stageFrame = 100;
+    ZunRng rng(1234);
+    float ox = 0, oy = 0;
+
+    // A shake of duration D makes two u32 draws on each of D - 1 frames, then ends.
+    ScreenEffects fx;
+    fx.shake(10, 12.0f, 0.0f);
+    const std::uint16_t before = rng.currentSeed();
+    int frames = 0;
+    while (fx.size() > 0 && frames < 100) {
+        fx.update(rng, g, ox, oy);
+        ++frames;
+    }
+    CHECK(frames == 10 && drawsBetween(before, rng.currentSeed()) == 4 * 9);
+    // Time stop holds it (no draws); the stage's first frames end it at once.
+    fx.shake(10, 12.0f, 0.0f);
+    g.timeStop = true;
+    std::uint16_t s0 = rng.currentSeed();
+    fx.update(rng, g, ox, oy);
+    CHECK(fx.size() == 1 && rng.currentSeed() == s0);
+    g.timeStop = false;
+    g.stageFrame = 1;
+    fx.update(rng, g, ox, oy);
+    CHECK(fx.size() == 0 && rng.currentSeed() == s0);
+    g.stageFrame = 100;
+
+    // A pulse: alpha falls from the colour's alpha over D frames, one alpha-0 frame between
+    // cycles, later cycles starting at timer 1. Nothing is drawn from the RNG.
+    struct Probe : SpriteSink {
+        std::vector<std::uint32_t> colors;
+        std::vector<float> widths;
+        void draw(std::uint16_t, Blend, const SpriteInstance& s) override {
+            colors.push_back(s.color);
+            widths.push_back(s.w);
+        }
+    };
+    SpriteRegion white;
+    fx.pulse(4, 2, 0x80FFCFCFu);
+    std::vector<std::uint32_t> alphas;
+    s0 = rng.currentSeed();
+    for (int i = 0; i < 20 && fx.size() > 0; ++i) {
+        fx.update(rng, g, ox, oy);
+        if (fx.size() == 0) break;
+        Probe p;
+        fx.draw(p, white);
+        CHECK(p.colors.size() == 1 && p.widths[0] == kPlayfieldW);
+        alphas.push_back(p.colors.empty() ? 999u : p.colors[0] >> 24);  // bytes R, G, B, A
+    }
+    CHECK(rng.currentSeed() == s0);
+    // 0x80 = 128: 128, 96, 64, 32, then 0, then 96, 64, 32 (timer 1..3), then it ends.
+    const std::vector<std::uint32_t> expect = {128, 96, 64, 32, 0, 96, 64, 32};
+    CHECK(alphas.size() == expect.size());
+    if (alphas.size() == expect.size()) {
+        bool same = true;
+        for (std::size_t i = 0; i < expect.size(); ++i) same = same && alphas[i] == expect[i];
+        CHECK(same);
+    }
+
+    // Fade to white over the screen (dialogue opcode 14): alpha k * 255 / D for k < D, then
+    // removed without a full-alpha frame.
+    fx.clear();
+    fx.fade(4, 402, 0x00FFFFFFu);
+    int drawn = 0;
+    std::uint32_t lastAlpha = 0, firstAlpha = 999;
+    for (int i = 0; i < 500 && fx.size() > 0; ++i) {
+        fx.update(rng, g, ox, oy);
+        if (fx.size() == 0) break;
+        Probe p;
+        fx.draw(p, white);
+        if (p.colors.size() == 1 && p.widths[0] == 640.0f) {
+            const std::uint32_t a = p.colors[0] >> 24;
+            if (firstAlpha == 999) firstAlpha = a;
+            lastAlpha = a;
+            ++drawn;
+        }
+    }
+    CHECK(drawn == 402 && firstAlpha == 0 && lastAlpha == 401 * 255 / 402);
+    // Fade from a colour: starts opaque.
+    fx.fade(0, 30, 0x00000000u);
+    fx.update(rng, g, ox, oy);
+    Probe p;
+    fx.draw(p, white);
+    CHECK(p.colors.size() == 1 && (p.colors[0] >> 24) == 255);
+}
+
 static void testInGameMenus() {
     g_timing = Timing{};
     // capture.anm's shape: a blank 512x512 texture and a 128x128 backdrop sprite at the origin.
@@ -2648,6 +2746,7 @@ int main() {
         {"Music Room: musiccmt.txt", testMusicComments},
         {"supervisor: title, results, Music Room, ending", testSupervisor},
         {"pause and continue menus: snapshot, locks", testInGameMenus},
+        {"screen effects: shake draws, pulses, fades", testScreenEffects},
     };
     for (const Test& t : tests) {
         const int before = g_failures;
