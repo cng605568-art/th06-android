@@ -787,25 +787,120 @@ void EnemyManager::drawEnemy(SpriteSink& sink, Enemy& e, const AnmDrawState& sta
     if (e.vm2On[0]) place(e.vms2[0], e.vms2[0].autoRotate != 0, e.angle, 0.29f);
     if (!(e.trailFlags & 16) && !e.invisibleBomb) place(e.vm, e.autoRotate, e.angle, 0.29f);
     if (e.vm2On[1]) place(e.vms2[1], e.vms2[1].autoRotate != 0, -e.angle, 0.3f);  // -angle [QUIRK]
-    if (e.trailFlags & (1 | 8)) {
-        // Copies of the primary sprite along the history (the triangle-strip form is drawn the
-        // same way for now).
-        const int count = std::clamp<int>(e.trailCount, 0, 96);
-        const int step = std::max<int>(1, e.nodeStep);
-        for (int j = step; j < count; j += step) {
-            const TrailNode& n = e.trail[static_cast<std::size_t>(j)];
-            if (n.pos.x <= -999.0f) continue;
-            AnmVm copy = e.vm;
-            const float f = 1.0f - static_cast<float>(j) / static_cast<float>(count);
-            if (e.trailFlags & 2) copy.scale.x *= f;
-            if (e.trailFlags & 4) {
-                const auto a = static_cast<std::uint32_t>(static_cast<float>(copy.color >> 24) * f);
-                copy.color = (copy.color & 0x00FFFFFFu) | (a << 24);
-            }
-            if (e.autoRotate) copy.rotation.z = n.angle;
-            copy.position = {n.pos.x + kPlayfieldX + copy.offset.x, n.pos.y + kPlayfieldY + copy.offset.y, 0.29f};
-            drawVm(sink, copy, state);
+    // The trail (spec_enemy_trails): drawn whenever the flags are non-zero (bit 1 is never
+    // tested [QUIRK]), even while the primary is invisible during a bomb.
+    if (e.trailFlags != 0) {
+        if (e.trailFlags & 8) drawTrailStrip(sink, e);
+        else drawTrailCopies(sink, e, state);
+    }
+}
+
+namespace {
+
+// Mid(a, b) of the trail spec 3.3, with the original's wrong far-side branch [QUIRK].
+float trailMid(float a, float b) {
+    const float lo = std::min(a, b), hi = std::max(a, b);
+    const float d = hi - lo, w = (lo + kZunTwoPi) - hi;
+    return d < w ? d * 0.5f + lo : w * 0.5f + lo;
+}
+
+}  // namespace
+
+// The sprite-copy trail (flag 8 clear; spec_enemy_trails 4): copies of the primary at
+// entries S, 2S, ... (unfilled entries skipped), newest first, through the ordinary 2D draw.
+void EnemyManager::drawTrailCopies(SpriteSink& sink, Enemy& e, const AnmDrawState& state) {
+    const int count = std::clamp<int>(e.trailCount, 0, 96);
+    const int step = std::max<int>(1, e.nodeStep);
+    const Vec2f scale0 = e.vm.scale;
+    const std::uint32_t color0 = e.vm.color;
+    const auto a = static_cast<std::int32_t>(color0 >> 24);
+    for (int j = step; j < count; j += step) {
+        const TrailNode& n = e.trail[static_cast<std::size_t>(j)];
+        if (n.pos.x < -990.0f) continue;
+        AnmVm& vm = e.vm;
+        if (e.autoRotate) {
+            vm.rotation.z = n.angle;
+            vm.set(AnmVm::RotationDirty, true);
         }
+        if (e.trailFlags & 2) vm.scale.x = scale0.x - (static_cast<float>(j) * scale0.x) / static_cast<float>(count);
+        if (e.trailFlags & 4) {
+            const std::int32_t faded = a - (a * j) / count;
+            vm.color = (color0 & 0x00FFFFFFu) | (static_cast<std::uint32_t>(faded) << 24);
+        }
+        vm.position = {n.pos.x + vm.offset.x + kPlayfieldX, n.pos.y + vm.offset.y + kPlayfieldY, 0.3f};
+        drawVm(sink, vm, state);
+    }
+    e.vm.scale = scale0;
+    e.vm.color = color0;
+}
+
+// The triangle-strip trail (flag 8; spec_enemy_trails 3): two vertices per node j = 0, S,
+// 2S, ... (stopping at the first unfilled entry), across the recorded angle, the sprite
+// stretched along the whole current length. Literal playfield origin, no shake [QUIRK]; the
+// primary's ordinary colour; drawn as consecutive quads (the same triangles as the strip).
+void EnemyManager::drawTrailStrip(SpriteSink& sink, Enemy& e) {
+    const AnmVm& vm = e.vm;
+    if (!vm.sprite || !vm.has(AnmVm::Visible) || !vm.has(AnmVm::Active) || (vm.color >> 24) == 0) return;
+    const int count = std::clamp<int>(e.trailCount, 0, 96);
+    const int step = std::max<int>(1, e.nodeStep);
+    if (e.trailCount > 96 || e.nodeStep < 1) eclWarnOnce(std::format("trail count {} / node step {} clamped", e.trailCount, e.nodeStep));
+    int nodes = 0;
+    for (int j = 0; j < count && e.trail[static_cast<std::size_t>(j)].pos.x >= -990.0f; j += step) ++nodes;
+    if (nodes < 2) return;
+    const AnmSprite& sp = *vm.sprite;
+    const float uStep = (sp.uvEndX - sp.uvStartX) / static_cast<float>(nodes - 1);
+    float u = sp.uvEndX + vm.uvScroll.x;
+    const float vA = sp.uvStartY + vm.uvScroll.y, vB = sp.uvEndY + vm.uvScroll.y;
+    const float h0 = vm.scale.y * sp.pixelHeight / 2.0f;
+    const std::uint32_t color0 = vm.color;
+    const auto a = static_cast<std::int32_t>(color0 >> 24);
+    const Blend blend = vm.has(AnmVm::Additive) ? Blend::Additive : Blend::Alpha;
+    auto toNdc = [](float x, float y, Vertex3D& v) {  // Direct3D pixels -> GL (+0.5, ANM 4.9)
+        v.x = (x + 0.5f) / 640.0f * 2.0f - 1.0f;
+        v.y = 1.0f - (y + 0.5f) / 480.0f * 2.0f;
+        v.z = -1.0f;
+        v.w = 1.0f;
+    };
+    Draw3DState ds;
+    ds.depthWrite = false;
+    ds.clipX = kPlayfieldX;
+    ds.clipY = kPlayfieldY;
+    ds.clipW = kPlayfieldW;
+    ds.clipH = kPlayfieldH;
+    Vertex3D prev[2]{};
+    bool havePrev = false;
+    float prevTheta = 0.0f;
+    for (int k = 0, j = 0; k < nodes; ++k, j += step, u -= uStep) {
+        const TrailNode& n = e.trail[static_cast<std::size_t>(j)];
+        const float theta = j == 0 ? n.angle : trailMid(e.trail[static_cast<std::size_t>(j - 1)].angle, n.angle);
+        float h = h0;
+        if (e.trailFlags & 2) {
+            h *= 1.0f - static_cast<float>(j) / static_cast<float>(count);
+            // A node in a straight run is dropped (its u slot still used) [QUIRK: entry S].
+            if (j > 0 && j + step < count && havePrev) {
+                const float next = trailMid(e.trail[static_cast<std::size_t>(j + step - 1)].angle, e.trail[static_cast<std::size_t>(step)].angle);
+                if (std::fabs(prevTheta - theta) < 0.00001f && std::fabs(theta - next) < 0.00001f) continue;
+            }
+        }
+        const auto s = static_cast<float>(std::sin(static_cast<double>(theta)));
+        const auto c = static_cast<float>(std::cos(static_cast<double>(theta)));
+        std::uint32_t color = color0;
+        if (e.trailFlags & 4) color = (color0 & 0x00FFFFFFu) | (static_cast<std::uint32_t>(a - (a * j) / count) << 24);
+        Vertex3D cur[2];
+        toNdc(n.pos.x + ((c * 0.0f - s * h) + kPlayfieldX), n.pos.y + ((s * 0.0f + c * h) + kPlayfieldY), cur[0]);
+        toNdc(n.pos.x + ((c * 0.0f + s * h) + kPlayfieldX), n.pos.y + ((s * 0.0f - c * h) + kPlayfieldY), cur[1]);
+        cur[0].u = cur[1].u = u;
+        cur[0].v = vA;
+        cur[1].v = vB;
+        cur[0].color = cur[1].color = argbToRgbaBytes(color);
+        if (havePrev) {
+            const Vertex3D quad[4] = {prev[0], prev[1], cur[0], cur[1]};
+            sink.drawQuad3D(sp.texture, blend, quad, ds);
+        }
+        prev[0] = cur[0];
+        prev[1] = cur[1];
+        havePrev = true;
+        prevTheta = theta;
     }
 }
 

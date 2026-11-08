@@ -236,6 +236,8 @@ class EnemyManager {
     void spellCardEnd();
     void setSpellActive(std::uint32_t v);
     void drawEnemy(SpriteSink& sink, Enemy& e, const AnmDrawState& state);
+    void drawTrailCopies(SpriteSink& sink, Enemy& e, const AnmDrawState& state);
+    void drawTrailStrip(SpriteSink& sink, Enemy& e);
     void drawLists(SpriteSink& sink, const AnmDrawState& state, int first);
 
     // Ex routines (EclEx.cpp).
