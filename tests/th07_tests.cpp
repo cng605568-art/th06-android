@@ -1129,9 +1129,15 @@ std::unique_ptr<EnemyWorld> enemyWorld(const Bytes& ecl, bool withPlayer, int di
     EntryDef ply;
     ply.sprites = {{0, 0, 0, 8, 8}};
     for (int id : {0, 1, 2, 3, 4, 64, 128, 129}) ply.scripts.push_back({id, {{3, 0, {0}}, {20, 1, {}}}});
+    // etama.anm section 0: 16 bullet colours (8x8) and the pellet's five scripts.
+    EntryDef etama;
+    etama.width = etama.height = 128;
+    for (int c = 0; c < 16; ++c) etama.sprites.push_back({c, static_cast<float>(8 * c), 0, 8, 8});
+    for (int id : {0, 15, 18, 19, 20}) etama.scripts.push_back({id, {{3, 0, {0}}, {20, 1, {}}}});
     std::string err;
     ew->vfs.mount(openArchive("th07.dat",
                               mem(pbg4({{"stg1enm.anm", anmFile({enm})},
+                                        {"etama.anm", anmFile({etama})},
                                         {"ecldata1.ecl", ecl},
                                         {"player00.anm", anmFile({ply})},
                                         {"ply00a.sht", shotFile(4.0f, 3.0f, 8)},
@@ -1161,6 +1167,7 @@ std::unique_ptr<EnemyWorld> enemyWorld(const Bytes& ecl, bool withPlayer, int di
         if (!ew->player->load(ew->vfs, ew->textures, ew->lib, 0, true, &err)) return ew;
         ew->player->stageStart(w);
     }
+    if (!ew->lib.load(ew->vfs, ew->textures, "data/etama.anm", 11, 0x200, &err)) return ew;
     ew->bullets->stageStart(w);
     if (!ew->enemies->stageStart(w, ew->vfs, ew->textures, 1, &err)) {
         std::fprintf(stderr, "  %s\n", err.c_str());
@@ -1611,6 +1618,45 @@ static void testEnemyCallbacks() {
     g_timing = Timing{};
 }
 
+static void testEnemyExRoutines() {
+    const Bytes ecl = eclFile(
+        {
+            // Four colour-2 pellets whose command chain already moved past slot 0 (a spawn delay
+            // chains into slot 1 at once), then ex routine 1 one frame later.
+            {{0, 95, {0}},
+             {0, 79, {0, 0x2000, 0, 5, 0, 0, 0}},
+             {0, 65, {(2u << 16) | 0u, 4, 1, fw(1.0f), fw(1.0f), fw(0.0f), fw(0.3f), 0x2000}},
+             {1, 121, {1, 0}},
+             {2, 121, {18, 0}}},
+        },
+        {});
+    auto ew = enemyWorld(ecl, true);
+    CHECK(ew->ok);
+    if (!ew->ok) return;
+    EnemyManager& m = *ew->enemies;
+    BulletManager& bm = *ew->bullets;
+    m.spawn(0, {192, 100, 0}, 10, 0, 0, false);
+    int fired = 0;
+    for (int i = 0; i < BulletManager::kBullets; ++i) {
+        const auto& b = bm.bullet(i);
+        if (b.state == 0) continue;
+        ++fired;
+        CHECK(b.vm.sprite != nullptr && b.color == 2 && b.cursor == 1 && b.tag == 0);
+    }
+    CHECK(fired == 4);
+    const std::uint32_t before = ew->rng.generations();
+    ew->enemies->update(ew->w);  // ex routine 1: one float draw per matching bullet
+    CHECK(ew->rng.generations() - before == 8);
+    bm.update(ew->w);
+    int turning = 0;
+    for (int i = 0; i < BulletManager::kBullets; ++i) {
+        const auto& b = bm.bullet(i);
+        if (b.state == 0) continue;
+        if ((b.active & 0x20) && b.tag == 1 && b.speed == 0.3f + 1.0f / 60.0f && b.cursor == 1) ++turning;
+    }
+    CHECK(turning == 4);
+}
+
 static void testEnemyBullets() {
     const Bytes ecl = eclFile(
         {
@@ -1846,6 +1892,7 @@ int main() {
         {"enemies: spell cards, timeout, capture", testEnemySpellCards},
         {"enemies: callbacks, death types, despawn, game speed", testEnemyCallbacks},
         {"enemies: bullet patterns and rank", testEnemyBullets},
+        {"enemies: ex routines on the bullet pool", testEnemyExRoutines},
     };
     for (const Test& t : tests) {
         const int before = g_failures;

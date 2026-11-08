@@ -32,7 +32,6 @@ EnemyManager::~EnemyManager() = default;
 void EnemyManager::resetTemplate() {
     Enemy& t = *template_;
     t = Enemy{};
-    t.vms2[0].scriptIndex = t.vms2[1].scriptIndex = -1;
     t.lasers.fill(-1);
     t.shooter = Shooter{};
     t.shooter.count1 = t.shooter.count2 = 0;

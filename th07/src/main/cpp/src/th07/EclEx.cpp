@@ -59,11 +59,13 @@ void addCommand(Shooter& s, int slot, std::uint32_t type, std::int32_t duration,
     s.flags |= type;
 }
 
-// The same on a live bullet: the command goes into the bullet's own list and its type into
-// the bullet's allowed set. [AMBIGUOUS] Neither spec says whether the helper also moves the
-// bullet's command cursor; it is left alone, and a bullet whose cursor is not at the slot
-// is reported once, to check against the real data.
-void addBulletCommand(Bullet& b, int slot, std::uint32_t type, std::int32_t duration, float a, float bb, int routine) {
+// The same on a live bullet: the command goes into the bullet's own list, its type into the
+// bullet's allowed set, and the bullet's command cursor moves to that slot. [AMBIGUOUS]
+// Neither spec says what happens to the cursor. Left alone, the command would never start
+// on bullets whose earlier commands already ran, and the shipped data does call routine 1
+// on such bullets (stage 2's Lunatic Chen); routine 14's "clear command 1" also only makes
+// sense if the chain restarts at slot 0. So the helper restarts the chain at the slot.
+void addBulletCommand(Bullet& b, int slot, std::uint32_t type, std::int32_t duration, float a, float bb) {
     BulletCommand& c = b.commands[static_cast<std::size_t>(slot)];
     c = BulletCommand{};
     c.type = type;
@@ -71,10 +73,7 @@ void addBulletCommand(Bullet& b, int slot, std::uint32_t type, std::int32_t dura
     c.a = a;
     c.b = bb;
     b.allowed |= type;
-    if (b.cursor != slot) {
-        eclWarnOnce(std::format("ex routine {}: a command written to slot {} of a bullet whose command cursor is at {}", routine, slot,
-                                b.cursor));
-    }
+    b.cursor = slot;
 }
 
 // The rotated rectangle test of routines 7 and 8 (a point in the laser's own frame).
@@ -137,8 +136,8 @@ void EnemyManager::exRoutine(Enemy& e, int routine, const std::uint8_t* ins) {
                 }
                 b.speed = 0.3f;
                 for (int c = 0; c < 5; ++c) b.commands[static_cast<std::size_t>(c)] = BulletCommand{};
-                if (difficulty < Lunatic) addBulletCommand(b, 0, 0x20, 60, 1.0f / 60.0f, angle, 1);
-                else addBulletCommand(b, 0, 0x20, 240, 1.0f / 190.0f, angle, 1);
+                if (difficulty < Lunatic) addBulletCommand(b, 0, 0x20, 60, 1.0f / 60.0f, angle);
+                else addBulletCommand(b, 0, 0x20, 240, 1.0f / 190.0f, angle);
                 b.tag = 1;
             }
             break;
@@ -371,7 +370,7 @@ void EnemyManager::exRoutine(Enemy& e, int routine, const std::uint8_t* ins) {
                 Bullet& b = bm->bullet(i);
                 if (!nonFree(b) || b.tag != 0) continue;
                 if (!(e.pos.y < b.pos.y && b.pos.y < 352.0f && std::fabs(b.pos.x - e.pos.x) < 16.0f)) continue;
-                addBulletCommand(b, 0, 0x20, 160, -b.speed / 180.0f, (i & 1) ? kPi / 60.0f : -kPi / 60.0f, 13);
+                addBulletCommand(b, 0, 0x20, 160, -b.speed / 180.0f, (i & 1) ? kPi / 60.0f : -kPi / 60.0f);
                 b.tag = 1;
             }
             break;
@@ -381,7 +380,7 @@ void EnemyManager::exRoutine(Enemy& e, int routine, const std::uint8_t* ins) {
             for (int i = 0; i < BulletManager::kBullets; ++i) {
                 Bullet& b = bm->bullet(i);
                 if (!nonFree(b) || b.tag != 1) continue;
-                addBulletCommand(b, 0, 0x10, 90, 2.0f / 75.0f, angleToPlayer(b.pos), 14);
+                addBulletCommand(b, 0, 0x10, 90, 2.0f / 75.0f, angleToPlayer(b.pos));
                 b.commands[1] = BulletCommand{};
                 b.tag = 2;
             }
