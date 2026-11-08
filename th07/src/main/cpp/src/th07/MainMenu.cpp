@@ -57,6 +57,10 @@ void MainMenu::setState(State s) {
 }
 
 bool MainMenu::create(std::string* error) {
+    if (!ctx_.vfs || !ctx_.anm || !ctx_.textures || !ctx_.scores || !ctx_.config) {
+        if (error) *error = "no game files";
+        return false;
+    }
     ScoreData& sd = *ctx_.scores;
     // A replay or the demo resets the remembered character (replays are not ported yet).
     if (ctx_.replay) {

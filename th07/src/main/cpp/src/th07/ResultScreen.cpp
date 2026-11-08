@@ -57,6 +57,10 @@ void ResultScreen::sendAll(int interrupt) {
 }
 
 bool ResultScreen::create(std::string* error) {
+    if (!ctx_.vfs || !ctx_.anm || !ctx_.textures || !ctx_.scores) {
+        if (error) *error = "no game files";
+        return false;
+    }
     ScoreData& sd = *ctx_.scores;
     AnmLibrary& lib = *ctx_.anm;
     sd.phantasmCheck();
@@ -663,7 +667,7 @@ void ResultScreen::draw(SpriteSink& sink) {
         default: break;
     }
     if (state_ == State::NameEntry && timer_ >= 0 && rank_ >= 0) drawGrid();
-    if (state_ == State::Leave && promptNote_) ascii_.add(112.0f, 440.0f, "Replays are not saved in this port yet.", 0xFFC0C0C0u);
+    if (state_ == State::Leave && promptNote_) ascii_.add(48.0f, 440.0f, "Replays are not saved yet.", 0xFFC0C0C0u);
     ascii_.draw(sink, *ctx_.anm);
 }
 

@@ -64,6 +64,10 @@ void MusicRoom::release() {
 }
 
 bool MusicRoom::create(std::string* error) {
+    if (!ctx_.vfs || !ctx_.anm || !ctx_.textures) {
+        if (error) *error = "no game files";
+        return false;
+    }
     AnmLibrary& lib = *ctx_.anm;
     background_.load(*ctx_.vfs, *ctx_.textures, "data/result/music.jpg");
     if (!lib.load(*ctx_.vfs, *ctx_.textures, "data/music00.anm", 46, kMusicScripts, error)) return false;

@@ -92,6 +92,7 @@ bool Supervisor::start(const Boot& boot) {
         cfg = readWholeFile(boot_.storageDir + "th07.cfg", &exists);
     }
     if (!config_.load(cfg, boot_.thbgm) && !cfg.empty()) log::info("th07.cfg was not valid: rebuilt with the defaults");
+    if (config_.colourMode == 255) config_.colourMode = 0;  // "decided at device creation"
     saveConfig();
     if (boot_.music) boot_.music->setMode(config_.music);
     if (boot_.sound) boot_.sound->setEnabled(config_.sound != 0);
@@ -198,6 +199,7 @@ void Supervisor::pass(std::uint16_t raw) {
     if (requested_ != active_) {
         previous_ = active_;
         ctx_.previous = previous_;
+        log::debug("th07: state {} -> {} (pass {})", static_cast<int>(active_), static_cast<int>(requested_), passes_);
         transition(active_);
         input_.clear();  // nothing is held for the rest of this pass
     }
@@ -506,6 +508,7 @@ bool Supervisor::startGame(const Gameplay::Setup& setup) {
     ctx_.shotType = setup.shotIndex & 1;
     ctx_.practice = setup.practice;
     ctx_.stage = setup.stage - 1;
+    config_.difficulty = static_cast<std::uint8_t>(std::clamp(setup.difficulty, 0, 5));  // as if chosen on the title
     previous_ = ctx_.previous = FlowState::Init;
     setup_ = setup;
     setup_.restart = false;
@@ -538,7 +541,7 @@ bool Supervisor::startGame(const Gameplay::Setup& setup) {
     return true;
 }
 
-void Supervisor::startEnding(int shot, int difficulty, bool continued) {
+void Supervisor::startEnding(int shot, int difficulty, bool continued, std::uint32_t score) {
     if (!started_) return;
     GameState g;
     g.shotIndex = std::clamp(shot, 0, 5);
@@ -546,6 +549,7 @@ void Supervisor::startEnding(int shot, int difficulty, bool continued) {
     g.continues = continued ? 1 : 0;
     g.stage = 6;
     g.finished = true;
+    g.score = g.guiScore = score;
     ctx_.lastGame = g;
     ctx_.lastValid = true;
     ctx_.character = g.shotIndex / 2;
@@ -553,6 +557,23 @@ void Supervisor::startEnding(int shot, int difficulty, bool continued) {
     previous_ = ctx_.previous = FlowState::Game;
     active_ = requested_ = FlowState::Ending;
     openEnding();
+}
+
+void Supervisor::unlockAll() {
+    const auto img = readScoreFile();
+    std::array<ScoreList, kDifficulties * kShots> lists;
+    ScoreFile::defaultLists(lists);
+    if (img) ScoreFile::readHighScores(*img, lists);
+    std::array<char, 12> name{};
+    ScoreFile::readLastName(img ? &*img : nullptr, name);
+    if (img) ScoreFile::readSpells(*img, scores_.spells);
+    ScoreFile::readPractice(img ? &*img : nullptr, scores_);
+    for (ClearRecord& c : scores_.clears) {
+        c.noContinue.fill(kCleared);
+        c.reached.fill(kCleared);
+    }
+    writeScores(lists, name, img ? &img->header : nullptr);
+    ctx_.phantasmSeen = false;
 }
 
 void Supervisor::draw(SpriteSink& sink) {

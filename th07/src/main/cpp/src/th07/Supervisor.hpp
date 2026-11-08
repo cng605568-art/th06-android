@@ -70,8 +70,13 @@ class Supervisor {
     // A game straight from the launcher or the command line (no title first); the flow goes
     // on normally afterwards (results, then the title).
     bool startGame(const Gameplay::Setup& setup);
-    // Developer aid: the ending of `shot`, as after a clear (`continued`: the bad ending).
-    void startEnding(int shot, int difficulty, bool continued);
+    // Developer aid: the ending of `shot`, as after a clear (`continued`: the bad ending)
+    // with `score` (internal units) for the result screen that follows.
+    void startEnding(int shot, int difficulty, bool continued, std::uint32_t score = 0);
+
+    // Developer aid: every clear record at 99 (the result screen's hidden code), saved; the
+    // next title shows the Phantasm splash.
+    void unlockAll();
 
     // One logic pass with the raw 16-bit button word.
     void pass(std::uint16_t raw);

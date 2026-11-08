@@ -74,6 +74,10 @@ bool Gameplay::start(const Resources& res, const Setup& setup, std::string* erro
     };
     enemies_->setMusic(res.music);
     outcome_ = Outcome::None;
+    // (The object is reused for every game: nothing of the last one carries over.)
+    prevInput_ = 0;
+    pauseRequested_ = false;
+    menu_ = InGameMenu{};
     return setUpStage(true, error);
 }
 

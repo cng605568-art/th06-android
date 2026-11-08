@@ -86,10 +86,13 @@ bool Th07Game::start(const GameContext& ctx) {
     bool startPlay = false;
     int endingShot = -1, endingDifficulty = Normal;
     bool endingContinued = false;
+    std::uint32_t endingScore = 0;
+    bool unlockAll = false;
 #if !defined(__ANDROID__)
     // Desktop developer options: --play STAGE [--shot N] [--difficulty D] [--practice]
-    // [--lives N] starts a game at once; --ending SHOT [--continued] [--difficulty D] shows that
-    // ending; --anm-preview FILE [--anm-bg PICTURE] and --stage-preview N show ANM scripts
+    // [--lives N] starts a game at once; --ending SHOT [--continued] [--difficulty D] [--score
+    // N] shows that ending (and the result screen with that score); --unlock-all saves every
+    // clear record at 99 (Extra, Phantasm, all practice stages); --anm-preview FILE [--anm-bg PICTURE] and --stage-preview N show ANM scripts
     // or a stage background on their own.
     std::string previewFile, previewBackground;
     bool testBullets = false;
@@ -100,6 +103,7 @@ bool Th07Game::start(const GameContext& ctx) {
         else if (a == "--test-bullets") testBullets = true;
         else if (a == "--practice") play.practice = true;
         else if (a == "--continued") endingContinued = true;
+        else if (a == "--unlock-all") unlockAll = true;
     }
     for (int i = 1; i + 1 < ctx.argc; ++i) {
         const std::string a = ctx.argv[i] ? ctx.argv[i] : "";
@@ -110,6 +114,7 @@ bool Th07Game::start(const GameContext& ctx) {
         else if (a == "--difficulty") play.difficulty = endingDifficulty = std::clamp(std::atoi(ctx.argv[i + 1]), 0, 5);
         else if (a == "--lives") play.lifeCount = std::clamp(std::atoi(ctx.argv[i + 1]), 0, 4);
         else if (a == "--ending") endingShot = std::clamp(std::atoi(ctx.argv[i + 1]), 0, 5);
+        else if (a == "--score") endingScore = static_cast<std::uint32_t>(std::atoll(ctx.argv[i + 1]));
         else if (a == "--stage-preview" && ctx.vfs) {
             std::string err;
             if (!background_.load(*ctx.vfs, *ctx.textures, anm_, rng_, std::atoi(ctx.argv[i + 1]), &err)) {
@@ -160,8 +165,9 @@ bool Th07Game::start(const GameContext& ctx) {
         flow_ = std::make_unique<Supervisor>();
         flow_->start(b);
         titleSongRequested_ = true;
+        if (unlockAll) flow_->unlockAll();
         if (endingShot >= 0) {
-            flow_->startEnding(endingShot, endingDifficulty, endingContinued);
+            flow_->startEnding(endingShot, endingDifficulty, endingContinued, endingScore);
         } else if (startPlay && exe_) {
             if (!flow_->startGame(play)) log::warn("Could not start stage {}: the title opens instead", play.stage);
             else if (flow_->game()) flow_->game()->setTestPatterns(testBullets);
