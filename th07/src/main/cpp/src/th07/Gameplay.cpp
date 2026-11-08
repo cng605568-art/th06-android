@@ -3,6 +3,7 @@
 #include <format>
 
 #include "core/Log.hpp"
+#include "gfx/ProceduralArt.hpp"
 #include "io/Vfs.hpp"
 #include "th07/Bgm.hpp"
 #include "th07/ExeTables.hpp"
@@ -164,7 +165,14 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
         etamaLoaded_ = true;
     }
     if (!background_.load(*res_.vfs, *res_.textures, *res_.anm, rng, g.stage, error)) return false;
-    background_.onWeatherShift = nullptr;
+    background_.onWeatherShift = [this](const Vec3f& d) {  // a camera jump moves the weather with it
+        for (int i = 0; i < Effects::kNormal; ++i) {
+            Effect& e = effects_.normal(i);
+            if (e.inUse && (e.id == 20 || e.id == 31)) e.base += d;
+        }
+    };
+    background_.drawWeather = [this](SpriteSink& sink, AnmDrawState& state) { effects_.drawStageLayer(sink, state, background_); };
+    background_.white = res_.ui ? &res_.ui->white : nullptr;
     bullets_->stageStart(w);
     // The enemy manager (stgNenm.anm, two RNG draws), then the stage's ECL.
     if (!enemies_->stageStart(w, *res_.vfs, *res_.textures, g.stage, error)) return false;

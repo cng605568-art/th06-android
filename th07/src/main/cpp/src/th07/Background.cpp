@@ -498,8 +498,12 @@ void Background::drawLow(SpriteSink& sink, AnmDrawState& state) {
     if (spellState_ != SpellState::Active) {
         drawLayer(sink, state, 2);
         drawLayer(sink, state, 3);
+        if (drawWeather) drawWeather(sink, state);
+        if (spellState_ == SpellState::Starting && white) {
+            const std::int32_t a = std::clamp(spellCounter_ * 255 / 60, 0, 255);
+            sink.fillRect(*white, viewport.x, viewport.y, viewport.w, viewport.h, rgba(0, 0, 0, static_cast<std::uint8_t>(a)));
+        }
     }
-    // (The starting state's darkening rectangle, alpha counter * 255 / 60, is not drawn yet.)
     if (spellState_ != SpellState::Inactive) {
         for (int i = 0; i < spellCount_; ++i) drawVm(sink, spellVms_[static_cast<std::size_t>(i)], state);
     }

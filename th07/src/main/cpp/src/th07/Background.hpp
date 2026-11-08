@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "core/ZunMath.hpp"
+#include "gfx/SpriteSink.hpp"
 #include "th07/Anm.hpp"
 
 namespace touhou {
@@ -52,6 +53,15 @@ class Background {
     void update(AnmLibrary& anm, ZunRng& rng);
     void drawHigh(SpriteSink& sink, AnmDrawState& state);  // draw order 3: backdrops, layers 0-1
     void drawLow(SpriteSink& sink, AnmDrawState& state);   // draw order 4: layers 2-3
+    // The effect manager's layer-1 effects (weather) are drawn inside the low pass, after
+    // layers 2 and 3, with the stage camera and the depth test.
+    std::function<void(SpriteSink&, AnmDrawState&)> drawWeather;
+    // A camera-facing sprite at a 3D position (the VM's position), hand-fogged, as the
+    // background's facing quads are drawn.
+    void drawBillboard(SpriteSink& sink, AnmVm& vm, const AnmDrawState& state) {
+        if (vm.sprite) drawFacingQuad(sink, vm, state, vm.sprite->pixelWidth);
+    }
+    const SpriteRegion* white = nullptr;  // for the darkening rectangle of a starting card
 
     // ECL: resume the script at the matching label (opcode 31).
     void setResumeLabel(std::int32_t label) { resumeLabel_ = label; }

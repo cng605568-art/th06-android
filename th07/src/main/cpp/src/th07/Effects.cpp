@@ -277,6 +277,19 @@ void Effects::update(const World& w) {
     ++frames_;
 }
 
+void Effects::drawStageLayer(SpriteSink& sink, const AnmDrawState& state, Background& bg) {
+    for (int k = 0; k < layerCount_[1]; ++k) {
+        Effect& e = slots_[static_cast<std::size_t>(layers_[1][static_cast<std::size_t>(k)])];
+        if (!e.inUse) continue;
+        // The billboard routine rewrites the VM's scale and position for drawing; the
+        // effect's own scale must not compound from frame to frame.
+        const Vec2f scale = e.vm.scale;
+        e.vm.position = e.pos;
+        bg.drawBillboard(sink, e.vm, state);
+        e.vm.scale = scale;
+    }
+}
+
 void Effects::draw(SpriteSink& sink, const AnmDrawState& state) {
     for (int layer : {0, 2, 3}) {
         for (int k = 0; k < layerCount_[static_cast<std::size_t>(layer)]; ++k) {

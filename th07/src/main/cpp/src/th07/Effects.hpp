@@ -18,6 +18,7 @@ class SpriteSink;
 
 namespace touhou::th07 {
 
+class Background;
 struct World;
 
 struct Effect {
@@ -54,6 +55,8 @@ class Effects {
     // The effect pass (draw order 9): layers 0, 2 and 3. Layer 1 (weather) belongs to the
     // stage's 3D pass.
     void draw(SpriteSink& sink, const AnmDrawState& state);
+    // Layer 1 (weather and camera-attached effects), from the stage's 3D pass.
+    void drawStageLayer(SpriteSink& sink, const AnmDrawState& state, Background& bg);
     int active() const { return active_; }
 
   private:
