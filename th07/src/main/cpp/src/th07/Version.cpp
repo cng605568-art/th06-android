@@ -8,13 +8,15 @@ namespace {
 
 bool isSpace(char c) { return c == ' ' || c == '\t' || c == '\r'; }
 
+// A decimal number taken modulo 2^32: the shipped file writes checksums above 2^31 as
+// unsigned values ("0100b 650752 2932163676"), which the game compares as 32-bit words.
 std::optional<std::int32_t> readInt(std::string_view& s) {
     while (!s.empty() && isSpace(s.front())) s.remove_prefix(1);
-    std::int32_t v = 0;
+    std::int64_t v = 0;
     const auto [end, ec] = std::from_chars(s.data(), s.data() + s.size(), v);
     if (ec != std::errc{}) return std::nullopt;
     s.remove_prefix(static_cast<std::size_t>(end - s.data()));
-    return v;
+    return static_cast<std::int32_t>(static_cast<std::uint32_t>(v));
 }
 
 }  // namespace

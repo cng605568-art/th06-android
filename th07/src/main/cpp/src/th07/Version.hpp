@@ -1,7 +1,8 @@
 #pragma once
 
-// th07_0100b.ver, a text file inside th07.dat: lines of "<5-character version tag><one
-// separator><exe size> <exe checksum>". Its presence proves the archive is 1.00b, and a PC
+// th07_0100b.ver, a text file inside th07.dat: CRLF lines of "<5-character version
+// tag><one separator><exe size> <exe checksum>", one per released version (0009_ .. 0100b);
+// checksums above 2^31 are written unsigned. Its presence proves the archive is 1.00b, and a PC
 // replay's header carries the 1.00b line's size and checksum (the PC game rejects replays
 // whose values do not match a line).
 

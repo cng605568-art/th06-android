@@ -331,6 +331,9 @@ static void testVersionFile() {
     const auto a = findVersionLine(ver, "0100a");
     CHECK(a && a->size == 1 && a->checksum == 2);
     CHECK(!findVersionLine(ver, "0099z"));
+    // Checksums above 2^31 are written unsigned and read as 32-bit words.
+    const auto big = findVersionLine(text("0100b 650752 2932163676\r\n"), kVersionTag);
+    CHECK(big && big->size == 650752 && big->checksum == static_cast<std::int32_t>(2932163676u));
     CHECK(!findVersionLine(text("0100b x y"), kVersionTag));
     CHECK(!findVersionLine(text("0100b"), kVersionTag));
     // Checksum: the first floor(size/4) - 1 words; the last whole word and the tail are left out.
