@@ -116,6 +116,8 @@ class Player {
     void breakBorder(const World& w);
 
     const Vec3f& position() const { return pos_; }
+    // ECL variables 10021-10023 are writable: scripts can move the player.
+    Vec3f& scriptPosition() { return pos_; }
     State state() const { return state_; }
     BorderFlag borderFlag() const { return border_; }
     bool focused() const { return focused_; }

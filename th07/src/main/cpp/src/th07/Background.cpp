@@ -1,5 +1,6 @@
 #include "th07/Background.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <format>
@@ -211,6 +212,11 @@ bool Background::load(const Vfs& vfs, TextureLibrary& textures, AnmLibrary& anm,
     fovStart_ = fovTarget_ = cam_.fov;
     fovDuration_ = 0;
     resumeLabel_ = 0;
+    spellState_ = SpellState::Inactive;
+    spellCounter_ = 0;
+    spellBase_ = 0;
+    spellCount_ = (stage >= 4 && stage <= 6) || stage == 8 ? 2 : 1;
+    spellVms_ = {};
     log::info("Stage {} background: {} objects, {} quads, {} instances, {} script records", stage, objects_.size(), quads,
               instances_.size(), script_.size());
     return true;
@@ -236,7 +242,25 @@ void Background::release(AnmLibrary& anm) {
     fogDuration_ = 0;
     backdropA_ = AnmVm{};
     backdropB_ = AnmVm{};
+    spellState_ = SpellState::Inactive;
+    spellCounter_ = 0;
+    spellVms_ = {};
     stage_ = 0;
+}
+
+void Background::spellStart(AnmLibrary& anm, ZunRng& rng) {
+    spellState_ = SpellState::Starting;
+    spellCounter_ = 0;
+    for (int i = 0; i < spellCount_; ++i) spellVms_[static_cast<std::size_t>(i)].startFresh(anm, rng, kSpellScripts + spellBase_ + i);
+}
+
+void Background::spellInterrupt(int vm, int label) {
+    if (vm >= 0 && vm < static_cast<int>(spellVms_.size())) spellVms_[static_cast<std::size_t>(vm)].interrupt(label);
+}
+
+void Background::setSpellBackgrounds(int base, int count) {
+    spellBase_ = base;
+    spellCount_ = std::clamp(count, 0, static_cast<int>(spellVms_.size()));
 }
 
 // ---- the logic pass ---------------------------------------------------------------------
@@ -366,7 +390,12 @@ void Background::update(AnmLibrary& anm, ZunRng& rng) {
         }
         if (running == 0) o.flags &= static_cast<std::uint8_t>(~1u);
     }
-    // 8. (Spell-card backgrounds: with the effect manager.)
+    // 8. Spell-card backgrounds: starting becomes active on the 60th frame.
+    if (spellState_ != SpellState::Inactive) {
+        if (spellCounter_ == 60 && spellState_ == SpellState::Starting) spellState_ = SpellState::Active;
+        ++spellCounter_;
+        for (int i = 0; i < spellCount_; ++i) spellVms_[static_cast<std::size_t>(i)].tick(anm, rng);
+    }
     // 9. Backdrops (a sprite index of 0 never animates, as in the original).
     if (backdropA_.activeSprite > 0) backdropA_.tick(anm, rng);
     if (backdropB_.activeSprite > 0) backdropB_.tick(anm, rng);
@@ -453,19 +482,27 @@ void Background::drawHigh(SpriteSink& sink, AnmDrawState& state) {
     currentCamera_ = -1;
     uvCacheSprite_ = nullptr;
     if (!loaded()) return;
-    if (backdropA_.activeSprite > 0) drawVm(sink, backdropA_, state);
-    if (backdropB_.activeSprite > 0) drawVm(sink, backdropB_, state);
+    const bool stageVisible = spellState_ != SpellState::Active;
+    if (stageVisible && backdropA_.activeSprite > 0) drawVm(sink, backdropA_, state);
+    if (stageVisible && backdropB_.activeSprite > 0) drawVm(sink, backdropB_, state);
     // The clear colour (if set) erases the backdrops; otherwise only depth is cleared.
     const std::uint32_t clear = argbToRgbaBytes(clearColor_);
     sink.clearRect(viewport.x, viewport.y, viewport.w, viewport.h, clear, clearColor_ != 0);
+    if (!stageVisible) return;
     drawLayer(sink, state, 0);
     drawLayer(sink, state, 1);
 }
 
 void Background::drawLow(SpriteSink& sink, AnmDrawState& state) {
     if (!loaded()) return;
-    drawLayer(sink, state, 2);
-    drawLayer(sink, state, 3);
+    if (spellState_ != SpellState::Active) {
+        drawLayer(sink, state, 2);
+        drawLayer(sink, state, 3);
+    }
+    // (The starting state's darkening rectangle, alpha counter * 255 / 60, is not drawn yet.)
+    if (spellState_ != SpellState::Inactive) {
+        for (int i = 0; i < spellCount_; ++i) drawVm(sink, spellVms_[static_cast<std::size_t>(i)], state);
+    }
     buildPlayfieldCamera();
 }
 

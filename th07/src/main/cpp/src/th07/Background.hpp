@@ -55,6 +55,20 @@ class Background {
 
     // ECL: resume the script at the matching label (opcode 31).
     void setResumeLabel(std::int32_t label) { resumeLabel_ = label; }
+
+    // Spell-card backgrounds (spec 2.6 step 8, 2.7, 2.13): a boss's card start sets the state
+    // to starting and starts VM i on script 0x2DC + base + i (first tick at once: RNG); 60
+    // frames later the state becomes active and the stage layers stop drawing. The VMs run
+    // here, in the background's logic slot. Base 0 and the per-stage count are set at load;
+    // the boss dialogue may change them.
+    enum class SpellState : std::uint8_t { Inactive, Starting, Active };
+    static constexpr int kSpellScripts = 0x2DC;
+    void spellStart(AnmLibrary& anm, ZunRng& rng);
+    void spellEnd() { spellState_ = SpellState::Inactive; }
+    void spellInterrupt(int vm, int label);  // ECL ex routines 10 and 11 (VMs 0 and 1)
+    void setSpellBackgrounds(int base, int count);
+    SpellState spellState() const { return spellState_; }
+    std::int32_t spellCounter() const { return spellCounter_; }
     // A jump's teleport shifts the weather particles by this much (the effect manager hooks in).
     std::function<void(const Vec3f&)> onWeatherShift;
 
@@ -137,6 +151,10 @@ class Background {
     std::int32_t resumeLabel_ = 0;
     bool teleported_ = false;
     std::uint32_t frames_ = 0;
+    SpellState spellState_ = SpellState::Inactive;
+    std::int32_t spellCounter_ = 0;
+    int spellBase_ = 0, spellCount_ = 1;
+    std::array<AnmVm, 2> spellVms_{};
 
     // Draw-time state.
     Mat4 view_{}, proj_{};

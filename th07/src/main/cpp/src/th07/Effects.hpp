@@ -48,6 +48,7 @@ class Effects {
     // 4 border).
     Effect& spawnSpecial(const World& w, int id, const Vec3f& pos, int slot, std::uint32_t color);
     Effect& special(int slot) { return slots_[static_cast<std::size_t>(kNormal + slot)]; }
+    Effect& normal(int i) { return slots_[static_cast<std::size_t>(i)]; }  // 0..kNormal-1 (ECL ex routine 9)
 
     void update(const World& w);
     // The effect pass (draw order 9): layers 0, 2 and 3. Layer 1 (weather) belongs to the
