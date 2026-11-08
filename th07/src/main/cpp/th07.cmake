@@ -18,6 +18,7 @@ add_library(th07_game STATIC
   ${TH07_SRC}/th07/GameConfig.cpp
   ${TH07_SRC}/th07/Gameplay.cpp
   ${TH07_SRC}/th07/Gui.cpp
+  ${TH07_SRC}/th07/InGameMenu.cpp
   ${TH07_SRC}/th07/Player.cpp
   ${TH07_SRC}/th07/ShotData.cpp
   ${TH07_SRC}/th07/SoundPlayer.cpp

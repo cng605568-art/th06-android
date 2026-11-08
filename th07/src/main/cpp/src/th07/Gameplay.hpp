@@ -14,6 +14,7 @@
 #include "th07/Bullets.hpp"
 #include "th07/Effects.hpp"
 #include "th07/Gui.hpp"
+#include "th07/InGameMenu.hpp"
 #include "th07/Player.hpp"
 #include "th07/World.hpp"
 
@@ -80,7 +81,10 @@ class Gameplay {
     void tick(std::uint16_t input);
     // After a tick: the GUI's "go to the next stage" request (the supervisor's next pass).
     bool stageAdvance(std::string* error);
-    bool finished() const { return gui_->gameFinished(); }
+    bool finished() const { return finished_ || gui_->gameFinished(); }
+    bool paused() const { return menu_.active(); }
+    // Opens the pause menu (Android back button), as Menu pressed would.
+    void requestPause() { pauseRequested_ = true; }
     void draw(SpriteSink& sink);
 
     const GameState& state() const { return state_; }
@@ -106,6 +110,9 @@ class Gameplay {
     ScreenShake shake_;
     std::unique_ptr<Gui> gui_ = std::make_unique<Gui>();
     std::uint16_t prevInput_ = 0;
+    InGameMenu menu_;
+    bool finished_ = false, restartRequested_ = false, pauseRequested_ = false;
+    void applyContinue();
     AnmDrawState drawState_;
     std::uint16_t stageSeed_ = 0;
     bool running_ = false;

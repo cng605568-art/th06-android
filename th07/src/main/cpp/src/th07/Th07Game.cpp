@@ -172,6 +172,7 @@ void Th07Game::tick(const InputState& input) {
         game_->tick(word);
         std::string err;
         if (!game_->stageAdvance(&err)) log::warn("Next stage: {}", err);
+        if (game_->finished()) quit_ = true;  // (no title screen yet: back to the launcher)
         if (music_) {
             music_->fadeStep();
             music_->pump();

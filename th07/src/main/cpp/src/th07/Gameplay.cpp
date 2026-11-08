@@ -164,6 +164,7 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
     effects_.reset();
     if (!loadEffectFiles(error)) return false;
     shake_.clear();
+    finished_ = false;
     {
         Gui::Resources gr;
         gr.vfs = res_.vfs;
@@ -209,6 +210,32 @@ void Gameplay::tick(std::uint16_t input) {
     GameState& g = state_;
     g.eventFlags = 0;
     g.dialogue = gui_->dialogueCurrent();
+    const std::uint16_t pressed = static_cast<std::uint16_t>(input & ~prevInput_);
+    // The text/menu manager (priority 1): a pause or continue menu runs instead of the
+    // popups, and the game manager then stops the pass while it is up.
+    if (menu_.active()) {
+        const InGameMenu::Request r = menu_.update(world_, pressed);
+        prevInput_ = input;
+        switch (r) {
+            case InGameMenu::Request::Resume:
+                if (res_.music) res_.music->resume();
+                break;
+            case InGameMenu::Request::Continue:
+                applyContinue();
+                if (res_.music) res_.music->resume();
+                break;
+            case InGameMenu::Request::Title:
+            case InGameMenu::Request::Results: finished_ = true; return;
+            case InGameMenu::Request::Restart: restartRequested_ = true; return;
+            case InGameMenu::Request::None: return;
+        }
+    } else if ((pressed & BtnMenu) || pauseRequested_) {
+        pauseRequested_ = false;
+        menu_.openPause(world_);
+        if (res_.music) res_.music->pause();
+        prevInput_ = input;
+        return;
+    }
     // ASCII manager (priority 1), game manager (priority 2).
     gui_->asciiUpdate(world_);
     g.rollScore();
@@ -217,6 +244,11 @@ void Gameplay::tick(std::uint16_t input) {
     // GUI (13), screen effects (15).
     background_.update(*res_.anm, *res_.rng);
     player_->update(world_, input);
+    if (player_->continueMenuRequested()) {
+        player_->clearContinueRequest();
+        menu_.openContinue(world_, 3);
+        if (res_.music) res_.music->pause();
+    }
     if (testPatterns_ && g.stageFrame % 60 == 30) {
         const int k = static_cast<int>(g.stageFrame / 60) % 11;
         Shooter s;
@@ -253,12 +285,34 @@ void Gameplay::draw(SpriteSink& sink) {
     gui_->drawPopups(sink);
     gui_->draw(sink, drawState_);
     gui_->drawText(sink);
+    menu_.draw(sink);
     if (gui_->nextStageRequested()) {
         // (Acted on after the frame by tick's caller.)
     }
 }
 
+void Gameplay::applyContinue() {
+    GameState& g = state_;
+    const World& w = world_;
+    ++g.continues;
+    g.score = g.guiScore = static_cast<std::uint32_t>(g.continues);
+    g.rollSpeed = 0;
+    w.setLives(static_cast<float>(g.lifeCount));
+    w.setBombs(static_cast<float>(static_cast<int>(player_->header().initialBombs)));
+    g.stageGraze = g.stagePointItems = g.extendPoints = 0;
+    w.setPower(0.0f);
+    g.extendsGranted = 0;
+    g.nextExtend = 50;
+    g.cherry = 0;
+}
+
 bool Gameplay::stageAdvance(std::string* error) {
+    if (restartRequested_) {
+        restartRequested_ = false;
+        const Resources res = res_;
+        const Setup setup = setup_;
+        return start(res, setup, error);
+    }
     if (!gui_->nextStageRequested()) return true;
     gui_->clearNextStageRequest();
     return nextStage(error);

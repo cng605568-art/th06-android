@@ -26,11 +26,17 @@ class Th07Game final : public Game {
     void render(SpriteSink& sink, float alpha, const FrameInfo& frame) override;
 
     bool quitRequested() const override { return quit_; }
-    bool paused() const override { return false; }
+    bool paused() const override { return game_ && game_->paused(); }
     bool showsPlayfield() const override { return game_ != nullptr; }
     bool practiceSpeedApplies() const override { return false; }
-    void pauseNow() override {}
-    bool back() override { return false; }  // nothing to go back to yet: leave
+    void pauseNow() override {
+        if (game_ && !game_->paused()) game_->requestPause();
+    }
+    bool back() override {  // in a game: the pause menu; otherwise leave
+        if (!game_) return false;
+        if (!game_->paused()) game_->requestPause();
+        return true;
+    }
     int takeVibration() override { return 0; }
 
     bool takeCaptureRequest() override { return false; }
