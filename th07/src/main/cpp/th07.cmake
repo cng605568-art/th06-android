@@ -3,7 +3,8 @@
 # tests. It grows system by system as the clean-room specs are implemented.
 #   th07_game   the ANM animation system, music (thbgm.dat + thbgm.fmt), sound effects, the
 #               tables read from th07.exe, the version file, the stage systems (backgrounds,
-#               player, bullets, effects, ECL and enemies). No SDL.
+#               player, bullets, effects, ECL and enemies), and the game flow (supervisor,
+#               title and select screens, score.dat, result screen, ending, Music Room). No SDL.
 # Th07Game.cpp (the game as the host runs it) and main.cpp are compiled into the app.
 
 set(TH07_SRC "${CMAKE_CURRENT_LIST_DIR}/src")
@@ -24,6 +25,7 @@ add_library(th07_game STATIC
   ${TH07_SRC}/th07/Gui.cpp
   ${TH07_SRC}/th07/InGameMenu.cpp
   ${TH07_SRC}/th07/Player.cpp
+  ${TH07_SRC}/th07/ScoreFile.cpp
   ${TH07_SRC}/th07/ShotData.cpp
   ${TH07_SRC}/th07/SoundPlayer.cpp
   ${TH07_SRC}/th07/Version.cpp
