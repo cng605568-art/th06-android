@@ -118,8 +118,13 @@ screen). Advanced: archives placed in `Android/data/io.github.cng605568art.th06/
 ## Perfect Cherry Blossom (th07) app
 
 A second app, **TH07 Port** (`io.github.cng605568art.th07`, module `th07/`), runs on the same
-engine and installs next to the th06 app. It is early: the title screen and menus are not
-ported yet, so **Play** goes straight into a stage, and nothing (scores, replays) is saved.
+engine and installs next to the th06 app. **Play** opens the game's own title screen: Start,
+Extra Start (and Phantasm), Practice Start, Result (high scores per difficulty and shot, the
+spell card history, Player Data), Music Room, Option and Quit, with the original's select
+screens, unlock rules, name entry, result statistics, endings and staff roll. Scores, clear
+progress, spell history and play statistics are kept in `score.dat` (the PC game's format, in
+the app's storage) and the settings in `th07.cfg`. Replays and the attract demo are not
+ported yet.
 
 * **Get it:** every CI run also builds it, signed with the same key, as its own artifact
   `th07-android-<version>` (it is not attached to GitHub Releases yet). Locally, with the
@@ -133,15 +138,20 @@ ported yet, so **Play** goes straight into a stage, and nothing (scores, replays
   copied into the app's own storage (`files/gamedata/`), so the folder can be deleted
   afterwards; the file list shows what is there and whether it is the right file, and
   **Remove imported files** deletes the copies.
-* **Start options:** character and shot type (Reimu A/B, Marisa A/B, Sakuya A/B), difficulty
-  (Easy to Lunatic, or Extra and Phantasm with their own stage), stage 1–6, spare lives 0–4
-  and a practice start; touch controls (drag or D-pad, drag speed, button size, opacity,
-  auto-fire, latching Focus, left-handed) and display (landscape or portrait, scaling,
-  scanlines) work as in th06. Back returns to the launcher. Without a 1.00b `th07.dat` and
+* **Start options:** *Skip the title screen* (off by default) starts a stage directly
+  instead, with its choices: character and shot type (Reimu A/B, Marisa A/B, Sakuya A/B),
+  difficulty (Easy to Lunatic, or Extra and Phantasm with their own stage), stage 1–6, spare
+  lives 0–4 and a practice start; touch controls (drag or D-pad, drag speed, button size,
+  opacity, auto-fire, latching Focus, left-handed) and display (landscape or portrait,
+  scaling, scanlines) work as in th06. Back opens the pause menu in a game and cancels in the
+  menus; on the title with the cursor on Quit it returns to the launcher. Without a 1.00b `th07.dat` and
   `th07.exe` the game shows a status screen saying what is missing. **Save a log** in Help
   keeps a bug report on the phone until you share it.
 * Desktop development build: `cmake -S th07/src/main/cpp -B build-th07 && cmake --build build-th07`,
-  then `./build-th07/th07_desktop /path/to/game/folder --play 1 --shot 0 --difficulty 1`.
+  then `./build-th07/th07_desktop /path/to/game/folder` (the title), or add `--play 1 --shot 0
+  --difficulty 1 [--practice] [--lives N]` to start a stage, `--ending SHOT [--continued]
+  [--score N]` to watch an ending, `--unlock-all` to unlock Extra, Phantasm and every practice
+  stage.
 
 ## Languages
 
@@ -229,7 +239,8 @@ th07/                         Perfect Cherry Blossom: the second Android app mod
   src/main/java/...           LauncherActivity (import, start options), GameFiles (copies and
                               checks th07.dat / th07.exe / thbgm.dat), GameActivity (SDL host + JNI)
   src/main/cpp/               CMakeLists.txt (libSDL2.so + libmain.so, desktop build), th07.cmake,
-                              src/th07/ (Th07Game reads the launcher's start options on Android)
+                              src/th07/ (Th07Game hosts the Supervisor: title and select
+                              screens, games, results, ending, Music Room, score.dat)
 tests/                        host tests run by CI before every APK build (engine core, th06, th07)
 ```
 
