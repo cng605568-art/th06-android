@@ -9,6 +9,7 @@
 #include "gfx/TextureLibrary.hpp"
 #include "gfx/SpriteSink.hpp"
 #include "io/Vfs.hpp"
+#include "th07/MainMenu.hpp"
 #include "th07/Version.hpp"
 #if defined(__ANDROID__)
 #include <algorithm>
@@ -30,6 +31,11 @@ const GameInfo& Th07Game::info() const {
     return kInfo;
 }
 
+Th07Game::~Th07Game() {
+    if (flow_) flow_->shutdown();
+    flow_.reset();
+}
+
 bool Th07Game::start(const GameContext& ctx) {
     ui_ = ctx.ui;
     files_ = ctx.vfs ? ctx.vfs->fileCount() : 0;
@@ -37,7 +43,11 @@ bool Th07Game::start(const GameContext& ctx) {
         if (const auto ver = ctx.vfs->read(kVersionFile)) {
             const auto line = findVersionLine(*ver, kVersionTag);
             archive_ = line.has_value();
-            if (line) log::info("th07.dat is 1.00b (th07.exe: {} bytes, checksum {:08x})", line->size, line->checksum);
+            if (line) {
+                log::info("th07.dat is 1.00b (th07.exe: {} bytes, checksum {:08x})", line->size, line->checksum);
+                exeId_ = *line;
+                verFile_ = *ver;
+            }
         }
         if (!archive_) log::warn("No 1.00b th07.dat (its {} is missing)", kVersionFile);
         std::vector<BgmRecord> records;
@@ -71,23 +81,35 @@ bool Th07Game::start(const GameContext& ctx) {
             music_->load(8, "bgm/th07_01.mid");  // the title song
         }
     }
-#if !defined(__ANDROID__)
-    std::string previewFile, previewBackground;
+    // The supervisor's start options.
     Gameplay::Setup play;
     bool startPlay = false;
+    int endingShot = -1, endingDifficulty = Normal;
+    bool endingContinued = false;
+#if !defined(__ANDROID__)
+    // Desktop developer options: --play STAGE [--shot N] [--difficulty D] [--practice]
+    // [--lives N] starts a game at once; --ending SHOT [--continued] [--difficulty D] shows that
+    // ending; --anm-preview FILE [--anm-bg PICTURE] and --stage-preview N show ANM scripts
+    // or a stage background on their own.
+    std::string previewFile, previewBackground;
     bool testBullets = false;
     autoFire_ = ctx.controls.autoFire;
     for (int i = 1; i < ctx.argc; ++i) {
-        if (ctx.argv[i] && std::string(ctx.argv[i]) == "--hold-focus") holdFocus_ = true;
-        if (ctx.argv[i] && std::string(ctx.argv[i]) == "--test-bullets") testBullets = true;
+        const std::string a = ctx.argv[i] ? ctx.argv[i] : "";
+        if (a == "--hold-focus") holdFocus_ = true;
+        else if (a == "--test-bullets") testBullets = true;
+        else if (a == "--practice") play.practice = true;
+        else if (a == "--continued") endingContinued = true;
     }
     for (int i = 1; i + 1 < ctx.argc; ++i) {
         const std::string a = ctx.argv[i] ? ctx.argv[i] : "";
         if (a == "--anm-preview") previewFile = ctx.argv[i + 1];
         else if (a == "--anm-bg") previewBackground = ctx.argv[i + 1];
         else if (a == "--play") play.stage = std::atoi(ctx.argv[i + 1]), startPlay = true;
-        else if (a == "--shot") play.shotIndex = std::atoi(ctx.argv[i + 1]);
-        else if (a == "--difficulty") play.difficulty = std::atoi(ctx.argv[i + 1]);
+        else if (a == "--shot") play.shotIndex = std::clamp(std::atoi(ctx.argv[i + 1]), 0, 5);
+        else if (a == "--difficulty") play.difficulty = endingDifficulty = std::clamp(std::atoi(ctx.argv[i + 1]), 0, 5);
+        else if (a == "--lives") play.lifeCount = std::clamp(std::atoi(ctx.argv[i + 1]), 0, 4);
+        else if (a == "--ending") endingShot = std::clamp(std::atoi(ctx.argv[i + 1]), 0, 5);
         else if (a == "--stage-preview" && ctx.vfs) {
             std::string err;
             if (!background_.load(*ctx.vfs, *ctx.textures, anm_, rng_, std::atoi(ctx.argv[i + 1]), &err)) {
@@ -95,14 +117,15 @@ bool Th07Game::start(const GameContext& ctx) {
             }
         }
     }
+    if (play.difficulty >= Extra) play.stage = play.difficulty + 3, play.practice = false;
     if (!previewFile.empty() && ctx.vfs) startPreview(ctx, previewFile, previewBackground);
+    const bool preview = !previewVms_.empty() || background_.loaded();
 #else
     // The launcher's start options (GameActivity.getGameOptions()): shot type 0-5, difficulty
-    // 0-5 (4 Extra, 5 Phantasm: their own stage), stage 1-6, spare lives 0-4, practice. Play
-    // starts straight in that stage (the menus are not ported yet) when th07.dat and
-    // th07.exe are both 1.00b; otherwise the status screen says what is missing.
-    Gameplay::Setup play;
+    // 0-5 (4 Extra, 5 Phantasm: their own stage), stage 1-6, spare lives 0-4, practice, and
+    // "skip the title screen". Without the last one (or with it off) the title opens.
     const bool testBullets = false;
+    const bool preview = false;
     autoFire_ = ctx.controls.autoFire;
     const std::vector<int> options = androidIntArray("getGameOptions");
     if (options.size() >= 4) {
@@ -114,28 +137,34 @@ bool Th07Game::start(const GameContext& ctx) {
         play.lifeCount = std::clamp(options[3], 0, 4);
         play.practice = options.size() >= 5 && options[4] != 0 && play.difficulty < Extra;
     }
-    const bool startPlay = options.size() >= 4 && archive_;
+    startPlay = options.size() >= 6 && options[5] != 0;
 #endif
-    if (startPlay && ctx.vfs && exe_) {
+    if (archive_ && ctx.vfs && !preview) {
         rng_.seed(ctx.seed);
-        Gameplay::Resources res;
-        res.vfs = ctx.vfs;
-        res.textures = ctx.textures;
-        res.anm = &anm_;
-        res.rng = &rng_;
-        res.tables = &tables_;
-        res.sound = sound_.get();
-        res.music = music_.get();
-        res.text = ctx.text;
-        res.ui = ctx.ui;
-        game_ = std::make_unique<Gameplay>();
-        std::string err;
-        if (!game_->start(res, play, &err)) {
-            log::warn("Could not start stage {}: {}", play.stage, err);
-            game_.reset();
-        } else {
-            titleSongRequested_ = true;
-            game_->setTestPatterns(testBullets);
+        if (!ctx.text) fallbackText_ = std::make_unique<FallbackTextRenderer>();
+        Supervisor::Boot b;
+        b.vfs = ctx.vfs;
+        b.textures = ctx.textures;
+        b.text = ctx.text ? ctx.text : fallbackText_.get();
+        b.ui = ctx.ui;
+        b.sound = sound_.get();
+        b.music = music_.get();
+        b.tables = &tables_;
+        b.anm = &anm_;
+        b.rng = &rng_;
+        b.storageDir = ctx.storageDir;
+        b.verFile = verFile_;
+        b.exe = exeId_;
+        b.thbgm = thbgm_;
+        b.canPlay = exe_;
+        flow_ = std::make_unique<Supervisor>();
+        flow_->start(b);
+        titleSongRequested_ = true;
+        if (endingShot >= 0) {
+            flow_->startEnding(endingShot, endingDifficulty, endingContinued);
+        } else if (startPlay && exe_) {
+            if (!flow_->startGame(play)) log::warn("Could not start stage {}: the title opens instead", play.stage);
+            else if (flow_->game()) flow_->game()->setTestPatterns(testBullets);
         }
     }
     return true;
@@ -190,20 +219,16 @@ std::uint16_t buttonWord(const InputState& in) {
 }  // namespace
 
 void Th07Game::tick(const InputState& input) {
-    if (game_) {
-        std::uint16_t word = buttonWord(input);
-        if (autoFire_) word |= BtnShoot;
-        if (holdFocus_) word |= BtnFocus;
-        game_->tick(word);
-        std::string err;
-        if (!game_->stageAdvance(&err)) log::warn("Next stage: {}", err);
-        if (game_->finished()) quit_ = true;  // (no title screen yet: back to the launcher)
-        if (music_) {
-            music_->fadeStep();
-            music_->pump();
+    if (flow_) {
+        if (music_) music_->fadeStep();
+        flow_->setGameExtras(static_cast<std::uint16_t>((autoFire_ ? BtnShoot : 0) | (holdFocus_ ? BtnFocus : 0)));
+        flow_->pass(buttonWord(input));
+        if (flow_->quit()) {
+            flow_->shutdown();
+            quit_ = true;
         }
+        if (music_) music_->pump();
         if (sound_) sound_->flush();
-        if (input.quit) quit_ = true;
         ++frame_;
         return;
     }
@@ -224,8 +249,9 @@ void Th07Game::tick(const InputState& input) {
 }
 
 void Th07Game::render(SpriteSink& sink, float, const FrameInfo&) {
-    if (game_) {
-        game_->draw(sink);
+    // The supervisor's screens (the status screen below when the title cannot open).
+    if (flow_ && !(flow_->active() == FlowState::MainMenu && !flow_->mainMenu())) {
+        flow_->draw(sink);
         return;
     }
     if (!ui_) return;
@@ -264,7 +290,11 @@ void Th07Game::render(SpriteSink& sink, float, const FrameInfo&) {
 }
 
 void Th07Game::logStatus(const FrameInfo& frame) const {
-    log::info("fps {:.1f} | ticks {} | placeholder screen", frame.fps, frame.ticks);
+    if (!flow_) {
+        log::info("fps {:.1f} | ticks {} | status screen", frame.fps, frame.ticks);
+        return;
+    }
+    log::info("fps {:.1f} | ticks {} | state {}", frame.fps, frame.ticks, static_cast<int>(flow_->active()));
 }
 
 }  // namespace touhou::th07

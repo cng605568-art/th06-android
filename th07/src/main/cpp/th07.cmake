@@ -19,15 +19,21 @@ add_library(th07_game STATIC
   ${TH07_SRC}/th07/EclEx.cpp
   ${TH07_SRC}/th07/Effects.cpp
   ${TH07_SRC}/th07/Enemies.cpp
+  ${TH07_SRC}/th07/Ending.cpp
   ${TH07_SRC}/th07/ExeTables.cpp
+  ${TH07_SRC}/th07/FlowCommon.cpp
   ${TH07_SRC}/th07/GameConfig.cpp
   ${TH07_SRC}/th07/Gameplay.cpp
   ${TH07_SRC}/th07/Gui.cpp
   ${TH07_SRC}/th07/InGameMenu.cpp
+  ${TH07_SRC}/th07/MainMenu.cpp
+  ${TH07_SRC}/th07/MusicRoom.cpp
   ${TH07_SRC}/th07/Player.cpp
+  ${TH07_SRC}/th07/ResultScreen.cpp
   ${TH07_SRC}/th07/ScoreFile.cpp
   ${TH07_SRC}/th07/ShotData.cpp
   ${TH07_SRC}/th07/SoundPlayer.cpp
+  ${TH07_SRC}/th07/Supervisor.cpp
   ${TH07_SRC}/th07/Version.cpp
   ${TH07_SRC}/th07/World.cpp)
 target_include_directories(th07_game PUBLIC "${TH07_SRC}")
