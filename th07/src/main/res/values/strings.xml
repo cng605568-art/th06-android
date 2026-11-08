@@ -7,6 +7,7 @@
     <string name="play">Play</string>
     <string name="hint_import">Import th07.dat and th07.exe first (Game files, below). Without them the game only shows which files are missing.</string>
     <string name="hint_importing">Importing your files…</string>
+    <string name="hint_title">Opens the title screen</string>
     <string name="hint_stage">Starts at stage %1$d  ·  %2$s  ·  %3$s</string>
     <string name="hint_extra">Starts the Extra stage  ·  %1$s</string>
     <string name="hint_phantasm">Starts the Phantasm stage  ·  %1$s</string>
@@ -54,7 +55,8 @@
     <string name="import_busy">An import is still running.</string>
 
     <string name="start_title">Start</string>
-    <string name="start_body">The title screen and menus are not ported yet: Play goes straight into the stage chosen here, and nothing (scores, replays) is saved yet.</string>
+    <string name="start_body">Play opens the game\'s title screen: choose the difficulty, character and shot there; scores and play data are saved (replays are not ported yet). For testing, a stage can be started directly instead.</string>
+    <string name="start_skip_title">Skip the title screen (start the chosen stage directly)</string>
     <string name="start_shot">Character and shot type</string>
     <string name="start_difficulty">Difficulty (Extra and Phantasm have their own stage)</string>
     <string name="start_stage">Stage</string>

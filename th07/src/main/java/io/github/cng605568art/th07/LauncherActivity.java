@@ -62,6 +62,8 @@ public class LauncherActivity extends Activity {
     private LinearLayout stageRow;
     private LinearLayout livesRow;
     private CheckBox practice;
+    private CheckBox skipTitle;
+    private LinearLayout directRows;
     private boolean ready;     // th07.dat and th07.exe are imported and right
     private boolean imported;  // any of the files is imported
 
@@ -367,13 +369,25 @@ public class LauncherActivity extends Activity {
 
     private void addStartSection(LinearLayout page) {
         LinearLayout card = ui.card(page, getString(R.string.start_title), getString(R.string.start_body));
-        card.addView(ui.caption(getString(R.string.start_shot)), Ui.matchWrap());
-        card.addView(ui.spinner(getResources().getStringArray(R.array.shot_types), Options.shotType(this), v -> {
+        skipTitle = ui.check(getString(R.string.start_skip_title), Options.skipTitle(this));
+        skipTitle.setOnCheckedChangeListener((b, checked) -> {
+            Options.setSkipTitle(this, checked);
+            updateStartRows();
+            updatePlayHint();
+        });
+        card.addView(skipTitle, ui.matchWrap(6, 0));
+
+        // The direct start's choices, shown while the title screen is skipped.
+        directRows = new LinearLayout(this);
+        directRows.setOrientation(LinearLayout.VERTICAL);
+        card.addView(directRows, Ui.matchWrap());
+        directRows.addView(ui.caption(getString(R.string.start_shot)), Ui.matchWrap());
+        directRows.addView(ui.spinner(getResources().getStringArray(R.array.shot_types), Options.shotType(this), v -> {
             Options.setShotType(this, v);
             updatePlayHint();
         }), Ui.matchWrap());
-        card.addView(ui.caption(getString(R.string.start_difficulty)), Ui.matchWrap());
-        card.addView(ui.spinner(getResources().getStringArray(R.array.difficulties), Options.difficulty(this), v -> {
+        directRows.addView(ui.caption(getString(R.string.start_difficulty)), Ui.matchWrap());
+        directRows.addView(ui.spinner(getResources().getStringArray(R.array.difficulties), Options.difficulty(this), v -> {
             Options.setDifficulty(this, v);
             updateStartRows();
             updatePlayHint();
@@ -386,26 +400,27 @@ public class LauncherActivity extends Activity {
             Options.setStage(this, v + 1);
             updatePlayHint();
         }), Ui.matchWrap());
-        card.addView(stageRow, Ui.matchWrap());
+        directRows.addView(stageRow, Ui.matchWrap());
 
         livesRow = new LinearLayout(this);
         livesRow.setOrientation(LinearLayout.VERTICAL);
         livesRow.addView(ui.caption(getString(R.string.start_lives)), Ui.matchWrap());
         livesRow.addView(ui.spinner(getResources().getStringArray(R.array.lives), Options.lives(this),
                 v -> Options.setLives(this, v)), Ui.matchWrap());
-        card.addView(livesRow, Ui.matchWrap());
+        directRows.addView(livesRow, Ui.matchWrap());
 
         practice = ui.check(getString(R.string.start_practice), Options.practice(this));
         practice.setOnCheckedChangeListener((b, checked) -> {
             Options.setPractice(this, checked);
             updateStartRows();
         });
-        card.addView(practice, ui.matchWrap(6, 0));
+        directRows.addView(practice, ui.matchWrap(6, 0));
         updateStartRows();
     }
 
     /** Extra and Phantasm have their own stage and lives; practice sets its own lives. */
     private void updateStartRows() {
+        directRows.setVisibility(Options.skipTitle(this) ? View.VISIBLE : View.GONE);
         boolean special = Options.difficulty(this) >= Options.EXTRA;
         stageRow.setVisibility(special ? View.GONE : View.VISIBLE);
         practice.setVisibility(special ? View.GONE : View.VISIBLE);
@@ -420,6 +435,10 @@ public class LauncherActivity extends Activity {
         }
         if (!ready) {
             playHint.setText(R.string.hint_import);
+            return;
+        }
+        if (!Options.skipTitle(this)) {
+            playHint.setText(R.string.hint_title);
             return;
         }
         String shot = getResources().getStringArray(R.array.shot_types)[Options.shotType(this)];

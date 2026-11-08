@@ -5,8 +5,8 @@ import android.content.SharedPreferences;
 
 /**
  * Choices made in the launcher, read by the native engine through GameActivity: the start
- * options (shot type, difficulty, stage, spare lives, practice), the touch controls and the
- * display. Kept in this app's own preferences file.
+ * options (shot type, difficulty, stage, spare lives, practice, skipping the title screen),
+ * the touch controls and the display. Kept in this app's own preferences file.
  */
 final class Options {
     private static final String PREFS = "th07_options";
@@ -15,6 +15,7 @@ final class Options {
     private static final String KEY_STAGE = "stage";
     private static final String KEY_LIVES = "lives";
     private static final String KEY_PRACTICE = "practice";
+    private static final String KEY_SKIP_TITLE = "skip_title";
     private static final String KEY_CONTROLS = "controls_";
 
     /** Difficulty indices as the engine numbers them. */
@@ -36,19 +37,24 @@ final class Options {
     /** Spare lives at the start, 0..4 (the game's default is 2). */
     static int lives(Context ctx) { return clamp(prefs(ctx).getInt(KEY_LIVES, 2), 0, 4); }
     static boolean practice(Context ctx) { return prefs(ctx).getBoolean(KEY_PRACTICE, false); }
+    /** Start the chosen stage straight away instead of the game's title screen (default off). */
+    static boolean skipTitle(Context ctx) { return prefs(ctx).getBoolean(KEY_SKIP_TITLE, false); }
 
     static void setShotType(Context ctx, int v) { prefs(ctx).edit().putInt(KEY_SHOT, v).apply(); }
     static void setDifficulty(Context ctx, int v) { prefs(ctx).edit().putInt(KEY_DIFFICULTY, v).apply(); }
     static void setStage(Context ctx, int v) { prefs(ctx).edit().putInt(KEY_STAGE, v).apply(); }
     static void setLives(Context ctx, int v) { prefs(ctx).edit().putInt(KEY_LIVES, v).apply(); }
     static void setPractice(Context ctx, boolean v) { prefs(ctx).edit().putBoolean(KEY_PRACTICE, v).apply(); }
+    static void setSkipTitle(Context ctx, boolean v) { prefs(ctx).edit().putBoolean(KEY_SKIP_TITLE, v).apply(); }
 
     /**
      * GameActivity.getGameOptions(): {shot type 0..5, difficulty 0..5, stage 1..6, spare lives
-     * 0..4, practice 0/1}. The engine starts Extra at stage 7 and Phantasm at stage 8.
+     * 0..4, practice 0/1, skip the title screen 0/1}. The engine starts Extra at stage 7 and
+     * Phantasm at stage 8; without the last value (or with 0) it opens the title screen and
+     * the other values are not used.
      */
     static int[] game(Context ctx) {
-        return new int[] {shotType(ctx), difficulty(ctx), stage(ctx), lives(ctx), practice(ctx) ? 1 : 0};
+        return new int[] {shotType(ctx), difficulty(ctx), stage(ctx), lives(ctx), practice(ctx) ? 1 : 0, skipTitle(ctx) ? 1 : 0};
     }
 
     // ---- touch controls (GameActivity.getControlOptions()) ---------------------------
