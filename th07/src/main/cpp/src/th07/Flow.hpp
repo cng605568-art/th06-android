@@ -9,7 +9,9 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -32,6 +34,7 @@ class BgmPlayer;
 class SoundPlayer;
 struct ExeTables;
 struct GameConfig;
+struct ReplayFile;
 
 // The supervisor's states (spec 1.4.1).
 enum class FlowState : int {
@@ -65,6 +68,8 @@ class MenuInput {
         current_ = previous_ = 0;
         repeat_ = false;
     }
+    // The pass after a slow-mode skip: the new sample is ORed in, nothing shifts (spec 1.5.4).
+    void merge(std::uint16_t raw) { current_ = static_cast<std::uint16_t>(current_ | raw); }
     std::uint16_t current() const { return current_; }
     std::uint16_t previous() const { return previous_; }
     bool repeating() const { return repeat_; }
@@ -108,6 +113,17 @@ struct FlowContext {
     bool practice = false;
     int stage = 0;  // the game state's stage number (the practice stage to come back to)
     bool replay = false, demo = false;
+    // Replays (spec 7): their folder (the app's storage + "replay/"; empty: none),
+    // th07_0100b.ver for their check, the replay to play (chosen in the replay menu, or the
+    // demo) with its playback mode, the demo index (the first demo of a session is 0), and the
+    // result screen's save of the game's recording into a file with a name.
+    std::string replayDir;
+    std::span<const std::uint8_t> verFile;
+    std::shared_ptr<const ReplayFile> replayFile;
+    int playbackMode = 0;
+    int demoIndex = 2;
+    std::function<bool(const std::string& path, const std::string& name)> saveReplay;
+    std::function<bool()> replayRecorded;  // the game left a recording (nothing to save otherwise)
     int maxContinues = 3;
     bool phantasmSeen = true;  // "unlocked" when the splash check last ran
     bool timingBad = false;    // never set in the port

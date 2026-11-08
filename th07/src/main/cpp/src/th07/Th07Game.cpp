@@ -96,6 +96,11 @@ bool Th07Game::start(const GameContext& ctx) {
     // or a stage background on their own.
     std::string previewFile, previewBackground;
     bool testBullets = false;
+    // --replay FILE [--replay-stage N (1-7)] [--replay-mode M (0-2)] plays a replay file;
+    // --demo N plays attract demo N (0-2) from th07.dat; --replay-check compares each played
+    // frame's event flags with the recorded ones; --replay-log N logs the state every N frames.
+    std::string replayPath;
+    int replayStage = -1, replayMode = 0, demoIndex = -1;
     autoFire_ = ctx.controls.autoFire;
     for (int i = 1; i < ctx.argc; ++i) {
         const std::string a = ctx.argv[i] ? ctx.argv[i] : "";
@@ -104,10 +109,16 @@ bool Th07Game::start(const GameContext& ctx) {
         else if (a == "--practice") play.practice = true;
         else if (a == "--continued") endingContinued = true;
         else if (a == "--unlock-all") unlockAll = true;
+        else if (a == "--replay-check") check_.on = true;
     }
     for (int i = 1; i + 1 < ctx.argc; ++i) {
         const std::string a = ctx.argv[i] ? ctx.argv[i] : "";
-        if (a == "--anm-preview") previewFile = ctx.argv[i + 1];
+        if (a == "--replay") replayPath = ctx.argv[i + 1];
+        else if (a == "--replay-stage") replayStage = std::clamp(std::atoi(ctx.argv[i + 1]), 1, 7) - 1;
+        else if (a == "--replay-mode") replayMode = std::clamp(std::atoi(ctx.argv[i + 1]), 0, 2);
+        else if (a == "--demo") demoIndex = std::clamp(std::atoi(ctx.argv[i + 1]), 0, 2);
+        else if (a == "--replay-log") check_.logEvery = std::max(0, std::atoi(ctx.argv[i + 1]));
+        else if (a == "--anm-preview") previewFile = ctx.argv[i + 1];
         else if (a == "--anm-bg") previewBackground = ctx.argv[i + 1];
         else if (a == "--play") play.stage = std::atoi(ctx.argv[i + 1]), startPlay = true;
         else if (a == "--shot") play.shotIndex = std::clamp(std::atoi(ctx.argv[i + 1]), 0, 5);
@@ -143,6 +154,8 @@ bool Th07Game::start(const GameContext& ctx) {
         play.practice = options.size() >= 5 && options[4] != 0 && play.difficulty < Extra;
     }
     startPlay = options.size() >= 6 && options[5] != 0;
+    const std::string replayPath;
+    const int replayStage = -1, replayMode = 0, demoIndex = -1;
 #endif
     if (archive_ && ctx.vfs && !preview) {
         rng_.seed(ctx.seed);
@@ -166,8 +179,39 @@ bool Th07Game::start(const GameContext& ctx) {
         flow_->start(b);
         titleSongRequested_ = true;
         if (unlockAll) flow_->unlockAll();
+        if (check_.on || check_.logEvery > 0) installReplayCheck();
+        std::shared_ptr<ReplayFile> replay;
+        if (!replayPath.empty() || demoIndex >= 0) {
+            std::optional<std::vector<std::uint8_t>> bytes;
+            if (demoIndex >= 0) {
+                bytes = ctx.vfs->read(std::format("data/demo/demorpy{}.rpy", demoIndex));
+            } else if (std::FILE* f = std::fopen(replayPath.c_str(), "rb")) {
+                bytes.emplace();
+                std::uint8_t buf[8192];
+                for (std::size_t n; (n = std::fread(buf, 1, sizeof buf, f)) > 0;) bytes->insert(bytes->end(), buf, buf + n);
+                std::fclose(f);
+            }
+            std::string err = "cannot be read";
+            auto parsed = bytes ? ReplayFile::parse(*bytes, verFile_, &err) : std::nullopt;
+            if (parsed) replay = std::make_shared<ReplayFile>(std::move(*parsed));
+            else log::warn("Replay {}: {}", demoIndex >= 0 ? std::format("demo {}", demoIndex) : replayPath, err);
+            check_.file = replay;
+        }
         if (endingShot >= 0) {
             flow_->startEnding(endingShot, endingDifficulty, endingContinued, endingScore);
+        } else if (replay && exe_) {
+            const ReplaySummary& s = replay->summary;
+            log::info("th07: replay {} {} \"{}\" {} score {}0, stages {:07b}", shotName7(s.shot()), difficultyName(s.difficulty()), s.name(),
+                      s.date(), s.score(), replay->stageMask());
+            for (int i = 0; i < kReplayStages; ++i) {
+                const ReplayStage& st = replay->stages[static_cast<std::size_t>(i)];
+                if (!st.present) continue;
+                log::info("th07: replay block {}: end score {}0, seed {:04x}, {} entries, lives {} bombs {} power {} rank {}", i + 1,
+                          st.endScore, st.seed, st.entries.size(), st.lives, st.bombs, st.power, st.rank);
+            }
+            if (!flow_->startReplay(replay, replayStage, demoIndex >= 0 ? 0 : replayMode, demoIndex >= 0, std::max(demoIndex, 0))) {
+                log::warn("Could not start the replay: the title opens instead");
+            }
         } else if (startPlay && exe_) {
             if (!flow_->startGame(play)) log::warn("Could not start stage {}: the title opens instead", play.stage);
             else if (flow_->game()) flow_->game()->setTestPatterns(testBullets);
@@ -313,6 +357,64 @@ Game::CaptureRect Th07Game::captureRect() const {
     CaptureRect r;
     if (Gameplay* g = flow_ ? flow_->game() : nullptr) g->inGameMenu().captureRect(r.x, r.y, r.w, r.h);
     return r;
+}
+
+void Th07Game::installReplayCheck() {
+    flow_->setPlaybackObserver([this](int stage, std::int32_t frame, const ReplayEntry& rec, std::uint32_t flags) {
+        ReplayCheck& c = check_;
+        const Gameplay* game = flow_->game();
+        if (!game) return;
+        const GameState& g = game->state();
+        if (stage != c.stage) {
+            closeReplayCheckStage();
+            c = ReplayCheck{c.on, c.logEvery, stage, 0, 0, -1, 0, g.livesI(), 0, std::move(c.summary), c.file};
+        }
+        ++c.frames;
+        if (g.livesI() < c.lastLives) ++c.deaths;
+        c.lastLives = g.livesI();
+        c.lastScore = g.score;
+        // (Bit 0x0100 is "paused before this frame", the recording's own; the terminators'
+        // uninitialised flags are never compared, playback ends before them.)
+        const std::uint32_t want = rec.flags & ~0x0100u, got = flags & 0xFFFFu & ~0x0100u;
+        if (c.on && want != got) {
+            ++c.mismatches;
+            if (c.firstMismatch < 0) c.firstMismatch = frame;
+            if (c.mismatches <= 12) {
+                const Vec3f p = game->player().position();
+                log::info("th07 replay check: stage {} frame {}: recorded flags {:04x}, simulated {:04x} (score {}0, lives {}, bombs {}, "
+                          "power {}, player ({:.3f}, {:.3f}), seed {:04x})",
+                          stage, frame, want, got, g.score, g.livesI(), g.bombsI(), g.powerI(), p.x, p.y, flow_->context().rng->currentSeed());
+            }
+        }
+        if (c.logEvery > 0 && frame % c.logEvery == 0) {
+            const Vec3f p = game->player().position();
+            log::info("th07 replay: stage {} frame {} score {}0 lives {} bombs {} power {} graze {} cherry {} rank {} player ({:.3f}, {:.3f}) seed {:04x}",
+                      stage, frame, g.score, g.livesI(), g.bombsI(), g.powerI(), g.totalGraze, g.cherry, g.rank, p.x, p.y,
+                      flow_->context().rng->currentSeed());
+        }
+    });
+}
+
+void Th07Game::closeReplayCheckStage() const {
+    ReplayCheck& c = check_;
+    if (c.stage <= 0 || c.frames == 0) return;
+    const int index = c.stage >= 7 ? 6 : c.stage - 1;
+    std::string recorded = "?";
+    if (c.file && c.file->hasStage(index)) {
+        const ReplayStage& st = c.file->stages[static_cast<std::size_t>(index)];
+        // Recorded frames: the entries less entry 0 and the terminators (one, or two for the last block).
+        const bool last = index == 6 || !c.file->hasStage(index + 1);
+        const std::size_t n = st.entries.size() > (last ? 3u : 2u) ? st.entries.size() - (last ? 3u : 2u) : 0;
+        recorded = std::format("{}0 after {} frames", st.endScore, n);
+    }
+    c.summary.push_back(std::format("stage {}: {} frames played, {} with other event flags (first at {}), {} lives lost; score {}0 (recorded {})",
+                                    c.stage, c.frames, c.mismatches, c.firstMismatch, c.deaths, c.lastScore, recorded));
+    c.frames = 0;
+}
+
+void Th07Game::logSummary() const {
+    closeReplayCheckStage();
+    for (const std::string& s : check_.summary) log::info("th07 replay check: {}", s);
 }
 
 void Th07Game::logStatus(const FrameInfo& frame) const {

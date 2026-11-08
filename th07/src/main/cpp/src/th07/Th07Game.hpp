@@ -48,7 +48,7 @@ class Th07Game final : public Game {
     CaptureRect captureRect() const override;
 
     void logStatus(const FrameInfo& frame) const override;
-    void logSummary() const override {}
+    void logSummary() const override;
     void devCommand(DevCommand) override {}
 
   private:
@@ -81,6 +81,22 @@ class Th07Game final : public Game {
     bool titleSongRequested_ = false;
     std::uint64_t frame_ = 0;
     bool quit_ = false;
+    // Desktop --replay-check: each played-back frame's event flags against the recorded ones
+    // (the first mismatch of each stage is logged); --replay-log N: the state every N frames.
+    struct ReplayCheck {
+        bool on = false;
+        int logEvery = 0;
+        int stage = 0;
+        std::int32_t frames = 0, mismatches = 0;
+        std::int32_t firstMismatch = -1;  // in the current stage
+        std::uint32_t lastScore = 0;
+        int lastLives = 0, deaths = 0;
+        std::vector<std::string> summary;
+        std::shared_ptr<const ReplayFile> file;
+    };
+    mutable ReplayCheck check_;
+    void installReplayCheck();
+    void closeReplayCheckStage() const;
     // The supervisor (declared last: it goes first, while the ANM library, music and sound
     // it uses still exist). Desktop --play STAGE [--shot N] [--difficulty D] [--practice]
     // and the launcher's "skip the title screen" start a game straight away.

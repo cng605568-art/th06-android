@@ -49,9 +49,14 @@ class Gui final : public StageGui, public PopupSink {
     void clearNextStageRequest() { nextStage_ = false; }
     bool gameFinished() const { return gameFinished_; }
     // The next-level opcode at the end of the game: the result screen (practice, Extra,
-    // Phantasm) or the ending (stage 6).
-    enum class EndRequest : std::uint8_t { None, Results, Ending };
+    // Phantasm), the ending (stage 6), or the end of a replay's playback.
+    enum class EndRequest : std::uint8_t { None, Results, Ending, ReplayEnd };
     EndRequest endRequest() const { return endRequest_; }
+    // The dialogue may be skipped (Skip held; replays fast-forward it).
+    bool dialogueSkippable() const { return skippable_; }
+    // The attract demo's marker (ascii script 7), ticked by the ASCII manager while on.
+    void setDemo(bool on) { demo_ = on; demoMarker_ = AnmVm{}; demoStarted_ = false; }
+    void drawDemoMarker(SpriteSink& sink);
     std::uint32_t frame() const { return frame_; }
     bool stageFinished() const { return stageClear_.active && stageClear_.vm.has(AnmVm::Stopped); }
 
@@ -168,7 +173,10 @@ class Gui final : public StageGui, public PopupSink {
     std::int32_t clearCherryMax_ = 0;
     std::uint32_t clearBonus_ = 0;
     bool nextStage_ = false;
+    bool nextStageRaised_ = false;  // raised at the opcode, a request from the next update on
     bool gameFinished_ = false;
+    bool demo_ = false, demoStarted_ = false;
+    AnmVm demoMarker_;
     EndRequest endRequest_ = EndRequest::None;
 };
 
