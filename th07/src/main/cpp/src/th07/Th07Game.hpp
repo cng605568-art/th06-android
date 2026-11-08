@@ -59,8 +59,9 @@ class Th07Game final : public Game {
     void startPreview(const GameContext& ctx, const std::string& file, const std::string& background);
     AnmLibrary anm_;
     ZunRng rng_;
-    // Desktop developer option --play STAGE [--shot N] [--difficulty D] [--practice]: straight
-    // into a stage (until the menus are ported).
+    // Desktop developer option --play STAGE [--shot N] [--difficulty D] [--practice], and on
+    // Android the launcher's start options (GameActivity.getGameOptions()): straight into a
+    // stage (until the menus are ported).
     std::unique_ptr<Gameplay> game_;
     bool autoFire_ = false;  // the launcher's "Shot is held during play"
     bool holdFocus_ = false;  // desktop --hold-focus

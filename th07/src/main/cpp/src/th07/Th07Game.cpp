@@ -10,6 +10,12 @@
 #include "gfx/SpriteSink.hpp"
 #include "io/Vfs.hpp"
 #include "th07/Version.hpp"
+#if defined(__ANDROID__)
+#include <algorithm>
+#include <vector>
+
+#include "platform/AndroidStorage.hpp"
+#endif
 
 namespace touhou::th07 {
 
@@ -90,6 +96,26 @@ bool Th07Game::start(const GameContext& ctx) {
         }
     }
     if (!previewFile.empty() && ctx.vfs) startPreview(ctx, previewFile, previewBackground);
+#else
+    // The launcher's start options (GameActivity.getGameOptions()): shot type 0-5, difficulty
+    // 0-5 (4 Extra, 5 Phantasm: their own stage), stage 1-6, spare lives 0-4, practice. Play
+    // starts straight in that stage (the menus are not ported yet) when th07.dat and
+    // th07.exe are both 1.00b; otherwise the status screen says what is missing.
+    Gameplay::Setup play;
+    const bool testBullets = false;
+    autoFire_ = ctx.controls.autoFire;
+    const std::vector<int> options = androidIntArray("getGameOptions");
+    if (options.size() >= 4) {
+        play.shotIndex = std::clamp(options[0], 0, 5);
+        play.difficulty = std::clamp(options[1], 0, 5);
+        play.stage = play.difficulty == Extra      ? 7
+                     : play.difficulty == Phantasm ? 8
+                                                   : std::clamp(options[2], 1, 6);
+        play.lifeCount = std::clamp(options[3], 0, 4);
+        play.practice = options.size() >= 5 && options[4] != 0 && play.difficulty < Extra;
+    }
+    const bool startPlay = options.size() >= 4 && archive_;
+#endif
     if (startPlay && ctx.vfs && exe_) {
         rng_.seed(ctx.seed);
         Gameplay::Resources res;
@@ -112,7 +138,6 @@ bool Th07Game::start(const GameContext& ctx) {
             game_->setTestPatterns(testBullets);
         }
     }
-#endif
     return true;
 }
 
