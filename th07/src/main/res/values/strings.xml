@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">TH07 Port</string>
+    <string name="header_title" translatable="false">東方妖々夢</string>
+    <string name="header_subtitle" translatable="false">Perfect Cherry Blossom</string>
+    <string name="header_tag">Android port  ·  plays your own copy of the game (version 1.00b)</string>
+    <string name="play">Play</string>
+    <string name="hint_import">Import th07.dat and th07.exe first (Game files, below). Without them the game only shows which files are missing.</string>
+    <string name="hint_importing">Importing your files…</string>
+    <string name="hint_stage">Starts at stage %1$d  ·  %2$s  ·  %3$s</string>
+    <string name="hint_extra">Starts the Extra stage  ·  %1$s</string>
+    <string name="hint_phantasm">Starts the Phantasm stage  ·  %1$s</string>
+
+    <string name="files_title">Game files</string>
+    <string name="files_body">Copy your own Perfect Cherry Blossom (version 1.00b) to this phone, then choose its folder here, or pick the files themselves. th07.dat and th07.exe are needed; thbgm.dat adds the music. The files are copied into the app\'s own storage, so you can delete the folder afterwards.</string>
+    <string name="files_choose_folder">Choose game folder</string>
+    <string name="files_choose_files">Choose files</string>
+    <string name="files_remove">Remove imported files</string>
+    <string name="files_remove_title">Remove the imported game files?</string>
+    <string name="files_remove_body">th07.dat, th07.exe and thbgm.dat are deleted from the app\'s storage. Your own copy is not touched; import it again to play.</string>
+    <string name="files_remove_ok">Remove</string>
+    <string name="files_removed">The imported files were removed.</string>
+    <string name="files_no_picker">This phone has no file picker for that.</string>
+    <string name="cancel">Cancel</string>
+
+    <string name="status_ok_size">%1$.1f MB</string>
+    <string name="status_ok_exe">version 1.00b</string>
+    <string name="status_missing_needed">missing (needed)</string>
+    <string name="status_missing_optional">missing (optional: music)</string>
+    <string name="status_bad_dat">damaged (not a PBG4 archive)</string>
+    <string name="status_bad_exe">not version 1.00b</string>
+    <string name="status_bad_bgm">not the game\'s music file</string>
+    <string name="status_ready">Ready to play, with music.</string>
+    <string name="status_ready_no_music">Ready to play (no music: thbgm.dat is optional).</string>
+    <string name="status_not_ready">th07.dat and th07.exe are needed to play.</string>
+
+    <string name="import_starting">Reading your files…</string>
+    <string name="import_scanning_path">Looking in %1$s</string>
+    <string name="import_checking">Checking %1$s…</string>
+    <string name="import_copying">Copying %1$s…  %2$d of %3$d MB</string>
+    <string name="import_copying_unknown">Copying %1$s…  %2$d MB</string>
+    <string name="import_done_file">%1$s: imported (%2$.1f MB).</string>
+    <string name="import_done_exe">%1$s: imported (version 1.00b).</string>
+    <string name="import_exe_wrong">%1$s is not version 1.00b of th07.exe, so it was not imported (this port reads the 1.00b program).</string>
+    <string name="import_not_found">%1$s: not found (needed to play).</string>
+    <string name="import_bgm_not_found">thbgm.dat: not found (optional: it adds the music).</string>
+    <string name="import_kept">%1$s: not found; the copy imported before is kept.</string>
+    <string name="import_nothing">None of the game\'s files (th07.dat, th07.exe, thbgm.dat) were found there.</string>
+    <string name="import_skipped">Skipped (not one of the game\'s files): %1$s</string>
+    <string name="import_failed">The import stopped: %1$s</string>
+    <string name="import_no_space">Not enough free space for %1$s: %2$d MB needed, %3$d MB free.</string>
+    <string name="import_cannot_read">cannot read %1$s</string>
+    <string name="import_cannot_store">cannot create the app\'s game folder</string>
+    <string name="import_busy">An import is still running.</string>
+
+    <string name="start_title">Start</string>
+    <string name="start_body">The title screen and menus are not ported yet: Play goes straight into the stage chosen here, and nothing (scores, replays) is saved yet.</string>
+    <string name="start_shot">Character and shot type</string>
+    <string name="start_difficulty">Difficulty (Extra and Phantasm have their own stage)</string>
+    <string name="start_stage">Stage</string>
+    <string name="start_lives">Spare lives</string>
+    <string name="start_practice">Practice start (full power from stage 2 on; practice runs start with 8 spare lives)</string>
+
+    <string name="controls_title">Controls</string>
+    <string name="controls_body">Touch controls for the game (a Bluetooth or USB gamepad works too).</string>
+    <string name="controls_movement">Movement</string>
+    <string name="controls_drag_speed">Drag speed (how far your character moves for your finger\'s travel)</string>
+    <string name="controls_button_size">Button size</string>
+    <string name="controls_opacity">Button opacity</string>
+    <string name="controls_autofire">Auto-fire (Shot is always held while you play)</string>
+    <string name="controls_focus_toggle">Focus button toggles (tap on, tap off)</string>
+    <string name="controls_left">Left-handed (buttons on the left)</string>
+
+    <string name="display_title">Display</string>
+    <string name="display_body">Upright play puts the playfield across the whole width with the score below it and the controls underneath.</string>
+    <string name="display_screen">Screen</string>
+    <string name="display_scaling">Scaling</string>
+    <string name="display_scanlines">CRT scanlines</string>
+
+    <string name="help_title">Help</string>
+    <string name="help_version">Version %1$s (build %2$d).</string>
+    <string name="help_bug">Found a bug? Save the log (it stays on your phone until you share it) and attach it to your report.</string>
+    <string name="help_save_log">Save a log for a bug report</string>
+    <string name="help_log_saved">Log saved. Attach it to your bug report.</string>
+    <string name="help_log_failed">Could not save the log: %1$s</string>
+    <string name="err_cannot_write">cannot write there</string>
+
+    <string name="footer">A fan-made port for your own copy of 東方妖々夢 ～ Perfect Cherry Blossom (Team Shanghai Alice). No game files are included.</string>
+
+    <string-array name="shot_types" translatable="false">
+        <item>Reimu A</item>
+        <item>Reimu B</item>
+        <item>Marisa A</item>
+        <item>Marisa B</item>
+        <item>Sakuya A</item>
+        <item>Sakuya B</item>
+    </string-array>
+    <string-array name="difficulties" translatable="false">
+        <item>Easy</item>
+        <item>Normal</item>
+        <item>Hard</item>
+        <item>Lunatic</item>
+        <item>Extra</item>
+        <item>Phantasm</item>
+    </string-array>
+    <string-array name="stages">
+        <item>Stage 1</item>
+        <item>Stage 2</item>
+        <item>Stage 3</item>
+        <item>Stage 4</item>
+        <item>Stage 5</item>
+        <item>Stage 6</item>
+    </string-array>
+    <string-array name="lives">
+        <item>0</item>
+        <item>1</item>
+        <item>2 (the game\'s default)</item>
+        <item>3</item>
+        <item>4</item>
+    </string-array>
+    <string-array name="move_modes">
+        <item>Drag anywhere (touchpad)</item>
+        <item>D-pad</item>
+    </string-array>
+    <string-array name="button_sizes">
+        <item>Small</item>
+        <item>Normal</item>
+        <item>Large</item>
+        <item>Extra large</item>
+    </string-array>
+    <string-array name="opacities">
+        <item>Faint</item>
+        <item>Light</item>
+        <item>Normal</item>
+        <item>Solid</item>
+    </string-array>
+    <string-array name="layouts">
+        <item>Landscape (sideways)</item>
+        <item>Portrait (upright; playfield fills the width)</item>
+    </string-array>
+    <string-array name="scalings">
+        <item>Smooth</item>
+        <item>Sharp pixels</item>
+        <item>Pixel-perfect (whole multiples)</item>
+    </string-array>
+</resources>

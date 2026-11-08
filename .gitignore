@@ -5,6 +5,8 @@
 /build*/
 /th06/build/
 /th06/.cxx/
+/th07/build/
+/th07/.cxx/
 /.gradle/
 /local.properties
 *.apk
