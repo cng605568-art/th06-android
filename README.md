@@ -115,6 +115,34 @@ app also pauses. A Bluetooth/USB gamepad works too (the touch overlay hides itse
 screen). Advanced: archives placed in `Android/data/io.github.cng605568art.th06/files/gamedata/`
 (e.g. with `adb push`) are also loaded.
 
+## Perfect Cherry Blossom (th07) app
+
+A second app, **TH07 Port** (`io.github.cng605568art.th07`, module `th07/`), runs on the same
+engine and installs next to the th06 app. It is early: the title screen and menus are not
+ported yet, so **Play** goes straight into a stage, and nothing (scores, replays) is saved.
+
+* **Get it:** every CI run also builds it, signed with the same key, as its own artifact
+  `th07-android-<version>` (it is not attached to GitHub Releases yet). Locally, with the
+  Android SDK: `gradle :th07:assembleRelease` (APK in `th07/build/outputs/apk/release/`).
+* **Files from your own copy (version 1.00b):** `th07.dat` and `th07.exe` are needed (the
+  game data, and the program the sound effects and other tables are read from, recognised by
+  its SHA-256); `thbgm.dat` is optional and adds the music (its index, `thbgm.fmt`, is inside
+  `th07.dat`).
+* **Import:** copy your game folder to the phone, then **TH07 Port → Choose game folder** (or
+  **Choose files** to pick them one by one). Each file is recognised by its contents and
+  copied into the app's own storage (`files/gamedata/`), so the folder can be deleted
+  afterwards; the file list shows what is there and whether it is the right file, and
+  **Remove imported files** deletes the copies.
+* **Start options:** character and shot type (Reimu A/B, Marisa A/B, Sakuya A/B), difficulty
+  (Easy to Lunatic, or Extra and Phantasm with their own stage), stage 1–6, spare lives 0–4
+  and a practice start; touch controls (drag or D-pad, drag speed, button size, opacity,
+  auto-fire, latching Focus, left-handed) and display (landscape or portrait, scaling,
+  scanlines) work as in th06. Back returns to the launcher. Without a 1.00b `th07.dat` and
+  `th07.exe` the game shows a status screen saying what is missing. **Save a log** in Help
+  keeps a bug report on the phone until you share it.
+* Desktop development build: `cmake -S th07/src/main/cpp -B build-th07 && cmake --build build-th07`,
+  then `./build-th07/th07_desktop /path/to/game/folder --play 1 --shot 0 --difficulty 1`.
+
 ## Languages
 
 The launcher speaks English, 日本語, 简体中文, 繁體中文 and Bahasa Melayu (the **Language**
@@ -151,7 +179,8 @@ icon (the picture over shrine red) with round and square fallbacks for older lau
 ## Layout
 
 The code is split so more games can share it: a shared engine (`engine/`) and one module per
-game (`th06/` today). Each game is its own Android app; a fix in the engine reaches every game.
+game (`th06/`, and `th07/` in progress). Each game is its own Android app; a fix in the engine
+reaches every game.
 
 ```
 .github/workflows/build.yml   CI: tests, APK, signing, releases
@@ -195,7 +224,13 @@ th06/                         Embodiment of Scarlet Devil: the Android app modul
     src/th06/SoundPlayer      SoundIdx table, frame queue
     src/th06/Translation      which patch files th06 reads and how (dialogue box numbering)
     src/th06/Stage            loads a stage from the archives, runs one tick, draws
-tests/                        host tests run by CI before every APK build (engine core + th06)
+th07/                         Perfect Cherry Blossom: the second Android app module
+  build.gradle                same SDK, NDK, ABIs and signing as th06; app id ...th07
+  src/main/java/...           LauncherActivity (import, start options), GameFiles (copies and
+                              checks th07.dat / th07.exe / thbgm.dat), GameActivity (SDL host + JNI)
+  src/main/cpp/               CMakeLists.txt (libSDL2.so + libmain.so, desktop build), th07.cmake,
+                              src/th07/ (Th07Game reads the launcher's start options on Android)
+tests/                        host tests run by CI before every APK build (engine core, th06, th07)
 ```
 
 Local builds (optional, Linux/macOS): `bash scripts/fetch_deps.sh`, then

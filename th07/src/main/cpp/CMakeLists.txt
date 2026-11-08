@@ -1,7 +1,7 @@
 # Native build of the th07 app, driven by Gradle's externalNativeBuild on Android (AGP
 # passes the NDK toolchain, ABI and TOUHOU_THIRD_PARTY). Produces libSDL2.so and
 # libmain.so: the shared engine (engine/native/engine.cmake) with Perfect Cherry Blossom's
-# game code. (The Android app module comes with the shared launcher library.)
+# game code, which GameActivity in the :th07 app module (th07/build.gradle) loads.
 #
 # The same file also builds a Linux desktop executable for development
 # (needs libgles-dev + an EGL driver):
