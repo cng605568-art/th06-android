@@ -11,12 +11,10 @@
 #include "io/Vfs.hpp"
 #include "th07/MainMenu.hpp"
 #include "th07/Version.hpp"
-#if defined(__ANDROID__)
 #include <algorithm>
 #include <vector>
 
-#include "platform/AndroidStorage.hpp"
-#endif
+#include "platform/Platform.hpp"
 
 namespace touhou::th07 {
 
@@ -40,7 +38,7 @@ Th07Game::~Th07Game() {
 void Th07Game::setUpEnglish(const GameContext& ctx) {
     std::string root;
     bool wanted = false;
-#if !defined(__ANDROID__)
+#if !defined(TOUHOU_PHONE)
     // Desktop: --english reads the thcrap folder inside the game folder (the folder given
     // first, as the data mount takes it, or $TH07_DATA, or ./gamedata); --thcrap DIR names a
     // thcrap folder (the one holding repos/) and implies --english.
@@ -58,7 +56,7 @@ void Th07Game::setUpEnglish(const GameContext& ctx) {
     // (an imported thcrap English patch, or a downloaded Touhou Patch Center language), lowest
     // priority first. An older launcher only has the "English text" option (the 7th game
     // option) and the imported thcrap folder.
-    std::vector<std::string> chosen = readAndroidGameTextStack();
+    std::vector<std::string> chosen = readPlatformGameTextStack();
     if (!chosen.empty() && ctx.vfs) {
         log::info("Game text: {} translation patch folder(s), top {}", chosen.size(), chosen.back());
         english_ = std::make_unique<English>(std::move(chosen));
@@ -68,9 +66,13 @@ void Th07Game::setUpEnglish(const GameContext& ctx) {
         });
         return;
     }
-    const std::vector<int> options = androidIntArray("getGameOptions");
+    const std::vector<int> options = platformIntArray("getGameOptions");
     wanted = options.size() >= 7 && options[6] != 0;
+#if defined(TOUHOU_IOS)
+    root = iosGameDataDir() + "thcrap";  // iOS: the thcrap folder next to the game files
+#else
     root = ctx.storageDir + "thcrap";
+#endif
 #endif
     if (!wanted || !ctx.vfs) return;
     auto stack = English::discoverStack(root);
@@ -141,7 +143,7 @@ bool Th07Game::start(const GameContext& ctx) {
     bool endingContinued = false;
     std::uint32_t endingScore = 0;
     bool unlockAll = false;
-#if !defined(__ANDROID__)
+#if !defined(TOUHOU_PHONE)
     // Desktop developer options: --play STAGE [--shot N] [--difficulty D] [--practice]
     // [--lives N] starts a game at once; --ending SHOT [--continued] [--difficulty D] [--score
     // N] shows that ending (and the result screen with that score); --unlock-all saves every
@@ -204,7 +206,7 @@ bool Th07Game::start(const GameContext& ctx) {
     const int testMsg = -1, testSpell = -1;
     const bool preview = false;
     autoFire_ = ctx.controls.autoFire;
-    const std::vector<int> options = androidIntArray("getGameOptions");
+    const std::vector<int> options = platformIntArray("getGameOptions");
     if (options.size() >= 4) {
         play.shotIndex = std::clamp(options[0], 0, 5);
         play.difficulty = std::clamp(options[1], 0, 5);

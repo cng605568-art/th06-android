@@ -15,8 +15,10 @@
 #include "gfx/Gl.hpp"
 #include "platform/CrashHandler.hpp"
 #include "platform/DataMount.hpp"
-#if defined(__ANDROID__)
-#include "platform/AndroidStorage.hpp"
+#include "platform/Platform.hpp"
+#include "gfx/RenderTarget.hpp"
+#if defined(TOUHOU_IOS)
+#include <SDL_syswm.h>
 #endif
 
 namespace touhou {
@@ -47,8 +49,8 @@ bool App::init(int argc, char** argv) {
     if (!game_) return false;
     const GameInfo& info = game_->info();
     log::setTag(info.id);
-#if defined(__ANDROID__)
-    display_ = readAndroidDisplayOptions();
+#if defined(TOUHOU_PHONE)
+    display_ = readPlatformDisplayOptions();
 #else
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i] ? argv[i] : "";
@@ -61,10 +63,14 @@ bool App::init(int argc, char** argv) {
     // The session log and the crash report, kept in the app's storage for bug reports (the
     // launcher's "Save a log").
     std::string storage;  // the app's storage, ending in '/'
+#if defined(TOUHOU_IOS)
+    storage = iosStorageDir();  // Documents/Saves/: visible in the Files app
+#else
     if (char* pref = SDL_GetPrefPath(info.prefOrg, info.prefApp)) {
         storage = pref;
         SDL_free(pref);
     }
+#endif
     if (!storage.empty()) {
         const std::string logs = storage + "logs";
         std::error_code ec;
@@ -124,8 +130,11 @@ bool App::init(int argc, char** argv) {
 #endif
 
     Uint32 flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
-#if defined(__ANDROID__)
+#if defined(TOUHOU_PHONE)
     flags |= SDL_WINDOW_FULLSCREEN;
+#endif
+#if defined(TOUHOU_IOS)
+    flags |= SDL_WINDOW_BORDERLESS;  // no status bar
 #endif
     window_ = SDL_CreateWindow(info.windowTitle, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                windowWidth_, windowHeight_, flags);
@@ -139,6 +148,9 @@ bool App::init(int argc, char** argv) {
         return false;
     }
     SDL_GL_MakeCurrent(window_, context_);
+#if defined(TOUHOU_IOS)
+    RenderTarget::setScreenFramebuffer(iosScreenFramebuffer(window_));  // SDL's, not 0
+#endif
     vsync_ = SDL_GL_SetSwapInterval(1) == 0;
     SDL_DisplayMode mode;
     if (SDL_GetWindowDisplayMode(window_, &mode) == 0 && mode.refresh_rate > 0) refreshHz_ = mode.refresh_rate;
@@ -154,9 +166,9 @@ bool App::init(int argc, char** argv) {
     std::string err;
     if (!audio_.open(&err)) log::warn("Audio disabled: {}", err);
 
-#if defined(__ANDROID__)
-    text_ = makeAndroidTextRenderer();
-    controls_ = readAndroidControlOptions();
+#if defined(TOUHOU_PHONE)
+    text_ = makePlatformTextRenderer();
+    controls_ = readPlatformControlOptions();
 #endif
     {
         GameContext ctx;
@@ -188,7 +200,7 @@ bool App::init(int argc, char** argv) {
 
     if (!touch_.attach(&err)) log::warn("Touch controls unavailable: {}", err);
     touch_.setOptions(controls_);
-#if defined(__ANDROID__)
+#if defined(TOUHOU_PHONE)
     touch_.setVisible(true);
 #else
     touch_.setVisible(devTouch_ || hasFlag(argc, argv, "--touch") || SDL_GetNumTouchDevices() > 0);
@@ -301,10 +313,12 @@ void App::handleEvent(const SDL_Event& e) {
             if (game_) game_->pauseNow();
             audio_.setPaused(true);
             touch_.releaseAll();
+            background_ = true;  // iOS ends an app that draws while in the background
             break;
         case SDL_APP_DIDENTERFOREGROUND:
             audio_.setPaused(false);
             resetClock_ = true;
+            background_ = false;
             break;
         case SDL_APP_LOWMEMORY:
             log::warn("System reports low memory");
@@ -352,6 +366,10 @@ void App::loop() {
         SDL_Event e;
         while (SDL_PollEvent(&e)) handleEvent(e);
         if (!running_) break;
+        if (background_) {  // (Android blocks in SDL instead; iOS keeps calling)
+            SDL_Delay(50);
+            continue;
+        }
 
         const auto now = Clock::now();
         if (resetClock_) {
@@ -412,8 +430,8 @@ void App::loop() {
 void App::haptics() {
     const int ms = game_->takeVibration();
     if (ms <= 0 || !controls_.vibrate) return;
-#if defined(__ANDROID__)
-    androidVibrate(ms);
+#if defined(TOUHOU_PHONE)
+    platformVibrate(ms);
 #else
     log::info("(vibrate {} ms)", ms);
 #endif

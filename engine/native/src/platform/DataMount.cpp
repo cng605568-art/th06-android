@@ -10,6 +10,7 @@
 #if defined(__ANDROID__)
 #include "platform/AndroidStorage.hpp"
 #endif
+#include "platform/Platform.hpp"
 
 namespace touhou {
 
@@ -47,6 +48,13 @@ std::unique_ptr<Vfs> mountGameData(int argc, char** argv, const char* envPrefix)
     if (const char* ext = SDL_AndroidGetExternalStoragePath()) {
         vfs->mountDirectory(std::string(ext) + "/gamedata", false);
     }
+#elif defined(TOUHOU_IOS)
+    // iOS: the player copies the game folder into the app's Documents (the Files app shows
+    // it as "On My iPhone > TH07 Port"); the folder with the game's archive is mounted.
+    (void)argc;
+    (void)argv;
+    (void)envPrefix;
+    vfs->mountDirectory(iosGameDataDir(), false);
 #else
     const std::string prefix = envPrefix ? envPrefix : "";
     std::string dir = "gamedata";

@@ -1,4 +1,5 @@
 #include "platform/AndroidStorage.hpp"
+#include "platform/Platform.hpp"
 
 #include <jni.h>
 
@@ -289,5 +290,13 @@ std::vector<int> androidIntArray(const char* method) {
     out.assign(v.begin(), v.end());
     return out;
 }
+
+// The platform-neutral names (platform/Platform.hpp) on Android.
+std::vector<int> platformIntArray(const char* name) { return androidIntArray(name); }
+ControlOptions readPlatformControlOptions() { return readAndroidControlOptions(); }
+DisplayOptions readPlatformDisplayOptions() { return readAndroidDisplayOptions(); }
+void platformVibrate(int milliseconds) { androidVibrate(milliseconds); }
+std::unique_ptr<TextRenderer> makePlatformTextRenderer() { return makeAndroidTextRenderer(); }
+std::vector<std::string> readPlatformGameTextStack() { return readAndroidGameTextStack(); }
 
 }  // namespace touhou
