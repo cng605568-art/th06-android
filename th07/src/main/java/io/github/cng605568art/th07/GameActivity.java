@@ -21,6 +21,7 @@ import org.libsdl.app.SDLActivity;
 
 import java.io.File;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -127,11 +128,11 @@ public class GameActivity extends SDLActivity {
 
     /**
      * Launcher choices: {shot type 0..5, difficulty 0..5, stage 1..6, spare lives 0..4, practice,
-     * skip the title screen}.
+     * skip the title screen, English text (the patch's files are in files/thcrap/)}.
      */
     public static int[] getGameOptions() {
         Context ctx = SDL.getContext();
-        if (ctx == null) return new int[] {0, 1, 1, 2, 0, 0};
+        if (ctx == null) return new int[] {0, 1, 1, 2, 0, 0, 0};
         return Options.game(ctx);
     }
 
@@ -207,5 +208,64 @@ public class GameActivity extends SDLActivity {
         bitmap.getPixels(pixels, 0, width, 0, 0, width, height);
         bitmap.recycle();
         return pixels;
+    }
+
+    private static Paint utf8Paint;
+    private static final int ITALIC = 16;  // a flag bit next to the alignment (0 left, 1 centre, 2 right)
+
+    /**
+     * The paint for translated (UTF-8) text: a condensed sans-serif for Latin text, the
+     * system's CJK font when the text has kana or kanji (an ideographic space alone, as the
+     * English patch's endings indent with, does not count); a slant for italics.
+     */
+    private static Paint utf8Paint(String text, int fontSize, boolean italic) {
+        if (utf8Paint == null) utf8Paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        Paint p = utf8Paint;
+        boolean cjk = false;
+        for (int i = 0; i < text.length() && !cjk; ++i) {
+            char c = text.charAt(i);
+            cjk = (c >= 0x3001 && c <= 0x30ff) || (c >= 0x3400 && c <= 0x9fff) || (c >= 0xf900 && c <= 0xfaff)
+                    || (c >= 0xff01 && c <= 0xff9f) || (c >= 0xac00 && c <= 0xd7af);
+        }
+        p.setTypeface(cjk ? Typeface.create(Typeface.DEFAULT, Typeface.BOLD) : Typeface.create("sans-serif-condensed", Typeface.BOLD));
+        float cell = (fontSize + 1) / 2f;
+        p.setTextSize(cell * 2f * (cjk ? 0.92f : 0.95f));
+        p.setTextScaleX(1f);
+        p.setTextSkewX(italic ? -0.25f : 0f);
+        return p;
+    }
+
+    /**
+     * Renders translated UTF-8 text (curly quotes, accents, ideographic spaces and all) into a
+     * width x height ARGB band, aligned within [left, left + room) and narrowed to fit; the
+     * extra last int is the width drawn x 256.
+     */
+    public static synchronized int[] renderTextUtf8(byte[] utf8, int fontSize, int rgb, int shadow, float left, float room,
+                                                    int align, int width, int height) {
+        String text = new String(utf8, StandardCharsets.UTF_8);
+        Paint p = utf8Paint(text, fontSize, (align & ITALIC) != 0);
+        align &= 3;
+        float full = p.measureText(text);
+        float drawn = Math.min(full, room);
+        if (full > room && full > 0) p.setTextScaleX(room / full);
+        float x = align == 2 ? left + room - drawn : align == 1 ? left + (room - drawn) / 2f : left;
+        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        float baseline = height * 0.8f;
+        p.setColor(0xff000000 | shadow);
+        canvas.drawText(text, x + 1.5f, baseline + 1f, p);
+        p.setColor(0xff000000 | rgb);
+        canvas.drawText(text, x, baseline, p);
+        int[] pixels = new int[width * height + 1];
+        bitmap.getPixels(pixels, 0, width, 0, 0, width, height);
+        bitmap.recycle();
+        pixels[width * height] = Math.round(drawn * 256f);
+        return pixels;
+    }
+
+    /** The natural width of translated text as renderTextUtf8 would draw it (laying out markup). */
+    public static synchronized float measureTextUtf8(byte[] utf8, int fontSize, int flags) {
+        String text = new String(utf8, StandardCharsets.UTF_8);
+        return utf8Paint(text, fontSize, (flags & ITALIC) != 0).measureText(text);
     }
 }

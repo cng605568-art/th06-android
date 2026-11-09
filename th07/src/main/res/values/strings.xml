@@ -11,14 +11,19 @@
     <string name="hint_stage">Starts at stage %1$d  ·  %2$s  ·  %3$s</string>
     <string name="hint_extra">Starts the Extra stage  ·  %1$s</string>
     <string name="hint_phantasm">Starts the Phantasm stage  ·  %1$s</string>
+    <string name="hint_english">"  ·  English text"</string>
+
+    <string name="english_text">English text (from your thcrap English patch)</string>
+    <string name="english_hint_on">Dialogue, spell card names, endings, the Music Room and the menus as your English patch shows them (%1$d files, imported from the thcrap folder in your game folder). Turn it off for the original Japanese.</string>
+    <string name="english_hint_missing">Play with the community English patch on the PC? Keep its thcrap folder in the game folder and choose that folder again: the patch\'s files come along, and this turns on.</string>
 
     <string name="files_title">Game files</string>
-    <string name="files_body">Copy your own Perfect Cherry Blossom (version 1.00b) to this phone, then choose its folder here, or pick the files themselves. th07.dat and th07.exe are needed; thbgm.dat adds the music. Your PC\'s score.dat (scores and unlocks) and replays (the replay folder) come along too. The files are copied into the app\'s own storage, so you can delete the folder afterwards.</string>
+    <string name="files_body">Copy your own Perfect Cherry Blossom (version 1.00b) to this phone, then choose its folder here, or pick the files themselves. th07.dat and th07.exe are needed; thbgm.dat adds the music. Your PC\'s score.dat (scores and unlocks) and replays (the replay folder) come along too, and so does the English patch if you play with it on the PC (the thcrap folder in the game folder). The files are copied into the app\'s own storage, so you can delete the folder afterwards.</string>
     <string name="files_choose_folder">Choose game folder</string>
     <string name="files_choose_files">Choose files</string>
     <string name="files_remove">Remove imported files</string>
     <string name="files_remove_title">Remove the imported game files?</string>
-    <string name="files_remove_body">th07.dat, th07.exe and thbgm.dat are deleted from the app\'s storage. Your own copy is not touched; import it again to play.</string>
+    <string name="files_remove_body">th07.dat, th07.exe, thbgm.dat and the English patch\'s files are deleted from the app\'s storage. Your own copy is not touched; import it again to play.</string>
     <string name="files_remove_ok">Remove</string>
     <string name="files_removed">The imported files were removed.</string>
     <string name="files_no_picker">This phone has no file picker for that.</string>
@@ -31,6 +36,8 @@
     <string name="status_bad_dat">damaged (not a PBG4 archive)</string>
     <string name="status_bad_exe">not version 1.00b</string>
     <string name="status_bad_bgm">not the game\'s music file</string>
+    <string name="status_english_ok">English patch (%1$d files)</string>
+    <string name="status_english_missing">no English patch (optional)</string>
     <string name="status_ready">Ready to play, with music.</string>
     <string name="status_ready_no_music">Ready to play (no music: thbgm.dat is optional).</string>
     <string name="status_not_ready">th07.dat and th07.exe are needed to play.</string>
@@ -51,6 +58,9 @@
     <string name="import_done_score_kept">score.dat: your PC scores, unlocks and spell card history imported (the port\'s earlier score.dat is kept as score.dat.bak).</string>
     <string name="import_done_replays">Replays: %1$d imported, %2$d already here.</string>
     <string name="import_replays_full">Replays: no free replay names left; the rest were not imported.</string>
+    <string name="import_done_english">English patch: %1$d files imported (%2$s).</string>
+    <string name="import_english_none">thcrap: no English patch (lang_en) in its repos folder.</string>
+    <string name="import_copying_english">Copying the English patch…  %1$d files</string>
     <string name="import_skipped">Skipped (not one of the game\'s files): %1$s</string>
     <string name="import_failed">The import stopped: %1$s</string>
     <string name="import_no_space">Not enough free space for %1$s: %2$d MB needed, %3$d MB free.</string>

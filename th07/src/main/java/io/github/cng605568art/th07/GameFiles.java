@@ -14,13 +14,16 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -34,6 +37,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * spell history, play statistics; recognised by its decoded header) goes where the port
  * keeps its own (the app's files folder; an earlier one is kept as score.dat.bak), and
  * replays (th7_NN.rpy, th7_udXXXX.rpy; "T7RP" header) go into its replay folder.
+ *
+ * And the English patch, when the game folder has thcrap in it (as on the PC, where the
+ * community English patch runs through the thcrap patcher): thcrap/repos/thpatch/lang_en
+ * and the patches its patch.js depends on, each with its own .js files and its th07 folder,
+ * are copied to files/thcrap/ with their relative paths (lower-cased), replacing an earlier
+ * copy. The engine reads them for the "English text" option.
  */
 final class GameFiles {
     static final String DAT = "th07.dat";
@@ -42,6 +51,10 @@ final class GameFiles {
     /** Kinds of the PC's own records (not game files): score.dat and replays. */
     static final String SCORE = "score.dat";
     static final String REPLAY = "replay";
+    /** The thcrap patcher's folder (a Source of this kind is that folder). */
+    static final String THCRAP = "thcrap";
+    /** Folder levels below a patch's th07 folder that are copied (th07/data/ascii/x.png: 2). */
+    private static final int PATCH_DEPTH = 6;
     private static final long SCORE_MAX = 1024 * 1024;
     /** th07.exe 1.00b, as the engine checks it (th07/src/main/cpp/src/th07/ExeTables.hpp). */
     static final String EXE_100B_SHA256 = "35467eaf8dc7fc85f024f16fb2037255f151cefda33cf4867bc9122aaa2e80ca";
@@ -203,7 +216,7 @@ final class GameFiles {
         return new File(ctx.getFilesDir(), REPLAY);
     }
 
-    /** Deletes every imported file. */
+    /** Deletes every imported file (the English patch too). */
     static void removeAll(Context ctx) {
         File[] files = dir(ctx).listFiles();
         if (files != null) {
@@ -212,7 +225,47 @@ final class GameFiles {
                 f.delete();
             }
         }
+        deleteTree(thcrapDir(ctx));
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY_EXE_STAMP).apply();
+    }
+
+    // ---- the English patch (thcrap) -------------------------------------------------------
+
+    /** Where the English patch's files go: files/thcrap/repos/<repo>/<patch>/... */
+    static File thcrapDir(Context ctx) {
+        return new File(ctx.getFilesDir(), THCRAP);
+    }
+
+    /** The English patch (some repository's lang_en) is imported. */
+    static boolean englishPresent(Context ctx) {
+        File[] repos = new File(thcrapDir(ctx), "repos").listFiles();
+        if (repos == null) return false;
+        for (File repo : repos) {
+            if (new File(repo, "lang_en/patch.js").isFile()) return true;
+        }
+        return false;
+    }
+
+    /** How many of the patch's files are imported. */
+    static int englishFiles(Context ctx) {
+        return countFiles(thcrapDir(ctx), 0);
+    }
+
+    private static int countFiles(File dir, int depth) {
+        File[] list = dir.listFiles();
+        if (list == null || depth > PATCH_DEPTH + 4) return 0;
+        int n = 0;
+        for (File f : list) n += f.isDirectory() ? countFiles(f, depth + 1) : 1;
+        return n;
+    }
+
+    static void deleteTree(File f) {
+        File[] list = f.listFiles();
+        if (list != null) {
+            for (File c : list) deleteTree(c);
+        }
+        //noinspection ResultOfMethodCallIgnored
+        f.delete();
     }
 
     // ---- where to import from -------------------------------------------------------------
@@ -222,7 +275,11 @@ final class GameFiles {
         final String name;
         final Uri uri;
         final long size;  // negative: unknown
-        String kind;      // DAT, EXE, BGM or null, from its first bytes
+        String kind;      // DAT, EXE, BGM or null, from its first bytes (THCRAP: a folder)
+        // A THCRAP folder: the picked tree, the folder's document id and how deep it was found.
+        Uri tree;
+        String documentId;
+        int depth;
 
         Source(String name, Uri uri, long size) {
             this.name = name;
@@ -235,7 +292,10 @@ final class GameFiles {
         void report(String message);
     }
 
-    /** Walks the picked folder (a few levels deep) for .dat and .exe files. */
+    /**
+     * Walks the picked folder (a few levels deep) for .dat, .exe and .rpy files, and notes a
+     * thcrap folder (not walked here: importEnglish() takes what it needs from it).
+     */
     static List<Source> scanFolder(Context ctx, Uri tree, Progress progress) {
         ContentResolver cr = ctx.getContentResolver();
         List<Source> found = new ArrayList<>();
@@ -259,6 +319,15 @@ final class GameFiles {
                     long size = c.isNull(3) ? -1 : c.getLong(3);
                     if (id == null || name == null) continue;
                     if (Document.MIME_TYPE_DIR.equals(mime)) {
+                        if (THCRAP.equalsIgnoreCase(name)) {
+                            Source s = new Source(name, DocumentsContract.buildDocumentUriUsingTree(tree, id), -1);
+                            s.kind = THCRAP;
+                            s.tree = tree;
+                            s.documentId = id;
+                            s.depth = depth;
+                            found.add(s);
+                            continue;
+                        }
                         if (depth < MAX_DEPTH) stack.push(new String[] {id, String.valueOf(depth + 1), dir[2] + "/" + name});
                         continue;
                     }
@@ -315,11 +384,15 @@ final class GameFiles {
     static String importFrom(Context ctx, List<Source> sources, boolean pickedOneByOne, Progress progress)
             throws IOException {
         ContentResolver cr = ctx.getContentResolver();
-        Source dat = null, bgm = null, score = null;
+        Source dat = null, bgm = null, score = null, thcrap = null;
         List<Source> exes = new ArrayList<>();
         List<Source> replays = new ArrayList<>();
         List<String> skipped = new ArrayList<>();
         for (Source s : sources) {
+            if (THCRAP.equals(s.kind)) {  // a folder: the one nearest the top
+                if (thcrap == null || s.depth < thcrap.depth) thcrap = s;
+                continue;
+            }
             progress.report(ctx.getString(R.string.import_checking, s.name));
             byte[] head = new byte[16];
             int n;
@@ -346,10 +419,12 @@ final class GameFiles {
             }
         }
         if (dat == null && bgm == null && exes.isEmpty()) {
-            // Only the PC's records (a backup of scores or replays): import just those.
-            if (score == null && replays.isEmpty()) return ctx.getString(R.string.import_nothing);
+            // Only the PC's records (a backup of scores or replays) or the English patch:
+            // import just those.
+            if (score == null && replays.isEmpty() && thcrap == null) return ctx.getString(R.string.import_nothing);
             StringBuilder report = new StringBuilder();
             importRecords(ctx, score, replays, report, progress);
+            importEnglish(ctx, thcrap, report, progress);
             return report.toString().trim();
         }
 
@@ -404,10 +479,182 @@ final class GameFiles {
             notFound(ctx, report, BGM);
         }
         importRecords(ctx, score, replays, report, progress);
+        importEnglish(ctx, thcrap, report, progress);
         if (pickedOneByOne && !skipped.isEmpty()) {
             line(report, ctx.getString(R.string.import_skipped, join(skipped)));
         }
         return report.toString().trim();
+    }
+
+    /** The English patch from a thcrap folder, if one was found (an earlier copy is kept otherwise). */
+    private static void importEnglish(Context ctx, Source thcrap, StringBuilder report, Progress progress) throws IOException {
+        if (thcrap == null) return;
+        List<String> patches = new ArrayList<>();
+        int files = importEnglishPatch(ctx, thcrap, patches, progress);
+        if (files < 0) {
+            line(report, ctx.getString(R.string.import_english_none));
+            return;
+        }
+        List<String> ids = new ArrayList<>();
+        for (String p : patches) ids.add(p.substring(p.indexOf('/') + 1));
+        line(report, ctx.getString(R.string.import_done_english, files, join(ids)));
+    }
+
+    /** A folder's children in a picked tree: {document id, name, MIME type}. */
+    private static List<String[]> children(ContentResolver cr, Uri tree, String documentId) {
+        List<String[]> out = new ArrayList<>();
+        Uri uri = DocumentsContract.buildChildDocumentsUriUsingTree(tree, documentId);
+        String[] projection = {Document.COLUMN_DOCUMENT_ID, Document.COLUMN_DISPLAY_NAME, Document.COLUMN_MIME_TYPE};
+        try (Cursor c = cr.query(uri, projection, null, null, null)) {
+            if (c == null) return out;
+            while (c.moveToNext()) {
+                String id = c.getString(0);
+                String name = c.getString(1);
+                String mime = c.getString(2);
+                if (id != null && name != null) out.add(new String[] {id, name, mime == null ? "" : mime});
+            }
+        } catch (RuntimeException ignored) {
+            // An unreadable folder: nothing from it.
+        }
+        return out;
+    }
+
+    private static boolean isFolder(String[] child) {
+        return Document.MIME_TYPE_DIR.equals(child[2]);
+    }
+
+    /**
+     * thcrap/repos/<repo>/<patch>/: lang_en (thpatch's first) and, from each patch.js, the
+     * patches it depends on ("repo/patch", or a bare id: the same repository first); each
+     * patch's own .js files and its th07 folder are copied. Returns the files copied, or -1
+     * when there is no lang_en. `patchesOut` gets the patches ("repo/patch").
+     */
+    static int importEnglishPatch(Context ctx, Source thcrap, List<String> patchesOut, Progress progress) throws IOException {
+        ContentResolver cr = ctx.getContentResolver();
+        String repos = null;
+        for (String[] c : children(cr, thcrap.tree, thcrap.documentId)) {
+            if (isFolder(c) && c[1].equalsIgnoreCase("repos")) repos = c[0];
+        }
+        if (repos == null) return -1;
+        Map<String, String> patches = new LinkedHashMap<>();  // "repo/patch" (lower case) -> document id
+        for (String[] repo : children(cr, thcrap.tree, repos)) {
+            if (!isFolder(repo)) continue;
+            for (String[] p : children(cr, thcrap.tree, repo[0])) {
+                if (isFolder(p)) patches.put(lower(repo[1]) + "/" + lower(p[1]), p[0]);
+            }
+        }
+        String lang = patches.containsKey("thpatch/lang_en") ? "thpatch/lang_en" : null;
+        for (String k : patches.keySet()) {
+            if (lang == null && k.endsWith("/lang_en")) lang = k;
+        }
+        if (lang == null) return -1;
+        List<String> wanted = new ArrayList<>();
+        Deque<String> todo = new ArrayDeque<>();
+        todo.add(lang);
+        while (!todo.isEmpty()) {
+            String key = todo.poll();
+            if (wanted.contains(key) || !patches.containsKey(key)) continue;
+            wanted.add(key);
+            String repo = key.substring(0, key.indexOf('/'));
+            for (String dep : dependencies(ctx, thcrap.tree, patches.get(key))) {
+                String depKey = dep.indexOf('/') >= 0 ? lower(dep) : repo + "/" + lower(dep);
+                if (!patches.containsKey(depKey) && dep.indexOf('/') < 0) {
+                    for (String k : patches.keySet()) {
+                        if (k.endsWith("/" + lower(dep))) {
+                            depKey = k;
+                            break;
+                        }
+                    }
+                }
+                todo.add(depKey);
+            }
+        }
+        File part = new File(ctx.getFilesDir(), THCRAP + ".part");
+        deleteTree(part);
+        int[] copied = {0};
+        for (String key : wanted) {
+            File dir = new File(part, "repos/" + key);
+            for (String[] c : children(cr, thcrap.tree, patches.get(key))) {
+                if (isFolder(c)) {
+                    if (c[1].equalsIgnoreCase("th07")) copyFolder(ctx, thcrap.tree, c[0], new File(dir, "th07"), 0, copied, progress);
+                } else if (lower(c[1]).endsWith(".js")) {
+                    copyDocument(ctx, DocumentsContract.buildDocumentUriUsingTree(thcrap.tree, c[0]), new File(dir, lower(c[1])));
+                    ++copied[0];
+                }
+            }
+        }
+        File target = thcrapDir(ctx);
+        deleteTree(target);
+        if (!part.renameTo(target)) {
+            deleteTree(part);
+            throw new IOException(ctx.getString(R.string.import_cannot_store));
+        }
+        patchesOut.addAll(wanted);
+        return copied[0];
+    }
+
+    private static void copyFolder(Context ctx, Uri tree, String documentId, File dir, int depth, int[] copied, Progress progress)
+            throws IOException {
+        for (String[] c : children(ctx.getContentResolver(), tree, documentId)) {
+            if (isFolder(c)) {
+                if (depth < PATCH_DEPTH) copyFolder(ctx, tree, c[0], new File(dir, lower(c[1])), depth + 1, copied, progress);
+                continue;
+            }
+            copyDocument(ctx, DocumentsContract.buildDocumentUriUsingTree(tree, c[0]), new File(dir, lower(c[1])));
+            if (++copied[0] % 10 == 0) progress.report(ctx.getString(R.string.import_copying_english, copied[0]));
+        }
+    }
+
+    private static void copyDocument(Context ctx, Uri uri, File target) throws IOException {
+        File dir = target.getParentFile();
+        if (dir != null && !dir.isDirectory() && !dir.mkdirs()) throw new IOException(ctx.getString(R.string.import_cannot_store));
+        try (InputStream in = ctx.getContentResolver().openInputStream(uri); FileOutputStream out = new FileOutputStream(target)) {
+            if (in == null) throw new IOException(ctx.getString(R.string.import_cannot_read, target.getName()));
+            byte[] buf = new byte[64 * 1024];
+            int n;
+            while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+        }
+    }
+
+    /** A patch's patch.js "dependencies" (the strings in that array; empty if none). */
+    private static List<String> dependencies(Context ctx, Uri tree, String patchDocumentId) {
+        List<String> out = new ArrayList<>();
+        for (String[] c : children(ctx.getContentResolver(), tree, patchDocumentId)) {
+            if (isFolder(c) || !c[1].equalsIgnoreCase("patch.js")) continue;
+            String text;
+            try (InputStream in = ctx.getContentResolver().openInputStream(DocumentsContract.buildDocumentUriUsingTree(tree, c[0]))) {
+                if (in == null) return out;
+                byte[] buf = new byte[64 * 1024];
+                int n = readFully(in, buf);
+                text = new String(buf, 0, n, StandardCharsets.UTF_8);
+            } catch (IOException | RuntimeException e) {
+                return out;
+            }
+            return parseDependencies(text);
+        }
+        return out;
+    }
+
+    /** The strings of the "dependencies" array in a patch.js text. */
+    static List<String> parseDependencies(String text) {
+        List<String> out = new ArrayList<>();
+        int at = text.indexOf("\"dependencies\"");
+        if (at < 0) return out;
+        int open = text.indexOf('[', at), close = text.indexOf(']', at);
+        if (open < 0 || close < open) return out;
+        String list = text.substring(open + 1, close);
+        for (int i = list.indexOf('"'); i >= 0; ) {
+            int end = list.indexOf('"', i + 1);
+            if (end < 0) break;
+            String dep = list.substring(i + 1, end).trim();
+            if (!dep.isEmpty()) out.add(dep);
+            i = list.indexOf('"', end + 1);
+        }
+        return out;
+    }
+
+    private static String lower(String s) {
+        return s.toLowerCase(Locale.ROOT);
     }
 
     /** score.dat and replays from the PC, where the port keeps its own. */

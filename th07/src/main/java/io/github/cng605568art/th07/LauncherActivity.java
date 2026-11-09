@@ -59,6 +59,8 @@ public class LauncherActivity extends Activity {
     private Button folderButton;
     private Button filesButton;
     private Button removeButton;
+    private CheckBox english;
+    private TextView englishHint;
     private LinearLayout stageRow;
     private LinearLayout livesRow;
     private CheckBox practice;
@@ -207,6 +209,28 @@ public class LauncherActivity extends Activity {
         removeButton = ui.secondary(getString(R.string.files_remove));
         removeButton.setOnClickListener(v -> confirmRemove());
         card.addView(removeButton, ui.matchWrap(0, 0));
+
+        // The English patch imported from the game folder's thcrap folder: on by default.
+        english = ui.check(getString(R.string.english_text), Options.englishChoice(this));
+        english.setOnCheckedChangeListener(englishListener);
+        card.addView(english, ui.matchWrap(12, 0));
+        englishHint = ui.caption("");
+        card.addView(englishHint, Ui.matchWrap());
+    }
+
+    private final android.widget.CompoundButton.OnCheckedChangeListener englishListener = (b, checked) -> {
+        Options.setEnglishChoice(this, checked);
+        updatePlayHint();
+    };
+
+    /** The checkbox follows the import: usable once the English patch is there. */
+    private void updateEnglish() {
+        boolean patch = GameFiles.englishPresent(this);
+        english.setOnCheckedChangeListener(null);
+        english.setChecked(patch && Options.englishChoice(this));
+        english.setOnCheckedChangeListener(englishListener);
+        english.setEnabled(patch && !GameFiles.importing());
+        englishHint.setText(patch ? getString(R.string.english_hint_on, GameFiles.englishFiles(this)) : getString(R.string.english_hint_missing));
     }
 
     private void launch(Intent intent, int request, TextView errors) {
@@ -245,6 +269,9 @@ public class LauncherActivity extends Activity {
             valid[k] = s.valid;
             sb.append(String.format(Locale.ROOT, "%-10s %s  %s%n", name, mark, what));
         }
+        boolean patch = GameFiles.englishPresent(this);
+        sb.append(String.format(Locale.ROOT, "%-10s %s  %s%n", GameFiles.THCRAP, patch ? "✓" : "–",
+                patch ? getString(R.string.status_english_ok, GameFiles.englishFiles(this)) : getString(R.string.status_english_missing)));
         ready = valid[0] && valid[1];
         sb.append('\n').append(getString(!ready ? R.string.status_not_ready
                 : valid[2] ? R.string.status_ready : R.string.status_ready_no_music));
@@ -255,6 +282,7 @@ public class LauncherActivity extends Activity {
         status.setText(describeFiles());
         if (lastImport != null) importStatus.setText(lastImport);
         updateBusy();
+        updateEnglish();
         updatePlayHint();
     }
 
@@ -437,20 +465,23 @@ public class LauncherActivity extends Activity {
             playHint.setText(R.string.hint_import);
             return;
         }
+        String hint;
         if (!Options.skipTitle(this)) {
-            playHint.setText(R.string.hint_title);
-            return;
-        }
-        String shot = getResources().getStringArray(R.array.shot_types)[Options.shotType(this)];
-        int difficulty = Options.difficulty(this);
-        if (difficulty == Options.EXTRA) {
-            playHint.setText(getString(R.string.hint_extra, shot));
-        } else if (difficulty == Options.PHANTASM) {
-            playHint.setText(getString(R.string.hint_phantasm, shot));
+            hint = getString(R.string.hint_title);
         } else {
-            String name = getResources().getStringArray(R.array.difficulties)[difficulty];
-            playHint.setText(getString(R.string.hint_stage, Options.stage(this), shot, name));
+            String shot = getResources().getStringArray(R.array.shot_types)[Options.shotType(this)];
+            int difficulty = Options.difficulty(this);
+            if (difficulty == Options.EXTRA) {
+                hint = getString(R.string.hint_extra, shot);
+            } else if (difficulty == Options.PHANTASM) {
+                hint = getString(R.string.hint_phantasm, shot);
+            } else {
+                String name = getResources().getStringArray(R.array.difficulties)[difficulty];
+                hint = getString(R.string.hint_stage, Options.stage(this), shot, name);
+            }
         }
+        if (Options.english(this)) hint += getString(R.string.hint_english);
+        playHint.setText(hint);
     }
 
     // ---- controls and display ---------------------------------------------------------------

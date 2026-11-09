@@ -16,6 +16,7 @@ final class Options {
     private static final String KEY_LIVES = "lives";
     private static final String KEY_PRACTICE = "practice";
     private static final String KEY_SKIP_TITLE = "skip_title";
+    private static final String KEY_ENGLISH = "english_text";
     private static final String KEY_CONTROLS = "controls_";
 
     /** Difficulty indices as the engine numbers them. */
@@ -47,14 +48,22 @@ final class Options {
     static void setPractice(Context ctx, boolean v) { prefs(ctx).edit().putBoolean(KEY_PRACTICE, v).apply(); }
     static void setSkipTitle(Context ctx, boolean v) { prefs(ctx).edit().putBoolean(KEY_SKIP_TITLE, v).apply(); }
 
+    /** The "English text" checkbox as the player left it (on until they turn it off). */
+    static boolean englishChoice(Context ctx) { return prefs(ctx).getBoolean(KEY_ENGLISH, true); }
+    static void setEnglishChoice(Context ctx, boolean v) { prefs(ctx).edit().putBoolean(KEY_ENGLISH, v).apply(); }
+    /** English text is on: the checkbox and an imported English patch (so on by default once imported). */
+    static boolean english(Context ctx) { return englishChoice(ctx) && GameFiles.englishPresent(ctx); }
+
     /**
      * GameActivity.getGameOptions(): {shot type 0..5, difficulty 0..5, stage 1..6, spare lives
-     * 0..4, practice 0/1, skip the title screen 0/1}. The engine starts Extra at stage 7 and
-     * Phantasm at stage 8; without the last value (or with 0) it opens the title screen and
-     * the other values are not used.
+     * 0..4, practice 0/1, skip the title screen 0/1, English text 0/1}. The engine starts Extra
+     * at stage 7 and Phantasm at stage 8; with the 6th value 0 it opens the title screen and
+     * the start values are not used. With the 7th value 1 it shows the English patch's text
+     * (from files/thcrap/).
      */
     static int[] game(Context ctx) {
-        return new int[] {shotType(ctx), difficulty(ctx), stage(ctx), lives(ctx), practice(ctx) ? 1 : 0, skipTitle(ctx) ? 1 : 0};
+        return new int[] {shotType(ctx), difficulty(ctx), stage(ctx), lives(ctx), practice(ctx) ? 1 : 0, skipTitle(ctx) ? 1 : 0,
+                english(ctx) ? 1 : 0};
     }
 
     // ---- touch controls (GameActivity.getControlOptions()) ---------------------------
