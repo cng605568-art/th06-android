@@ -3,6 +3,7 @@
 #include "core/Sha256.hpp"
 #include "io/PeImage.hpp"
 
+#include <algorithm>
 #include <type_traits>
 
 namespace touhou::th07 {
@@ -114,6 +115,24 @@ bool loadExeTables(std::span<const std::uint8_t> exe, ExeTables& out, std::strin
             dst[i].address = dst[i].sjis.empty() ? 0 : va;
         }
     };
+    {
+        // The Player Data formats and labels (optional: the page falls back to the port's text).
+        ExeTables::PlayerDataText& p = t.playerData;
+        const auto pair = [&](std::array<std::string, 2>& dst, std::uint32_t five, std::uint32_t six) {
+            dst[0] = pe.cString(five, 96);
+            dst[1] = pe.cString(six, 96);
+        };
+        pair(p.retry, 0x00496554, 0x00496580);
+        pair(p.practice, 0x004965B0, 0x004965DC);
+        pair(p.continues, 0x0049660C, 0x00496638);
+        pair(p.clear, 0x00496668, 0x00496694);
+        pair(p.row, 0x004966C4, 0x004966E0);
+        pair(p.header, 0x00496700, 0x00496740);
+        p.playTime = pe.cString(0x00496784, 64);
+        p.runningTime = pe.cString(0x004967A0, 64);
+        for (std::size_t s = 0; s < 6; ++s) p.rowLabels[s] = pe.cString(0x004969B0 - 20 * static_cast<std::uint32_t>(s), 20);
+        p.rowLabels[6] = pe.cString(0x00496938, 20);
+    }
     menuText(ExeTables::kMainMenuTextTable, t.mainMenuText);
     menuText(ExeTables::kOptionTextTable, t.optionText);
     menuText(ExeTables::kKeyConfigTextTable, t.keyConfigText);
@@ -122,6 +141,70 @@ bool loadExeTables(std::span<const std::uint8_t> exe, ExeTables& out, std::strin
     for (int i = 0; i < ExeTables::kDrops; ++i) t.dropCycle[i] = drops[static_cast<std::size_t>(i)];
     out = std::move(t);
     return true;
+}
+
+bool ExeTables::PlayerDataText::complete() const {
+    for (const auto* pair : {&header, &row, &clear, &continues, &practice, &retry}) {
+        if ((*pair)[0].empty() || (*pair)[1].empty()) return false;
+    }
+    if (playTime.empty() || runningTime.empty()) return false;
+    for (const std::string& l : rowLabels) {
+        if (l.empty()) return false;
+    }
+    return true;
+}
+
+std::string formatExeString(std::string_view format, std::span<const FormatArg> args) {
+    std::string out;
+    std::size_t next = 0;
+    for (std::size_t i = 0; i < format.size(); ++i) {
+        const char c = format[i];
+        if (c != '%') {
+            out += c;
+            continue;
+        }
+        std::size_t j = i + 1;
+        if (j < format.size() && format[j] == '%') {
+            out += '%';
+            i = j;
+            continue;
+        }
+        bool left = false, zero = false;
+        for (; j < format.size() && (format[j] == '-' || format[j] == '0'); ++j) (format[j] == '-' ? left : zero) = true;
+        int width = 0, precision = -1;
+        for (; j < format.size() && format[j] >= '0' && format[j] <= '9'; ++j) width = std::min(width * 10 + (format[j] - '0'), 64);
+        if (j < format.size() && format[j] == '.') {
+            precision = 0;
+            for (++j; j < format.size() && format[j] >= '0' && format[j] <= '9'; ++j) precision = std::min(precision * 10 + (format[j] - '0'), 64);
+        }
+        if (j >= format.size() || (format[j] != 'd' && format[j] != 's')) {
+            out += c;  // not a conversion this formatter knows: copied as it is
+            continue;
+        }
+        const FormatArg arg = next < args.size() ? args[next] : FormatArg{};
+        ++next;
+        std::string field;
+        if (format[j] == 'd') {
+            const std::int64_t v = arg.isText ? 0 : arg.number;
+            std::string digits = std::to_string(v < 0 ? -v : v);
+            if (precision >= 0 && static_cast<int>(digits.size()) < precision) digits.insert(0, static_cast<std::size_t>(precision) - digits.size(), '0');
+            const std::string sign = v < 0 ? "-" : "";
+            if (zero && !left && precision < 0 && static_cast<int>(sign.size() + digits.size()) < width) {
+                digits.insert(0, static_cast<std::size_t>(width) - sign.size() - digits.size(), '0');
+            }
+            field = sign + digits;
+        } else {
+            field = std::string(arg.isText ? arg.text : std::string_view());
+            if (precision >= 0 && static_cast<int>(field.size()) > precision) field.resize(static_cast<std::size_t>(precision));
+        }
+        if (static_cast<int>(field.size()) < width) {
+            const std::string pad(static_cast<std::size_t>(width) - field.size(), ' ');
+            field = left ? field + pad : pad + field;
+        }
+        out += field;
+        i = j;
+    }
+    return out;
 }
 
 }  // namespace touhou::th07

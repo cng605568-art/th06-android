@@ -7,10 +7,12 @@
 #include <format>
 #include <fstream>
 #include <iterator>
+#include <vector>
 
 #include "core/Log.hpp"
 #include "gfx/SpriteSink.hpp"
 #include "th07/English.hpp"
+#include "th07/ExeTables.hpp"
 #include "th07/GameConfig.hpp"
 #include "th07/Player.hpp"
 #include "th07/Replay.hpp"
@@ -352,6 +354,37 @@ void ResultScreen::renderPlayerData() {
     const PlayStats& st = sd.stats;
     const bool phantasm = sd.phantasmUnlocked();
     const int cols = phantasm ? 6 : 5;
+    // The original's Shift-JIS labels and formats from the player's th07.exe; the English mode
+    // (the patch has none for this page) and a missing exe keep the port's own English.
+    if (ctx_.tables && ctx_.tables->playerData.complete() && !(ctx_.english && ctx_.english->active())) {
+        const ExeTables::PlayerDataText& p = ctx_.tables->playerData;
+        const std::size_t v = phantasm ? 1 : 0;
+        auto clock = [&](const std::string& f, const PlayTime& t) {
+            const FormatArg a[3] = {{t.hours}, {t.minutes}, {t.seconds}};
+            return formatExeString(f, a);
+        };
+        auto counts = [&](const std::string& f, std::string_view label, auto value) {
+            std::vector<FormatArg> a;
+            if (!label.empty()) a.push_back({0, label, true});
+            for (int d = 0; d < cols; ++d) a.push_back({static_cast<std::int64_t>(value(d))});
+            a.push_back({static_cast<std::int64_t>(value(6))});
+            return formatExeString(f, a);
+        };
+        int line = 0;
+        renderText(line++, clock(p.runningTime, st.running));
+        renderText(line++, clock(p.playTime, st.play));
+        renderText(line++, p.header[v]);
+        for (int s = 0; s < kShots; ++s) {
+            renderText(line++, counts(p.row[v], p.rowLabels[static_cast<std::size_t>(s)],
+                                      [&](int d) { return st.rows[static_cast<std::size_t>(d)].playsPerShot[static_cast<std::size_t>(s)]; }));
+        }
+        renderText(line++, counts(p.row[v], p.rowLabels[6], [&](int d) { return st.rows[static_cast<std::size_t>(d)].plays; }));
+        renderText(line++, counts(p.clear[v], {}, [&](int d) { return d == 6 ? st.clearTotal() : st.rows[static_cast<std::size_t>(d)].clears; }));
+        renderText(line++, counts(p.continues[v], {}, [&](int d) { return st.rows[static_cast<std::size_t>(d)].continues; }));
+        renderText(line++, counts(p.practice[v], {}, [&](int d) { return st.rows[static_cast<std::size_t>(d)].practices; }));
+        renderText(line++, counts(p.retry[v], {}, [&](int d) { return st.rows[static_cast<std::size_t>(d)].retries; }));
+        return;
+    }
     auto timeLine = [&](const char* label, const PlayTime& t) { return std::format("{:<20}{:>4}:{:02}:{:02}", label, t.hours, t.minutes, t.seconds); };
     auto row = [&](const std::string& label, auto value) {
         std::string s = std::format("{:<9}", label);

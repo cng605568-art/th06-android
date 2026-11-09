@@ -1871,6 +1871,22 @@ static void testBgm() {
 
 // ---- the game flow: LZSS encoder, score.dat, unlock rules, input, supervisor ----------------
 
+static void testExeStringFormat() {
+    using touhou::th07::FormatArg;
+    using touhou::th07::formatExeString;
+    const FormatArg clock[3] = {{7}, {5}, {9}};
+    CHECK(formatExeString("T %.2d:%.2d:%.2d", clock) == "T 07:05:09");
+    const FormatArg row[3] = {{0, "AB", true}, {12}, {-3}};
+    CHECK(formatExeString("%s %6d %6d", row) == "AB     12     -3");
+    const FormatArg pad[2] = {{0, "x", true}, {42}};
+    CHECK(formatExeString("[%-4s][%05d]%%", pad) == "[x   ][00042]%");
+    CHECK(formatExeString("%6d %6d", std::span<const FormatArg>(row + 1, 1)) == "    12      0");  // missing: 0
+    CHECK(formatExeString("%x %d%", std::span<const FormatArg>(clock, 1)) == "%x 7%");           // unknown: copied
+    // Shift-JIS bytes pass through untouched (their trail bytes are never %).
+    const std::string sjis = "\x83\x76\x83\x8C %d";
+    CHECK(formatExeString(sjis, std::span<const FormatArg>(clock, 1)) == "\x83\x76\x83\x8C 7");
+}
+
 static void testScreenEffects() {
     g_timing = Timing{};
     // Number of 16-bit draws between two generator states.
@@ -3628,6 +3644,7 @@ int main() {
         {"pause and continue menus: snapshot, locks", testInGameMenus},
         {"playfield camera: projected sprites", testPlayfieldCamera},
         {"screen effects: shake draws, pulses, fades", testScreenEffects},
+        {"exe strings: printf-style formats without printf", testExeStringFormat},
         {"English text: patch stack, spells, music, strings", testEnglishStackAndLookups},
         {"English text: msg jdiff keys and line rules", testEnglishMsgPatch},
         {"English text: endings, layout markup, fallback", testEnglishEnding},

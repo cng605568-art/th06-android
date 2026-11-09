@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <span>
 #include <string>
+#include <string_view>
 
 namespace touhou::th07 {
 
@@ -68,7 +69,27 @@ struct ExeTables {
     std::array<MenuText, 12> keyConfigText;
     static constexpr std::uint32_t kMainMenuTextTable = 0x0049F4CC, kOptionTextTable = 0x0049F4A8,
                                    kKeyConfigTextTable = 0x0049F478;
+    // The Player Data page's Shift-JIS formats (spec 6.4.5): each line without and with the
+    // Phantasm column ([0], [1]), the two clocks, and the row labels (6 shots, then the total).
+    // Empty when not readable.
+    struct PlayerDataText {
+        std::array<std::string, 2> header, row, clear, continues, practice, retry;
+        std::string playTime, runningTime;
+        std::array<std::string, 7> rowLabels;
+        bool complete() const;
+    };
+    PlayerDataText playerData;
 };
+
+// printf-style formatting of a Shift-JIS format read from the exe, without handing it to
+// printf: %d with flags '-' / '0', width and precision, %s with width, %%. Missing arguments
+// format as 0 or nothing; anything else is copied as it is.
+struct FormatArg {
+    std::int64_t number = 0;
+    std::string_view text;
+    bool isText = false;
+};
+std::string formatExeString(std::string_view format, std::span<const FormatArg> args);
 
 // False (with a reason) when `exe` is not th07.exe 1.00b (unless requireKnownVersion is
 // false, for tests) or a table is not where it should be.
