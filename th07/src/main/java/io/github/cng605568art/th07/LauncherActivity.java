@@ -292,6 +292,7 @@ public class LauncherActivity extends Activity {
         filesButton.setEnabled(!busy);
         removeButton.setEnabled(!busy && imported);
         playButton.setEnabled(!busy);
+        english.setEnabled(!busy && GameFiles.englishPresent(this));
     }
 
     private void confirmRemove() {
