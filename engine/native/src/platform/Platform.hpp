@@ -39,6 +39,9 @@ std::string iosGameDataDir();
 std::string iosStorageDir();
 // iOS: the screen's framebuffer object, which SDL creates (it is not 0 on iOS).
 unsigned iosScreenFramebuffer(void* sdlWindow);
+// iOS: binds the screen's colour renderbuffer, which SDL presents (call before each swap:
+// SDL presents whatever renderbuffer is bound, and the game binds its own).
+void iosBindScreenRenderbuffer(void* sdlWindow);
 #endif
 
 }  // namespace touhou

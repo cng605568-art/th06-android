@@ -149,7 +149,11 @@ bool App::init(int argc, char** argv) {
     }
     SDL_GL_MakeCurrent(window_, context_);
 #if defined(TOUHOU_IOS)
-    RenderTarget::setScreenFramebuffer(iosScreenFramebuffer(window_));  // SDL's, not 0
+    {
+        const unsigned fbo = iosScreenFramebuffer(window_);  // SDL's, not 0
+        RenderTarget::setScreenFramebuffer(fbo);
+        log::info("iOS screen framebuffer {}", fbo);
+    }
 #endif
     vsync_ = SDL_GL_SetSwapInterval(1) == 0;
     SDL_DisplayMode mode;
@@ -402,6 +406,9 @@ void App::loop() {
         if (game_->takeCaptureRequest()) game_->setCaptureReady(capturePlayfield());
         renderFrame(game_->paused() || devLockstep_ ? 1.0f : clock_.alpha());
         developerFrameHooks();
+#if defined(TOUHOU_IOS)
+        iosBindScreenRenderbuffer(window_);  // SDL presents the bound renderbuffer
+#endif
         SDL_GL_SwapWindow(window_);
         if (glChecks_ > 0) {  // the first frames: GL errors named by the step that made them
             gl::check("SDL_GL_SwapWindow");

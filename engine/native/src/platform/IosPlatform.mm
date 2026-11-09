@@ -14,6 +14,8 @@
 #include <SDL.h>
 #include <SDL_syswm.h>
 
+#include "gfx/Gl.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -338,6 +340,22 @@ std::string iosStorageDir() {
         }
         return saves;
     }
+}
+
+void iosBindScreenRenderbuffer(void* sdlWindow) {
+    // SDL keeps the same colour renderbuffer for the window's life (rotation only re-stores it).
+    static void* cachedWindow = nullptr;
+    static GLuint colorbuffer = 0;
+    if (sdlWindow != cachedWindow) {
+        cachedWindow = sdlWindow;
+        colorbuffer = 0;
+        SDL_SysWMinfo info;
+        SDL_VERSION(&info.version);
+        if (sdlWindow && SDL_GetWindowWMInfo(static_cast<SDL_Window*>(sdlWindow), &info) && info.subsystem == SDL_SYSWM_UIKIT) {
+            colorbuffer = info.info.uikit.colorbuffer;
+        }
+    }
+    if (colorbuffer != 0) glBindRenderbuffer(GL_RENDERBUFFER, colorbuffer);
 }
 
 unsigned iosScreenFramebuffer(void* sdlWindow) {
