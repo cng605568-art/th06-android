@@ -191,6 +191,28 @@ screen and in replays is measured from it. The menu descriptions are read from y
   (`--thcrap DIR` names another); `--test-msg N` / `--test-spell N` show dialogue script N or
   spell card N's banner at the stage's frame 30.
 
+## Perfect Cherry Blossom on iPhone and iPad (unsigned IPA)
+
+Every CI run also builds TH07 for iOS (`th07-ios-<version>.ipa`, the **iOS app** job; tag
+releases carry it too). It is the same game code on the same engine (SDL2, OpenGL ES 3), built
+ahead of time for arm64: no JIT, no emulation.
+
+* **Install:** the IPA is unsigned. Sideload it with your own Apple ID through AltStore,
+  SideStore or Sideloadly (free accounts re-sign every 7 days; AltStore and SideStore can do
+  that automatically), or sign it with a developer account for TestFlight.
+* **Game files:** open the **Files** app → **On My iPhone** → **TH07 Port** and copy your own
+  game folder there (th07.dat and th07.exe 1.00b, thbgm.dat for music; the folder may sit one
+  or two levels down). Keep its `thcrap` folder for English text. Nothing of the game ships with
+  the app.
+* **Settings:** iOS Settings → **TH07 Port** has the launcher's options: English text, skip the
+  title (shot, difficulty, stage, lives, practice), touch controls (drag or D-pad, drag speed,
+  button size, opacity, auto-fire, latching Focus, left-handed, vibration), display (landscape
+  or portrait, scaling, scanlines), practice tools and mischief. They apply at the next start.
+* **Saves:** `Saves/` in the same Files folder holds score.dat, th07.cfg, replays and the logs
+  (`Saves/logs/session.log` for bug reports); copy it out to back up.
+* Not on iOS yet: the game-text downloads, replace music and the launcher's backup button
+  (copy the `Saves` folder instead).
+
 ## Languages
 
 The launcher speaks English, 日本語, 简体中文, 繁體中文 and Bahasa Melayu (the **Language**
