@@ -60,6 +60,9 @@ class Gameplay {
         int playbackMode = 0;
         bool demo = false;
         int demoIndex = 0;
+        // Port extras from the launcher: mischief bits (World.hpp) and the hitbox marker.
+        std::uint32_t mischief = 0;
+        bool showHitbox = false;
     };
     // What the flow around the game provides (all optional): score.dat and the play
     // statistics, at the points of the stage set-up and play where the original touches them.
@@ -140,6 +143,12 @@ class Gameplay {
     bool takeCaptureRequest();
     void captureRect(int& x, int& y, int& w, int& h) const;
     void setCaptureReady(bool ready);
+    // Practice save states (port extra, live play with no menu up): one slot, valid until the
+    // stage changes. A load restores every system, the RNG, the timer, the mutable script
+    // bytes, the rendered text and the song.
+    enum class StateResult : std::uint8_t { Saved, Loaded, NotNow, Empty, Expired };
+    StateResult saveState();
+    StateResult loadState();
     // The current FPS a live recording samples every 30 frames (spec 1.3.6, 7.4.3).
     void setLiveFps(int fps) { liveFps_ = fps; }
     // Opens the pause menu (Android back button), as Menu pressed would.
@@ -194,6 +203,9 @@ class Gameplay {
     bool wasPaused_ = false;  // the "was paused" flag of the recorder
     bool slowSkip_ = false;
     int liveFps_ = 60;
+    int stageSerial_ = 0;  // +1 at every stage set-up (a save state belongs to one)
+    struct SaveSlot;
+    std::unique_ptr<SaveSlot> save_;
     int slowLag_ = 0, replayLag_ = 0;
     InGameMenu menu_;
     enum class CaptureOwner : std::uint8_t { None, Menu, Gui };

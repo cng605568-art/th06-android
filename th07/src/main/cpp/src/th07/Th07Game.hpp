@@ -36,13 +36,15 @@ class Th07Game final : public Game {
     bool paused() const override { return flow_ && flow_->paused(); }
     bool keepsPreviousFrame() const override { return flow_ && flow_->loadingFrame(); }
     bool showsPlayfield() const override { return flow_ && flow_->inGame(); }
-    bool practiceSpeedApplies() const override { return false; }
+    // Slow motion (the launcher's practice tools) in live play with no menu up.
+    bool practiceSpeedApplies() const override { return flow_ && flow_->inLiveGame() && !flow_->paused(); }
     void pauseNow() override {
         if (flow_) flow_->pauseNow();
     }
     // In a game: the pause menu (and Menu inside it); in the menus: Return. False leaves.
     bool back() override { return flow_ ? flow_->back() : false; }
-    int takeVibration() override { return 0; }
+    // A short vibration on a miss (80 ms) or a bomb (35 ms) in live play, as the th06 app does.
+    int takeVibration() override;
 
     // The pause and continue menus' playfield snapshot, into capture.anm's texture.
     bool takeCaptureRequest() override;
@@ -71,6 +73,9 @@ class Th07Game final : public Game {
     std::uint64_t fpsTicks_ = 0;
     bool fpsStarted_ = false;
     int loadingTicks_ = 0;  // passes held back while the loading frame is shown
+    int speedPercent_ = 100;
+    bool saveEdge_ = false, loadEdge_ = false;  // the SAVE / LOAD buttons' previous state
+    float lastMisses_ = 0.0f, lastBombsUsed_ = 0.0f;
 
     // Desktop developer option --anm-preview FILE [--anm-bg PICTURE]: every script of an ANM
     // file running side by side over a background, to check the ANM system on real data.

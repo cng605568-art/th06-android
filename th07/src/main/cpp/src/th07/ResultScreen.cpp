@@ -107,7 +107,7 @@ bool ResultScreen::create(std::string* error) {
     }
     const GameState& g = ctx_.lastGame;
     if (mode_ == Mode::PracticeEnd) {
-        if (g.difficulty < 4 && g.stage >= 1 && g.stage <= 6) {
+        if (g.difficulty < 4 && g.stage >= 1 && g.stage <= 6 && !ctx_.recordsOff) {
             PracticeRecord& r = sd.practiceAt(g.shotIndex, g.stage - 1, g.difficulty);
             if (static_cast<std::int64_t>(g.score) > r.score) r.score = static_cast<std::int32_t>(g.score);
         }
@@ -446,7 +446,7 @@ void ResultScreen::nameEntry(const MenuInput& in) {
     const GameState& g = ctx_.lastGame;
     if (!entered_) {
         entered_ = true;
-        if (g.slowMode || ctx_.timingBad) {
+        if (g.slowMode || ctx_.timingBad || ctx_.recordsOff) {
             ctx_.scores->spells = ctx_.spellSnapshot;
             std::memcpy(name_.data(), lastName_.data(), 8);
             setState(State::Statistics);
@@ -567,7 +567,7 @@ void ResultScreen::prompt(const MenuInput& in) {
         const int decision = mode_ == Mode::PracticeEnd ? 60 : 1;
         if (timer_ + 1 < decision) return;
         promptDecided_ = true;
-        if (g.slowMode || ctx_.timingBad) {
+        if (g.slowMode || ctx_.timingBad || ctx_.recordsOff) {
             sendAll(19);
             setState(State::CannotSave);
         } else if (g.continues != 0) {

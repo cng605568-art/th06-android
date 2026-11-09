@@ -10,6 +10,7 @@
 #include <memory>
 
 #include "core/ZunMath.hpp"
+#include "th07/HeapArray.hpp"
 #include "th07/Anm.hpp"
 #include "th07/World.hpp"
 
@@ -158,12 +159,10 @@ class BulletManager final : public BulletField, public ItemField {
 
     const World* world_ = nullptr;
     std::array<Template, 11> templates_{};
-    std::unique_ptr<std::array<Bullet, kBullets>> bullets_storage_ = std::make_unique<std::array<Bullet, kBullets>>();
-    std::array<Bullet, kBullets>& bullets_ = *bullets_storage_;
+    HeapArray<Bullet, kBullets> bullets_;
     std::array<Laser, kLasers> lasers_{};
     Laser dummyLaser_;
-    std::unique_ptr<std::array<Item, kItems + 1>> items_storage_ = std::make_unique<std::array<Item, kItems + 1>>();
-    std::array<Item, kItems + 1>& items_ = *items_storage_;
+    HeapArray<Item, kItems + 1> items_;
     int bulletCursor_ = 0, itemCursor_ = 0;
     int liveCount_ = 0;
     std::int32_t clearCountdown_ = 0;

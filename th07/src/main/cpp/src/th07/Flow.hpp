@@ -129,6 +129,10 @@ struct FlowContext {
     int maxContinues = 3;
     bool phantasmSeen = true;  // "unlocked" when the splash check last ran
     bool timingBad = false;    // never set in the port
+    // The running game used the launcher's mischief or practice tools (slow motion, a loaded
+    // save state): it saves no records (high scores, clears, spell history, practice bests,
+    // the replay), as timing-bad and slow mode do.
+    bool recordsOff = false;
 
     // The game that just ended (for the result screen and the title cursor).
     GameState lastGame;

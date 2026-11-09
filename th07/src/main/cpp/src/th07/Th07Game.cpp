@@ -54,8 +54,20 @@ void Th07Game::setUpEnglish(const GameContext& ctx) {
     }
     if (wanted && root.empty()) root = gameDir + "/thcrap";
 #else
-    // The launcher's "English text" option (GameActivity.getGameOptions(), the 7th value);
-    // the launcher imports the patch's files into the app's storage under thcrap/.
+    // The launcher's game-text choice: GameActivity.getGameTextStack() names the patch folders
+    // (an imported thcrap English patch, or a downloaded Touhou Patch Center language), lowest
+    // priority first. An older launcher only has the "English text" option (the 7th game
+    // option) and the imported thcrap folder.
+    std::vector<std::string> chosen = readAndroidGameTextStack();
+    if (!chosen.empty() && ctx.vfs) {
+        log::info("Game text: {} translation patch folder(s), top {}", chosen.size(), chosen.back());
+        english_ = std::make_unique<English>(std::move(chosen));
+        const English* e = english_.get();
+        ctx.vfs->setReadFilter([e](const std::string& name, std::optional<std::vector<std::uint8_t>> bytes) {
+            return e->filterFile(name, std::move(bytes));
+        });
+        return;
+    }
     const std::vector<int> options = androidIntArray("getGameOptions");
     wanted = options.size() >= 7 && options[6] != 0;
     root = ctx.storageDir + "thcrap";
@@ -117,6 +129,8 @@ bool Th07Game::start(const GameContext& ctx) {
         if (ctx.music) {
             music_ = std::make_unique<BgmPlayer>(ctx.music);
             music_->setData(std::move(records), thbgm);
+            // The launcher's replaced music: <files>/music/th07_NN.wav (+ .pos loop points).
+            if (!ctx.storageDir.empty()) music_->setOverrideDir(ctx.storageDir + "music/");
             music_->load(8, "bgm/th07_01.mid");  // the title song
         }
     }
@@ -143,6 +157,7 @@ bool Th07Game::start(const GameContext& ctx) {
     // frame's event flags with the recorded ones; --replay-log N logs the state every N frames.
     std::string replayPath;
     int replayStage = -1, replayMode = 0, demoIndex = -1;
+    std::uint32_t mischief = 0;  // --mischief N: the launcher's bits (World.hpp)
     autoFire_ = ctx.controls.autoFire;
     for (int i = 1; i < ctx.argc; ++i) {
         const std::string a = ctx.argv[i] ? ctx.argv[i] : "";
@@ -168,6 +183,7 @@ bool Th07Game::start(const GameContext& ctx) {
         else if (a == "--shot") play.shotIndex = std::clamp(std::atoi(ctx.argv[i + 1]), 0, 5);
         else if (a == "--difficulty") play.difficulty = endingDifficulty = std::clamp(std::atoi(ctx.argv[i + 1]), 0, 5);
         else if (a == "--lives") play.lifeCount = std::clamp(std::atoi(ctx.argv[i + 1]), 0, 4);
+        else if (a == "--mischief") mischief = static_cast<std::uint32_t>(std::atoi(ctx.argv[i + 1])) & 31u;
         else if (a == "--ending") endingShot = std::clamp(std::atoi(ctx.argv[i + 1]), 0, 5);
         else if (a == "--score") endingScore = static_cast<std::uint32_t>(std::atoll(ctx.argv[i + 1]));
         else if (a == "--stage-preview" && ctx.vfs) {
@@ -199,6 +215,8 @@ bool Th07Game::start(const GameContext& ctx) {
         play.practice = options.size() >= 5 && options[4] != 0 && play.difficulty < Extra;
     }
     startPlay = options.size() >= 6 && options[5] != 0;
+    // The 8th value: the mischief bits.
+    const std::uint32_t mischief = options.size() >= 8 ? static_cast<std::uint32_t>(options[7]) & 31u : 0u;
     const std::string replayPath;
     const int replayStage = -1, replayMode = 0, demoIndex = -1;
 #endif
@@ -223,6 +241,9 @@ bool Th07Game::start(const GameContext& ctx) {
         b.canPlay = exe_;
         flow_ = std::make_unique<Supervisor>();
         flow_->start(b);
+        flow_->setMischief(mischief);
+        speedPercent_ = ctx.controls.speedPercent;
+        flow_->setPracticeTools(ctx.controls.speedPercent, ctx.controls.showHitbox, ctx.controls.saveStates);
         titleSongRequested_ = true;
         if (unlockAll) flow_->unlockAll();
         if (check_.on || check_.logEvery > 0) installReplayCheck();
@@ -328,7 +349,12 @@ void Th07Game::tick(const InputState& input) {
     if (flow_) {
         if (music_) music_->fadeStep();
         flow_->setGameExtras(static_cast<std::uint16_t>((autoFire_ ? BtnShoot : 0) | (holdFocus_ ? BtnFocus : 0)));
-        flow_->pass(buttonWord(input));
+        // Practice save states: SAVE / LOAD pressed (a load replaces this pass).
+        const bool saveNow = input.saveState && !saveEdge_, loadNow = input.loadState && !loadEdge_;
+        saveEdge_ = input.saveState;
+        loadEdge_ = input.loadState;
+        if (saveNow) flow_->saveState();
+        if (!(loadNow && flow_->loadState())) flow_->pass(buttonWord(input));
         if (flow_->quit()) {
             flow_->shutdown();
             quit_ = true;
@@ -352,6 +378,18 @@ void Th07Game::tick(const InputState& input) {
     // The audio pump: one music command step, then the frame's sound effects.
     if (music_) music_->pump();
     if (sound_) sound_->flush();
+}
+
+int Th07Game::takeVibration() {
+    const GameState* g = flow_ ? flow_->liveGameState() : nullptr;
+    if (!g) {
+        lastMisses_ = lastBombsUsed_ = 0.0f;
+        return 0;
+    }
+    const bool missed = g->misses > lastMisses_, bombed = g->bombsUsed > lastBombsUsed_;
+    lastMisses_ = g->misses;
+    lastBombsUsed_ = g->bombsUsed;
+    return missed ? 80 : bombed ? 35 : 0;
 }
 
 void Th07Game::render(SpriteSink& sink, float, const FrameInfo& frame) {

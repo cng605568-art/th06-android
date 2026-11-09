@@ -3,6 +3,7 @@
 #include <format>
 
 #include "core/Log.hpp"
+#include "gfx/Image.hpp"
 #include "gfx/ProceduralArt.hpp"
 #include "io/Vfs.hpp"
 #include "th07/Bgm.hpp"
@@ -10,6 +11,29 @@
 #include "th07/SoundPlayer.hpp"
 
 namespace touhou::th07 {
+
+// A practice save state (port extra): a copy of every system of the running game.
+struct Gameplay::SaveSlot {
+    int serial = 0;
+    GameState state;
+    ZunRng rng;
+    Timing timing;
+    Player player;
+    Effects effects;
+    BulletManager bullets;
+    EnemyManager enemies;
+    Background background;
+    ScreenEffects screenFx;
+    Gui gui;
+    AnmDrawState drawState;
+    std::uint16_t prevRaw = 0, gameInput = 0, prevGameInput = 0;
+    bool wasPaused = false;
+    int slowLag = 0;
+    // The ANM files' mutable bytes and the textures the game draws into, by identity.
+    std::vector<std::pair<const std::vector<std::uint8_t>*, std::vector<std::uint8_t>>> anmBytes;
+    std::vector<std::pair<std::uint16_t, Image>> textures;
+    std::string song;
+};
 
 Gameplay::Gameplay() : player_(std::make_unique<Player>()) {}
 
@@ -143,6 +167,7 @@ void Gameplay::releaseStageFiles() {
 }
 
 bool Gameplay::setUpStage(bool fresh, std::string* error) {
+    ++stageSerial_;
     GameState& g = state_;
     ZunRng& rng = *res_.rng;
     const World& w = world_;
@@ -155,6 +180,7 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
         for (int i = 0; i < 9; ++i) rng.f32ZeroToOne();
         for (int i = 0; i < 5; ++i) rng.u32InRange(100000);
         config_ = setup_.config;  // the configuration copy
+        g.mischief = setup_.playback ? 0 : setup_.mischief;
         g.fullPowerChain = 0;
         if (g.difficulty >= Extra) g.lifeCount = 2;
         else if (g.practice) g.lifeCount = 8;
@@ -311,6 +337,7 @@ void Gameplay::end() {
 bool Gameplay::tick(std::uint16_t raw) {
     if (!running_) return false;
     GameState& g = state_;
+    if (g.cheat(MischiefFullPower) && g.power < 128.0f) g.power = 128.0f;  // mischief (no guard draws)
     g.dialogue = gui_->dialogueCurrent();
     const std::uint16_t pressed = static_cast<std::uint16_t>(raw & ~prevRaw_);
     // "Any button" as a mask: the word is non-zero and differs from the last pass's.
@@ -506,6 +533,17 @@ void Gameplay::draw(SpriteSink& sink) {
     player_->drawHigh(sink, drawState_);
     effects_.draw(sink, drawState_);
     bullets_->draw(sink, drawState_);
+    if (setup_.showHitbox && res_.ui) {
+        // Practice: the ship's hitbox (the original never shows it), over the bullets.
+        const Player::State st = player_->state();
+        if (st == Player::State::Alive || st == Player::State::Invulnerable || st == Player::State::Border) {
+            const Vec3f p = player_->position();
+            const float x = 32.0f + p.x, y = 16.0f + p.y;
+            const SpriteRegion& disc = res_.ui->disc;
+            sink.drawRegion(disc, x, y, 7.0f / static_cast<float>(disc.width), rgba(200, 20, 40, 230));
+            sink.drawRegion(disc, x, y, 3.5f / static_cast<float>(disc.width), rgba(255, 255, 255, 255));
+        }
+    }
     gui_->drawPopups(sink);
     gui_->draw(sink, drawState_);
     gui_->drawText(sink);
@@ -535,6 +573,82 @@ bool Gameplay::stageAdvance(std::string* error) {
     if (!running_ || !gui_->nextStageRequested()) return true;
     gui_->clearNextStageRequest();
     return nextStage(error);
+}
+
+// ---- practice save states (port extra) ------------------------------------------------------
+
+
+Gameplay::StateResult Gameplay::saveState() {
+    if (!running_ || playback_ || menu_.active() || finished() || !res_.rng || !res_.anm) return StateResult::NotNow;
+    auto s = std::make_unique<SaveSlot>(SaveSlot{stageSerial_, state_, *res_.rng, g_timing, *player_, effects_, *bullets_, *enemies_,
+                                                 background_, screenFx_, *gui_, drawState_});
+    s->prevRaw = prevRaw_;
+    s->gameInput = gameInput_;
+    s->prevGameInput = prevGameInput_;
+    s->wasPaused = wasPaused_;
+    s->slowLag = slowLag_;
+    for (int slot = 0; slot < AnmLibrary::kSlots; ++slot) {
+        if (!res_.anm->loaded(slot)) continue;
+        if (const std::vector<std::uint8_t>* b = res_.anm->slotBytes(slot)) {
+            bool seen = false;
+            for (const auto& [p, bytes] : s->anmBytes) seen = seen || p == b;
+            if (!seen) s->anmBytes.emplace_back(b, *b);
+        }
+        if (!res_.textures) continue;
+        const std::uint16_t tex = res_.anm->slotTexture(slot);
+        if (tex == 0) continue;
+        bool seen = false;
+        for (const auto& [id, img] : s->textures) seen = seen || id == tex;
+        if (seen) continue;
+        if (const Image* px = res_.textures->pixels(tex)) s->textures.emplace_back(tex, *px);
+    }
+    if (res_.music) s->song = res_.music->current();
+    save_ = std::move(s);
+    return StateResult::Saved;
+}
+
+Gameplay::StateResult Gameplay::loadState() {
+    if (!running_ || playback_ || menu_.active() || finished() || !res_.rng || !res_.anm) return StateResult::NotNow;
+    if (!save_) return StateResult::Empty;
+    SaveSlot& s = *save_;
+    if (s.serial != stageSerial_) {
+        save_.reset();  // another stage (its files were reloaded): the state no longer fits
+        return StateResult::Expired;
+    }
+    // The script bytes first: the restored VMs point into these buffers.
+    for (int slot = 0; slot < AnmLibrary::kSlots; ++slot) {
+        if (!res_.anm->loaded(slot)) continue;
+        std::vector<std::uint8_t>* b = res_.anm->slotBytes(slot);
+        for (const auto& [p, bytes] : s.anmBytes) {
+            if (p == b && b && b->size() == bytes.size()) std::copy(bytes.begin(), bytes.end(), b->begin());
+        }
+    }
+    state_ = s.state;
+    *res_.rng = s.rng;
+    g_timing = s.timing;
+    *player_ = s.player;
+    effects_ = s.effects;
+    *bullets_ = s.bullets;
+    *enemies_ = s.enemies;
+    background_ = s.background;
+    screenFx_ = s.screenFx;
+    *gui_ = s.gui;
+    drawState_ = s.drawState;
+    prevRaw_ = s.prevRaw;
+    gameInput_ = s.gameInput;
+    prevGameInput_ = s.prevGameInput;
+    wasPaused_ = s.wasPaused;
+    slowLag_ = s.slowLag;
+    if (res_.textures) {
+        for (const auto& [id, img] : s.textures) {
+            if (Image* px = res_.textures->pixels(id); px && px->width == img.width && px->height == img.height) {
+                *px = img;
+                res_.textures->touch(id);
+            }
+        }
+    }
+    if (res_.music && !s.song.empty() && res_.music->current() != s.song) res_.music->play(s.song);
+    return StateResult::Loaded;
 }
 
 }  // namespace touhou::th07

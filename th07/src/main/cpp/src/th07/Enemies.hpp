@@ -17,6 +17,7 @@
 #include <string>
 
 #include "core/ZunMath.hpp"
+#include "th07/HeapArray.hpp"
 #include "th07/Anm.hpp"
 #include "th07/Bullets.hpp"
 #include "th07/Ecl.hpp"
@@ -246,9 +247,8 @@ class EnemyManager {
     const World* w_ = nullptr;
     BgmPlayer* music_ = nullptr;
     EclFile ecl_;
-    std::unique_ptr<std::array<Enemy, kEnemies + 1>> storage_ = std::make_unique<std::array<Enemy, kEnemies + 1>>();
-    std::array<Enemy, kEnemies + 1>& enemies_ = *storage_;  // + the spare slot
-    std::unique_ptr<Enemy> template_ = std::make_unique<Enemy>();
+    HeapArray<Enemy, kEnemies + 1> enemies_;  // + the spare slot
+    HeapBox<Enemy> template_;
     std::array<std::int32_t, kBossSlots> bosses_{-1, -1, -1, -1, -1, -1, -1, -1};
     std::uint16_t dropCounter_ = 0, dropIndex_ = 0;
     int liveCount_ = 0;

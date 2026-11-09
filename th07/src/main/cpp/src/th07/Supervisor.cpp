@@ -341,7 +341,7 @@ void Supervisor::transition(FlowState from) {
                         // Extra and Phantasm clears (the next-level event): Extra unlocks its
                         // part of Phantasm, both count a clear.
                         const GameState& g = game_->state();
-                        if (g.finished && g.difficulty >= Extra && !g.replay) {
+                        if (g.finished && g.difficulty >= Extra && !g.replay && !ctx_.recordsOff) {
                             if (g.difficulty == Extra) scores_.clears[static_cast<std::size_t>(std::clamp(g.shotIndex, 0, 5))].noContinue[Extra] = kCleared;
                             scores_.stats.countClear(g.difficulty);
                         }
@@ -378,7 +378,7 @@ void Supervisor::transition(FlowState from) {
                     openMainMenu();
                     break;
                 case FlowState::Ending:
-                    if (live) scores_.stats.countClear(game_->state().difficulty);
+                    if (live && !ctx_.recordsOff) scores_.stats.countClear(game_->state().difficulty);
                     cutGame();
                     openEnding();
                     break;
@@ -447,6 +447,14 @@ void Supervisor::openEnding() {
     }
 }
 
+void Supervisor::applyExtras(Gameplay::Setup& s) {
+    s.mischief = s.playback ? 0 : mischief_;
+    s.showHitbox = showHitbox_;
+    // A live game with mischief or slow motion saves no records (a loaded save state also
+    // turns this on, during the game).
+    ctx_.recordsOff = !s.playback && (mischief_ != 0 || speedPercent_ < 100);
+}
+
 bool Supervisor::openGame(bool fresh, bool restart) {
     (void)fresh;
     // Both FPS accumulators restart with every fresh game (not between stages).
@@ -482,6 +490,7 @@ bool Supervisor::openGame(bool fresh, bool restart) {
         s.restart = false;
     }
     s.maxContinues = ctx_.maxContinues;
+    applyExtras(s);
     s.config = config_;
     s.exe = boot_.exe;
     s.recorder = s.playback ? nullptr : &recorder_;
@@ -559,10 +568,16 @@ void Supervisor::gameHooks(Gameplay& game) {
         if (restart) scores_.stats.countRetry(gs.difficulty);
         if (gs.practice) scores_.stats.countPractice(gs.difficulty);
     };
-    h.stageEntered = [this](const GameState& gs) { scores_.stageEntered(gs.shotIndex, gs.difficulty, gs.stage, gs.continues > 0); };
+    h.stageEntered = [this](const GameState& gs) {
+        if (!ctx_.recordsOff) scores_.stageEntered(gs.shotIndex, gs.difficulty, gs.stage, gs.continues > 0);
+    };
     Gameplay* g = &game;
-    h.spellDeclared = [this, g](int card, const std::string& name) { scores_.spellDeclared(card, g->state().shotIndex, name); };
-    h.spellCaptured = [this, g](int card, std::uint32_t bonus) { scores_.spellCaptured(card, g->state().shotIndex, bonus); };
+    h.spellDeclared = [this, g](int card, const std::string& name) {
+        if (!ctx_.recordsOff) scores_.spellDeclared(card, g->state().shotIndex, name);
+    };
+    h.spellCaptured = [this, g](int card, std::uint32_t bonus) {
+        if (!ctx_.recordsOff) scores_.spellCaptured(card, g->state().shotIndex, bonus);
+    };
     h.continued = [this](const GameState& gs) {
         scores_.stats.countPlay(gs.difficulty, gs.shotIndex);
         scores_.stats.countContinue(gs.difficulty);
@@ -655,6 +670,8 @@ bool Supervisor::startGame(const Gameplay::Setup& setup) {
     gameHooks(*game_);
     Gameplay::Setup s = setup_;
     s.maxContinues = ctx_.maxContinues;
+    applyExtras(s);
+    fpsAcc_ = speedAcc_ = 0.0;
     setup_ = s;
     Gameplay::Resources res;
     res.vfs = boot_.vfs;
@@ -756,11 +773,38 @@ void Supervisor::drawLoadingFrame(SpriteSink& sink) {
 void Supervisor::drawFps(SpriteSink& sink) {
     if (!boot_.anm || !boot_.anm->loaded(1)) return;
     if (!fpsString_.empty()) fpsText_.add(512.0f, 464.0f, fpsString_);
+    if (toastTimer_ > 0 && active_ == FlowState::Game && game_ && game_->running()) {
+        --toastTimer_;
+        fpsText_.add(40.0f, 432.0f, toast_, 0xFFFFF0B0u, 0.8f);
+    }
+    if (ctx_.recordsOff && active_ == FlowState::Game && game_ && game_->running() && !game_->replay()) {
+        fpsText_.add(424.0f, 188.0f, mischief_ != 0 ? "MISCHIEF" : "PRACTICE", 0xFFFF8CC8u, 0.65f);
+        fpsText_.add(424.0f, 199.0f, "SCORES NOT SAVED", 0xFFFFBEDCu, 0.65f);
+    }
     if (active_ == FlowState::Game && game_ && game_->running() && game_->replay() && !game_->paused() &&
         !replayFpsString_.empty()) {
         fpsText_.add(384.0f, 448.0f, replayFpsString_, replayFpsBad_ ? 0xFFFF4040u : 0xFFFFFFD0u);
     }
     fpsText_.draw(sink, *boot_.anm);
+}
+
+void Supervisor::saveState() {
+    if (!saveStates_ || !inLiveGame()) return;
+    const Gameplay::StateResult r = game_->saveState();
+    if (r == Gameplay::StateResult::NotNow) return;
+    toast_ = "STATE SAVED";
+    toastTimer_ = 60;
+}
+
+bool Supervisor::loadState() {
+    if (!saveStates_ || !inLiveGame()) return false;
+    const Gameplay::StateResult r = game_->loadState();
+    if (r == Gameplay::StateResult::NotNow) return false;
+    toast_ = r == Gameplay::StateResult::Loaded ? "STATE LOADED" : r == Gameplay::StateResult::Empty ? "NO STATE SAVED" : "STATE EXPIRED";
+    toastTimer_ = 60;
+    if (r != Gameplay::StateResult::Loaded) return false;
+    ctx_.recordsOff = true;  // practice from here on: nothing from this game is saved
+    return true;
 }
 
 void Supervisor::fpsMeasured(float fps) {

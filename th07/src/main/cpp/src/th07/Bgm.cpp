@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include "audio/MusicPlayer.hpp"
+#include "io/MappedFile.hpp"
 #include "core/Log.hpp"
 
 namespace touhou::th07 {
@@ -158,6 +159,29 @@ void BgmPlayer::startSong(const std::string& path) {
     }
     auto stream = std::make_unique<MusicStream>();
     std::string err;
+    preparedOverride_.reset();
+    if (!overrideDir_.empty()) {
+        // The launcher's replacement for this record, a WAV with its own loop points.
+        if (auto file = MappedFile::open(overrideDir_ + rec->name, &err)) {
+            std::int64_t loopStart = 0, loopEnd = 0;
+            const std::string posName = MusicPlayer::withExtension(rec->name, "pos");
+            if (auto pos = MappedFile::open(overrideDir_ + posName, &err); pos && pos->bytes().size() >= 8) {
+                std::int32_t a = 0, b = 0;
+                std::memcpy(&a, pos->bytes().data(), 4);
+                std::memcpy(&b, pos->bytes().data() + 4, 4);
+                loopStart = a, loopEnd = b;
+            }
+            if (stream->open(file->bytes(), loopStart, loopEnd, &err)) {
+                current_ = rec->name;
+                preparedOverride_ = std::move(file);
+                prepared_ = std::move(stream);
+                log::info("Music: {} (your replacement)", rec->name);
+                return;
+            }
+            log::warn("Music: your replacement {} cannot be played ({}); the original plays", rec->name, err);
+            stream = std::make_unique<MusicStream>();
+        }
+    }
     const std::int64_t loopStart = rec->intro > 0 ? rec->intro / align : 0;
     if (!stream->openPcm(thbgm_.subspan(static_cast<std::size_t>(rec->start), static_cast<std::size_t>(rec->total)),
                          r0.channels, static_cast<int>(r0.sampleRate), loopStart, rec->total / align, &err)) {
@@ -194,6 +218,7 @@ bool BgmPlayer::pump() {
                     fading_ = false;
                     if (prepared_ && backend_) {
                         backend_->startMusic(std::move(prepared_));
+                        playingOverride_ = std::move(preparedOverride_);  // (the old one has stopped)
                         playing_ = true;
                     }
                     setVolume(0);

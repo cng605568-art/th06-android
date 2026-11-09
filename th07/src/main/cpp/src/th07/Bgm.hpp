@@ -17,6 +17,7 @@
 #include <vector>
 
 namespace touhou {
+class MappedFile;
 class MusicBackend;
 class MusicStream;
 }  // namespace touhou
@@ -55,6 +56,9 @@ class BgmPlayer {
     void setData(std::vector<BgmRecord> records, std::span<const std::uint8_t> thbgm);
     bool hasStreamer() const { return !thbgm_.empty() && !records_.empty(); }
     void setMode(int mode) { mode_ = mode; }
+    // The launcher's replaced music: <dir>/th07_NN.wav (+ th07_NN.pos loop points, as the th06
+    // app writes them) plays in place of that thbgm.dat record.
+    void setOverrideDir(std::string dir) { overrideDir_ = std::move(dir); }
     int mode() const { return mode_; }
 
     // The game's requests. Paths are song paths as the data names them ("bgm/th07_02.mid").
@@ -110,6 +114,9 @@ class BgmPlayer {
     bool fading_ = false;
     int fadeLeft_ = 0, fadeTotal_ = 0;
     std::unique_ptr<MusicStream> prepared_;  // START: made at step 3, played at step 4
+    // A replacement file stays mapped while its stream is prepared and while it plays.
+    std::string overrideDir_;
+    std::unique_ptr<MappedFile> preparedOverride_, playingOverride_;
 };
 
 }  // namespace touhou::th07

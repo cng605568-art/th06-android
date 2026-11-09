@@ -45,7 +45,7 @@ void Player::startBomb(const World& w) {
     GameState& g = *w.state;
     g.eventFlags |= 0x01;
     w.addBombsUsed(1.0f);
-    w.addBombs(-1.0f);
+    if (!g.cheat(MischiefBombs)) w.addBombs(-1.0f);  // mischief: infinite bombs
     bombFocus_ = focused_;
     bombActive_ = true;
     bombing_ = true;

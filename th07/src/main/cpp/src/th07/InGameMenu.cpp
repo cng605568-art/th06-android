@@ -155,7 +155,7 @@ InGameMenu::Request InGameMenu::update(const World& w, std::uint16_t pressed) {
             default: break;
         }
     } else if (mode_ == Mode::Continue) {
-        if (g.practice || g.replay || g.difficulty >= Extra || g.continues >= maxContinues_) {
+        if (g.practice || g.replay || g.difficulty >= Extra || (g.continues >= maxContinues_ && !g.cheat(MischiefContinues))) {
             mode_ = Mode::None;
             return Request::Results;
         }
@@ -168,7 +168,7 @@ InGameMenu::Request InGameMenu::update(const World& w, std::uint16_t pressed) {
                     vm.interrupt(1);
                     visible_[static_cast<std::size_t>(10 + i)] = true;
                 }
-                vms_[14].selectSprite(lib, 0x092 + 116 + (maxContinues_ - g.continues));
+                vms_[14].selectSprite(lib, 0x092 + 116 + (g.cheat(MischiefContinues) ? maxContinues_ : std::max(0, maxContinues_ - g.continues)));
                 startBackground(w);
                 // [QUIRK] The state moves on to "cursor on No", but this pass still runs the
                 // "cursor on Yes" colours (input is locked at timer 0 anyway).

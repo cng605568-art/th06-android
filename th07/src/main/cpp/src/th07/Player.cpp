@@ -210,11 +210,13 @@ bool Player::deathStep(const World& w) {
     stateTimer_.assign(0);
     vm_.scale = {3.0f, 3.0f};
     startScript(w, vm_, 0);
-    if (g.livesI() < 1) {
-        continueMenu_ = true;
-        return false;
+    if (!g.cheat(MischiefLives)) {  // mischief: infinite lives (no life is taken)
+        if (g.livesI() < 1) {
+            continueMenu_ = true;
+            return false;
+        }
+        w.addLives(-1.0f);
     }
-    w.addLives(-1.0f);
     w.setBombs(static_cast<float>(static_cast<int>(header().initialBombs)));
     return true;
 }
@@ -912,6 +914,7 @@ void Player::offerTarget(const Vec3f& enemy, bool boss) {
 // ---- death, border -----------------------------------------------------------------------
 
 void Player::die(const World& w) {
+    if (w.state->cheat(MischiefInvincible)) return;  // mischief: nothing kills
     w.regenerate();
     if (w.effects) {
         w.effects->spawnSpecial(w, 12, pos_, 3, 0xFF4040FFu);

@@ -103,6 +103,9 @@ class Supervisor {
 
     // Host queries.
     bool inGame() const { return active_ == FlowState::Game && game_ && game_->running(); }
+    bool inLiveGame() const { return inGame() && !game_->replay(); }
+    // The running live game's state (null in the menus, replays and the demo).
+    const GameState* liveGameState() const { return inLiveGame() ? &game_->state() : nullptr; }
     bool paused() const { return inGame() && game_->paused(); }
     void pauseNow();
     // Buttons added to the game's input while it is not paused (the launcher's "Shot is held
@@ -138,6 +141,16 @@ class Supervisor {
     // A speed measurement (spec 1.3.6, every 0.5 s or more of real time): the port's logic
     // passes per real second. Drives the FPS text, the slowdown and live replays' FPS samples.
     void fpsMeasured(float fps);
+    // The launcher's port extras: mischief bits (World.hpp) and the practice tools.
+    void setMischief(std::uint32_t bits) { mischief_ = bits; }
+    void setPracticeTools(int speedPercent, bool showHitbox, bool saveStates) {
+        speedPercent_ = speedPercent, showHitbox_ = showHitbox, saveStates_ = saveStates;
+    }
+    bool recordsOff() const { return ctx_.recordsOff; }
+    // Practice save states (the SAVE / LOAD buttons, when the launcher turns them on): true
+    // when a state was loaded (that pass is not run).
+    void saveState();
+    bool loadState();
     // The "loading" frame (spec 3.1, 4.2): drawn over the previous frame, twice, while no
     // logic runs. True while one is still to be shown.
     bool loadingFrame() const { return loadingFrames_ > 0; }
@@ -160,6 +173,7 @@ class Supervisor {
     void transition(FlowState from);
     void openMainMenu();
     bool openGame(bool fresh, bool restart);
+    void applyExtras(Gameplay::Setup& s);
     void cutGame();
     void openResult(int mode);
     void openEnding();
@@ -210,6 +224,11 @@ class Supervisor {
     std::string fpsString_, replayFpsString_;
     bool replayFpsBad_ = false;
     int loadingFrames_ = 0;
+    std::string toast_;  // a short message in the playfield (save states)
+    int toastTimer_ = 0;
+    std::uint32_t mischief_ = 0;
+    int speedPercent_ = 100;
+    bool showHitbox_ = false, saveStates_ = false;
     double fpsAcc_ = 0.0, speedAcc_ = 0.0;
     AsciiText fpsText_;
 };

@@ -123,6 +123,10 @@ struct BossHud {
     std::array<bool, 4> markerTint{};
 };
 
+// Mischief bits (the launcher's order, as in the th06 app).
+inline constexpr std::uint32_t MischiefLives = 1, MischiefBombs = 2, MischiefInvincible = 4, MischiefFullPower = 8,
+                               MischiefContinues = 16;
+
 struct GameState {
     static constexpr int kMaxLives = 8, kMaxBombs = 8, kMaxPower = 128;
     static constexpr std::int32_t kCherryPlusFull = 50000;
@@ -138,6 +142,9 @@ struct GameState {
     std::uint8_t replayStages = 0;  // playback: the stage blocks present (bit i: stage index i)
     int lifeCount = 2;  // the configuration copy's life setting (0-4; 8 in practice)
     bool slowMode = false;
+    // The launcher's mischief options (port extras; such a game saves no records).
+    std::uint32_t mischief = 0;
+    bool cheat(std::uint32_t bit) const { return (mischief & bit) != 0; }
 
     // The guarded values (read as integers by truncation).
     float lives = 2, bombs = 3, power = 0, misses = 0, bombsUsed = 0;

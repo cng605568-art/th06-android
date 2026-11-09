@@ -31,6 +31,7 @@
 #include "th07/Effects.hpp"
 #include "th07/Enemies.hpp"
 #include "th07/ExeTables.hpp"
+#include "th07/HeapArray.hpp"
 #include "th07/GameConfig.hpp"
 #include "th07/InGameMenu.hpp"
 #include "th07/Player.hpp"
@@ -1761,6 +1762,63 @@ static void testVersionFile() {
     exe.push_back(9);         // tail: not counted
     CHECK(exeChecksum(exe) == 6);
     CHECK(exeChecksum(Bytes(3, 1)) == 0);
+}
+
+static void testBgmReplacement() {
+    // The launcher's replacement: music/th07_02.wav with its .pos loop points plays in place
+    // of that thbgm record; a broken file falls back to the original.
+    const Music m = syntheticMusic();
+    const auto dir = std::filesystem::temp_directory_path() / "th07_music_override_test";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    const auto write = [&](const char* name, const Bytes& b) {
+        std::ofstream(dir / name, std::ios::binary).write(reinterpret_cast<const char*>(b.data()), static_cast<std::streamsize>(b.size()));
+    };
+    Bytes wav;
+    const auto u32 = [&](std::uint32_t v) { for (int i = 0; i < 4; ++i) wav.push_back(static_cast<std::uint8_t>(v >> (8 * i))); };
+    const auto u16 = [&](std::uint16_t v) { wav.push_back(static_cast<std::uint8_t>(v)); wav.push_back(static_cast<std::uint8_t>(v >> 8)); };
+    const std::uint32_t frames = 1000;
+    wav.insert(wav.end(), {'R', 'I', 'F', 'F'});
+    u32(36 + frames * 4);
+    wav.insert(wav.end(), {'W', 'A', 'V', 'E', 'f', 'm', 't', ' '});
+    u32(16), u16(1), u16(2), u32(44100), u32(44100 * 4), u16(4), u16(16);
+    wav.insert(wav.end(), {'d', 'a', 't', 'a'});
+    u32(frames * 4);
+    wav.resize(wav.size() + frames * 4, 0);
+    write("th07_02.wav", wav);
+    Bytes pos;
+    for (std::uint32_t v : {100u, 900u}) for (int i = 0; i < 4; ++i) pos.push_back(static_cast<std::uint8_t>(v >> (8 * i)));
+    write("th07_02.pos", pos);
+    write("th07_01.wav", Bytes{'n', 'o', 't', ' ', 'a', ' ', 'w', 'a', 'v'});
+
+    RecordingMusic backend;
+    BgmPlayer bgm(&backend);
+    bgm.setData(parseThbgmFmt(m.fmt), m.thbgm);
+    bgm.setOverrideDir(dir.string() + "/");
+    bgm.play("bgm/th07_02.mid");
+    bgm.drain();
+    CHECK(backend.starts == 1 && bgm.current() == "th07_02.wav");
+    CHECK(backend.stream && backend.stream->loopStart() == 100 && backend.stream->loopEnd() == 900);
+    bgm.play("bgm/th07_01.mid");  // not a WAV: the thbgm.dat record plays
+    bgm.drain();
+    CHECK(backend.starts == 2 && bgm.current() == "th07_01.wav" && backend.stream && backend.stream->loopEnd() != 900);
+    std::filesystem::remove_all(dir);
+}
+
+static void testHeapArrayCopies() {
+    touhou::th07::HeapArray<int, 4> a;
+    a[0] = 1, a[3] = 4;
+    touhou::th07::HeapArray<int, 4> b(a);  // a deep copy
+    b[0] = 9;
+    CHECK(a[0] == 1 && b[0] == 9 && b[3] == 4);
+    const int* storage = a.data();
+    a = b;  // copied into the same storage: pointers into it stay valid
+    CHECK(a.data() == storage && a[0] == 9);
+    touhou::th07::HeapBox<std::string> s;
+    *s = "x";
+    touhou::th07::HeapBox<std::string> t(s);
+    *t = "y";
+    CHECK(*s == "x" && *t == "y");
 }
 
 static void testBgm() {
@@ -3646,6 +3704,8 @@ int main() {
         {"pause and continue menus: snapshot, locks", testInGameMenus},
         {"playfield camera: projected sprites", testPlayfieldCamera},
         {"screen effects: shake draws, pulses, fades", testScreenEffects},
+        {"music: the launcher's replaced songs", testBgmReplacement},
+        {"save states: deep-copying pools", testHeapArrayCopies},
         {"exe strings: printf-style formats without printf", testExeStringFormat},
         {"English text: patch stack, spells, music, strings", testEnglishStackAndLookups},
         {"English text: msg jdiff keys and line rules", testEnglishMsgPatch},

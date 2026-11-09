@@ -134,6 +134,8 @@ struct ScoreData {
     void stageEntered(int shot, int difficulty, int stage, bool continued);
     // The main game's ending: returns whether this ending was seen before.
     bool endingReached(int shot, int difficulty, bool continued);
+    // The same "seen before" answer without marking anything (a game that saves no records).
+    bool endingSeen(int shot, int difficulty, bool continued) const;
 
     // Spell history in live play (spec 5.7). `name` is the card's Shift-JIS name from the ECL.
     void spellDeclared(int card, int shot, std::string_view name);

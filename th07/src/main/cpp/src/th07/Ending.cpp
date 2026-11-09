@@ -29,7 +29,8 @@ void Ending::release() {
 
 bool Ending::create(int shot, int difficulty, bool continued, std::string* error) {
     AnmLibrary& lib = *ctx_.anm;
-    seen_ = ctx_.scores->endingReached(shot, difficulty, continued);
+    seen_ = ctx_.recordsOff ? ctx_.scores->endingSeen(shot, difficulty, continued)
+                            : ctx_.scores->endingReached(shot, difficulty, continued);
     std::string err;
     staffLoaded_ = ctx_.vfs && ctx_.textures && lib.load(*ctx_.vfs, *ctx_.textures, "data/staff01.anm", 49, kStaffBase, &err);
     if (!staffLoaded_) log::warn("Ending: {}", err);

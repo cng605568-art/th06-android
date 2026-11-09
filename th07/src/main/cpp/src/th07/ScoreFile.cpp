@@ -179,6 +179,12 @@ void ScoreData::stageEntered(int shot, int difficulty, int stage, bool continued
     if (r < v) r = v;
 }
 
+bool ScoreData::endingSeen(int shot, int difficulty, bool continued) const {
+    const ClearRecord& c = clears[static_cast<std::size_t>(std::clamp(shot, 0, kShots - 1))];
+    const auto d = static_cast<std::size_t>(std::clamp(difficulty, 0, 5));
+    return continued ? c.reached[d] == kCleared : c.noContinue[d] == kCleared;
+}
+
 bool ScoreData::endingReached(int shot, int difficulty, bool continued) {
     ClearRecord& c = clears[static_cast<std::size_t>(std::clamp(shot, 0, kShots - 1))];
     const auto d = static_cast<std::size_t>(std::clamp(difficulty, 0, 5));
