@@ -21,15 +21,38 @@ import java.util.Locale;
  * Logs for bug reports, in the app's storage under logs/: the engine's session log
  * (session.log, and previous.log from the run before), its native crash report (crash.txt)
  * and Java crashes (java-crash.txt, written here). The launcher saves them as one text file
- * the player can attach to a report; nothing is ever sent anywhere by the app.
+ * the player can attach to a report, and shows a banner after a crash until the log is saved
+ * or the banner dismissed; nothing is ever sent anywhere by the app.
  */
 final class Logs {
     private static final int MAX_SECTION = 256 * 1024;  // bytes per log in a report (its end)
+    private static final String PREFS = "th07_logs";
+    private static final String KEY_SEEN = "crash_seen";  // the newest crash the player has seen
 
     private Logs() {}
 
     static File dir(Context ctx) {
         return new File(ctx.getFilesDir(), "logs");
+    }
+
+    private static File[] crashFiles(Context ctx) {
+        File d = dir(ctx);
+        return new File[] {new File(d, "crash.txt"), new File(d, "java-crash.txt")};
+    }
+
+    /** A crash newer than the last one the player saved or dismissed. */
+    static boolean hasUnseenCrash(Context ctx) {
+        long seen = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_SEEN, 0);
+        for (File f : crashFiles(ctx)) {
+            if (f.isFile() && f.lastModified() > seen) return true;
+        }
+        return false;
+    }
+
+    static void markSeen(Context ctx) {
+        long newest = System.currentTimeMillis();
+        for (File f : crashFiles(ctx)) newest = Math.max(newest, f.lastModified());
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putLong(KEY_SEEN, newest).apply();
     }
 
     /** Records uncaught Java exceptions (launcher or game process) in logs/java-crash.txt. */
@@ -94,6 +117,13 @@ final class Logs {
             sb.append(String.format(Locale.ROOT, "%-10s%s%n", name + ":",
                     !s.present ? "not imported" : (s.valid ? "ok, " : "WRONG FILE, ") + s.size + " bytes"));
         }
+        sb.append("language: ").append(Lang.effective(ctx)).append(" (chosen: ")
+                .append(Lang.chosen(ctx).isEmpty() ? "phone" : Lang.chosen(ctx)).append(")\n");
+        sb.append("game text: ").append(GameText.describe(ctx)).append('\n');
+        sb.append("music:    ").append(MusicReplacer.replacedCount(ctx)).append(" song(s) replaced\n");
+        sb.append("options:  game ").append(java.util.Arrays.toString(Options.game(ctx)))
+                .append(", controls ").append(java.util.Arrays.toString(Options.controls(ctx)))
+                .append(", display ").append(java.util.Arrays.toString(Options.display(ctx))).append('\n');
         File d = dir(ctx);
         String[][] sections = {
             {"crash.txt", "Native crash (the most recent)"},

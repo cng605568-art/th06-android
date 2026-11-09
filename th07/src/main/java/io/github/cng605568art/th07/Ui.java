@@ -8,6 +8,7 @@ import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.graphics.drawable.StateListDrawable;
+import android.text.InputType;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -16,6 +17,7 @@ import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.Spinner;
 import android.widget.TextView;
@@ -255,8 +257,27 @@ final class Ui {
         };
     }
 
+    /** A one-line text field on the lilac wash. */
+    EditText field(String hint, int inputType) {
+        EditText e = new EditText(ctx);
+        e.setHint(hint);
+        e.setInputType(inputType == 0 ? InputType.TYPE_CLASS_TEXT : inputType);
+        e.setTypeface(text);
+        e.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        e.setTextColor(INK);
+        e.setHintTextColor(0xFFB9A7C2);
+        e.setSingleLine(true);
+        e.setBackground(fieldBackground());
+        e.setPadding(dp(14), dp(12), dp(14), dp(12));
+        return e;
+    }
+
     Spinner spinner(String[] items, int selected, IntConsumer onSelect) {
-        ArrayAdapter<String> adapter = adapter(items);
+        return spinner(adapter(items), selected, onSelect);
+    }
+
+    /** A drop-down over `adapter` (which the caller may refill later). */
+    Spinner spinner(ArrayAdapter<String> adapter, int selected, IntConsumer onSelect) {
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         Spinner s = new Spinner(ctx, Spinner.MODE_DROPDOWN);
         s.setAdapter(adapter);

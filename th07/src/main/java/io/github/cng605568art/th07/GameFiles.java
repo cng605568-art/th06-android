@@ -24,6 +24,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -41,8 +42,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * And the English patch, when the game folder has thcrap in it (as on the PC, where the
  * community English patch runs through the thcrap patcher): thcrap/repos/thpatch/lang_en
  * and the patches its patch.js depends on, each with its own .js files and its th07 folder,
- * are copied to files/thcrap/ with their relative paths (lower-cased), replacing an earlier
- * copy. The engine reads them for the "English text" option.
+ * are copied to files/thcrap/repos/ with their relative paths (lower-cased), replacing the
+ * earlier copies of those patches; files/thcrap/imported.list names them. Game text the
+ * player downloaded (GameText) shares that folder and is kept. The engine reads the patches
+ * as the game-text stack (GameActivity.getGameTextStack()).
  */
 final class GameFiles {
     static final String DAT = "th07.dat";
@@ -53,6 +56,8 @@ final class GameFiles {
     static final String REPLAY = "replay";
     /** The thcrap patcher's folder (a Source of this kind is that folder). */
     static final String THCRAP = "thcrap";
+    /** In files/thcrap/: the patches ("repo/patch") the last import brought, one per line. */
+    private static final String IMPORTED = "imported.list";
     /** Folder levels below a patch's th07 folder that are copied (th07/data/ascii/x.png: 2). */
     private static final int PATCH_DEPTH = 6;
     private static final long SCORE_MAX = 1024 * 1024;
@@ -216,7 +221,10 @@ final class GameFiles {
         return new File(ctx.getFilesDir(), REPLAY);
     }
 
-    /** Deletes every imported file (the English patch too). */
+    /**
+     * Deletes every imported file (the English patch too; patch folders that downloaded game
+     * text also uses stay). Call with the files lock held.
+     */
     static void removeAll(Context ctx) {
         File[] files = dir(ctx).listFiles();
         if (files != null) {
@@ -225,30 +233,141 @@ final class GameFiles {
                 f.delete();
             }
         }
-        deleteTree(thcrapDir(ctx));
+        Set<String> downloaded = GameText.downloadedPatches(ctx);
+        if (downloaded.isEmpty()) {
+            deleteTree(thcrapDir(ctx));
+        } else {
+            for (String key : importedPatches(ctx)) {
+                if (!downloaded.contains(key)) deleteTree(GameText.folder(ctx, key));
+            }
+            try {
+                writeList(importedList(ctx), new ArrayList<>());
+            } catch (IOException ignored) {
+                // The folders are gone; a stale list only names folders that no longer exist.
+            }
+            pruneEmptyRepos(ctx);
+        }
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY_EXE_STAMP).apply();
     }
 
     // ---- the English patch (thcrap) -------------------------------------------------------
 
-    /** Where the English patch's files go: files/thcrap/repos/<repo>/<patch>/... */
+    /** Where the patches' files go: files/thcrap/repos/<repo>/<patch>/... */
     static File thcrapDir(Context ctx) {
         return new File(ctx.getFilesDir(), THCRAP);
     }
 
+    private static File importedList(Context ctx) {
+        return new File(thcrapDir(ctx), IMPORTED);
+    }
+
+    /** "repo/patch" in lower case, nothing that leaves the repos folder. */
+    static boolean validKey(String key) {
+        if (key == null || key.length() > 160) return false;
+        int slash = key.indexOf('/');
+        if (slash <= 0 || slash != key.lastIndexOf('/') || slash == key.length() - 1) return false;
+        String repo = key.substring(0, slash), patch = key.substring(slash + 1);
+        if (repo.equals(".") || repo.equals("..") || patch.equals(".") || patch.equals("..")) return false;
+        for (int i = 0; i < key.length(); ++i) {
+            char c = key.charAt(i);
+            if (c < 0x20 || c == '\\' || c == ':' || Character.isUpperCase(c)) return false;
+        }
+        return true;
+    }
+
+    /**
+     * The patches the last import brought ("repo/patch"). From before that was recorded (an
+     * earlier version of the app imported everything there is): every patch folder that no
+     * download wrote.
+     */
+    static List<String> importedPatches(Context ctx) {
+        List<String> out = new ArrayList<>();
+        File list = importedList(ctx);
+        if (list.isFile()) {
+            for (String k : GameText.readStack(list)) out.add(k);
+            return out;
+        }
+        File[] repos = GameText.repos(ctx).listFiles();
+        if (repos == null) return out;
+        for (File repo : repos) {
+            File[] patches = repo.listFiles();
+            if (patches == null) continue;
+            for (File p : patches) {
+                String key = lower(repo.getName()) + "/" + lower(p.getName());
+                if (p.isDirectory() && validKey(key) && !new File(p, GameText.LOCAL_FILES).isFile()) out.add(key);
+            }
+        }
+        java.util.Collections.sort(out);
+        return out;
+    }
+
+    /**
+     * Writes imported.list for an earlier version's import (which had none), so that a
+     * download into the same folders cannot later make them look like downloads only.
+     */
+    static void recordEarlierImport(Context ctx) throws IOException {
+        if (importedList(ctx).isFile() || !GameText.repos(ctx).isDirectory()) return;
+        writeList(importedList(ctx), importedPatches(ctx));
+    }
+
     /** The English patch (some repository's lang_en) is imported. */
     static boolean englishPresent(Context ctx) {
-        File[] repos = new File(thcrapDir(ctx), "repos").listFiles();
-        if (repos == null) return false;
-        for (File repo : repos) {
-            if (new File(repo, "lang_en/patch.js").isFile()) return true;
+        for (String key : importedPatches(ctx)) {
+            if (key.endsWith("/lang_en") && new File(GameText.folder(ctx, key), "patch.js").isFile()) return true;
         }
         return false;
     }
 
-    /** How many of the patch's files are imported. */
+    /** How many of the imported patches' files there are. */
     static int englishFiles(Context ctx) {
-        return countFiles(thcrapDir(ctx), 0);
+        int n = 0;
+        for (String key : importedPatches(ctx)) n += countFiles(GameText.folder(ctx, key), 0);
+        return n;
+    }
+
+    /** Removes repository folders left empty. */
+    static void pruneEmptyRepos(Context ctx) {
+        File[] repos = GameText.repos(ctx).listFiles();
+        if (repos == null) return;
+        for (File r : repos) {
+            String[] left = r.list();
+            if (r.isDirectory() && left != null && left.length == 0) {
+                //noinspection ResultOfMethodCallIgnored
+                r.delete();
+            }
+        }
+    }
+
+    private static void writeList(File f, List<String> keys) throws IOException {
+        File dir = f.getParentFile();
+        if (dir != null && !dir.isDirectory() && !dir.mkdirs()) throw new IOException("cannot write " + f.getName());
+        StringBuilder sb = new StringBuilder();
+        for (String k : keys) sb.append(k).append('\n');
+        GameText.writeAtomically(f, sb.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * Puts the patches an import copied to `part` (part/repos/<repo>/<patch>) in place: each
+     * replaces its earlier copy; patches an earlier import brought that this one does not are
+     * deleted unless downloaded game text uses them; imported.list names the new ones.
+     */
+    static void installImportedPatches(Context ctx, File part, List<String> imported) throws IOException {
+        File repos = GameText.repos(ctx);
+        Set<String> downloaded = GameText.downloadedPatches(ctx);
+        for (String old : importedPatches(ctx)) {
+            if (!imported.contains(old) && !downloaded.contains(old)) deleteTree(new File(repos, old));
+        }
+        for (String key : imported) {
+            File from = new File(part, "repos/" + key), to = new File(repos, key);
+            deleteTree(to);
+            if (!from.isDirectory()) continue;
+            File parent = to.getParentFile();
+            if (parent != null && !parent.isDirectory() && !parent.mkdirs()) throw new IOException(ctx.getString(R.string.import_cannot_store));
+            if (!from.renameTo(to)) throw new IOException(ctx.getString(R.string.import_cannot_store));
+        }
+        writeList(importedList(ctx), imported);
+        deleteTree(part);
+        pruneEmptyRepos(ctx);
     }
 
     private static int countFiles(File dir, int depth) {
@@ -540,7 +659,8 @@ final class GameFiles {
         for (String[] repo : children(cr, thcrap.tree, repos)) {
             if (!isFolder(repo)) continue;
             for (String[] p : children(cr, thcrap.tree, repo[0])) {
-                if (isFolder(p)) patches.put(lower(repo[1]) + "/" + lower(p[1]), p[0]);
+                String key = lower(repo[1]) + "/" + lower(p[1]);
+                if (isFolder(p) && validKey(key)) patches.put(key, p[0]);
             }
         }
         String lang = patches.containsKey("thpatch/lang_en") ? "thpatch/lang_en" : null;
@@ -575,6 +695,7 @@ final class GameFiles {
         for (String key : wanted) {
             File dir = new File(part, "repos/" + key);
             for (String[] c : children(cr, thcrap.tree, patches.get(key))) {
+                if (!GameText.safePath(c[1]) || c[1].indexOf('/') >= 0) continue;  // (a name, not a path)
                 if (isFolder(c)) {
                     if (c[1].equalsIgnoreCase("th07")) copyFolder(ctx, thcrap.tree, c[0], new File(dir, "th07"), 0, copied, progress);
                 } else if (lower(c[1]).endsWith(".js")) {
@@ -583,12 +704,7 @@ final class GameFiles {
                 }
             }
         }
-        File target = thcrapDir(ctx);
-        deleteTree(target);
-        if (!part.renameTo(target)) {
-            deleteTree(part);
-            throw new IOException(ctx.getString(R.string.import_cannot_store));
-        }
+        installImportedPatches(ctx, part, wanted);
         patchesOut.addAll(wanted);
         return copied[0];
     }
@@ -596,6 +712,7 @@ final class GameFiles {
     private static void copyFolder(Context ctx, Uri tree, String documentId, File dir, int depth, int[] copied, Progress progress)
             throws IOException {
         for (String[] c : children(ctx.getContentResolver(), tree, documentId)) {
+            if (!GameText.safePath(c[1]) || c[1].indexOf('/') >= 0) continue;  // (a name, not a path)
             if (isFolder(c)) {
                 if (depth < PATCH_DEPTH) copyFolder(ctx, tree, c[0], new File(dir, lower(c[1])), depth + 1, copied, progress);
                 continue;

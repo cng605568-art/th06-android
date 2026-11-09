@@ -8,9 +8,12 @@
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
 
-    <!-- SDL's Java glue references this for rumble. No network access: the app only reads
-         the files the player imports. -->
+    <!-- Vibration on a miss and a bomb (SDL's Java glue also references it for rumble). -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Only when the player asks (or leaves the daily check on): the newest release's version
+         from GitHub, and the game text from Touhou Patch Center. Nothing about the player is
+         sent. -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:name=".Th07App"
