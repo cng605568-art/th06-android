@@ -6,7 +6,8 @@ import android.content.SharedPreferences;
 /**
  * Choices made in the launcher, read by the native engine through GameActivity: the start
  * options (shot type, difficulty, stage, spare lives, practice, skipping the title screen),
- * the touch controls and the display. Kept in this app's own preferences file.
+ * the mischief options, the touch controls and practice tools, and the display. Kept in this
+ * app's own preferences file (with the launcher's language and game-text choice).
  */
 final class Options {
     private static final String PREFS = "th07_options";
@@ -16,12 +17,18 @@ final class Options {
     private static final String KEY_LIVES = "lives";
     private static final String KEY_PRACTICE = "practice";
     private static final String KEY_SKIP_TITLE = "skip_title";
-    private static final String KEY_ENGLISH = "english_text";
+    private static final String KEY_MISCHIEF = "mischief";
     private static final String KEY_CONTROLS = "controls_";
 
     /** Difficulty indices as the engine numbers them. */
     static final int EXTRA = 4;
     static final int PHANTASM = 5;
+
+    /**
+     * Mischief options (not in the original game), as bits in the engine's order: infinite
+     * lives, infinite bombs, invincible, power always MAX, unlimited continues.
+     */
+    static final int MISCHIEF_COUNT = 5;
 
     private Options() {}
 
@@ -48,30 +55,34 @@ final class Options {
     static void setPractice(Context ctx, boolean v) { prefs(ctx).edit().putBoolean(KEY_PRACTICE, v).apply(); }
     static void setSkipTitle(Context ctx, boolean v) { prefs(ctx).edit().putBoolean(KEY_SKIP_TITLE, v).apply(); }
 
-    /** The "English text" checkbox as the player left it (on until they turn it off). */
-    static boolean englishChoice(Context ctx) { return prefs(ctx).getBoolean(KEY_ENGLISH, true); }
-    static void setEnglishChoice(Context ctx, boolean v) { prefs(ctx).edit().putBoolean(KEY_ENGLISH, v).apply(); }
-    /** English text is on: the checkbox and an imported English patch (so on by default once imported). */
-    static boolean english(Context ctx) { return englishChoice(ctx) && GameFiles.englishPresent(ctx); }
+    /** The mischief bits (see MISCHIEF_COUNT). */
+    static int mischief(Context ctx) { return prefs(ctx).getInt(KEY_MISCHIEF, 0) & ((1 << MISCHIEF_COUNT) - 1); }
+    static void setMischief(Context ctx, int bit, boolean on) {
+        int v = mischief(ctx);
+        v = on ? (v | (1 << bit)) : (v & ~(1 << bit));
+        prefs(ctx).edit().putInt(KEY_MISCHIEF, v).apply();
+    }
 
     /**
      * GameActivity.getGameOptions(): {shot type 0..5, difficulty 0..5, stage 1..6, spare lives
-     * 0..4, practice 0/1, skip the title screen 0/1, English text 0/1}. The engine starts Extra
-     * at stage 7 and Phantasm at stage 8; with the 6th value 0 it opens the title screen and
-     * the start values are not used. With the 7th value 1 it shows the English patch's text
-     * (from files/thcrap/).
+     * 0..4, practice 0/1, skip the title screen 0/1, game text 0/1, mischief bits}. The engine
+     * starts Extra at stage 7 and Phantasm at stage 8; with the 6th value 0 it opens the title
+     * screen and the start values are not used. The 7th value is 1 when the game's text comes
+     * from a translation (its patch folders: GameActivity.getGameTextStack()).
      */
     static int[] game(Context ctx) {
         return new int[] {shotType(ctx), difficulty(ctx), stage(ctx), lives(ctx), practice(ctx) ? 1 : 0, skipTitle(ctx) ? 1 : 0,
-                english(ctx) ? 1 : 0};
+                GameText.stack(ctx).length > 0 ? 1 : 0, mischief(ctx)};
     }
 
-    // ---- touch controls (GameActivity.getControlOptions()) ---------------------------
+    // ---- touch controls and practice tools (GameActivity.getControlOptions()) ----------
 
     static final String[] DRAG_SPEEDS = {"1×", "1.25×", "1.5×", "2×", "2.5×", "3×"};
     static final int[] DRAG_SPEED_PCT = {100, 125, 150, 200, 250, 300};
     static final int[] BUTTON_SIZE_PCT = {80, 100, 120, 140};
     static final int[] OPACITY_PCT = {40, 60, 80, 100};
+    /** Game speed (R.array.speeds): normal, or slow motion. */
+    static final int[] SPEED_PCT = {100, 75, 50};
 
     static int controlChoice(Context ctx, String name, int fallback) { return prefs(ctx).getInt(KEY_CONTROLS + name, fallback); }
     static void setControlChoice(Context ctx, String name, int v) { prefs(ctx).edit().putInt(KEY_CONTROLS + name, v).apply(); }
@@ -80,8 +91,8 @@ final class Options {
 
     /**
      * {drag, sensitivity %, button size %, opacity %, left-handed, focus toggle, auto-fire,
-     * vibrate, game speed %, show hitbox, save states}: the engine's ControlOptions. The
-     * practice tools (slow motion, hitbox, save states) are not in this port yet.
+     * vibrate on a miss and a bomb (default on), game speed % (100, 75, 50), show the hitbox,
+     * save states}: the engine's ControlOptions.
      */
     static int[] controls(Context ctx) {
         int speed = clamp(controlChoice(ctx, "speed", 2), 0, DRAG_SPEED_PCT.length - 1);
@@ -90,8 +101,9 @@ final class Options {
         return new int[] {
             controlChoice(ctx, "mode", 0) == 0 ? 1 : 0, DRAG_SPEED_PCT[speed], BUTTON_SIZE_PCT[size], OPACITY_PCT[opacity],
             controlFlag(ctx, "left", false) ? 1 : 0, controlFlag(ctx, "focusToggle", false) ? 1 : 0,
-            controlFlag(ctx, "autoFire", false) ? 1 : 0, 1,
-            100, 0, 0,
+            controlFlag(ctx, "autoFire", false) ? 1 : 0, controlFlag(ctx, "vibrate", true) ? 1 : 0,
+            SPEED_PCT[clamp(controlChoice(ctx, "speed%", 0), 0, SPEED_PCT.length - 1)],
+            controlFlag(ctx, "hitbox", false) ? 1 : 0, controlFlag(ctx, "saveStates", false) ? 1 : 0,
         };
     }
 

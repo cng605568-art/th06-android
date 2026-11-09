@@ -128,12 +128,25 @@ public class GameActivity extends SDLActivity {
 
     /**
      * Launcher choices: {shot type 0..5, difficulty 0..5, stage 1..6, spare lives 0..4, practice,
-     * skip the title screen, English text (the patch's files are in files/thcrap/)}.
+     * skip the title screen, game text on (getGameTextStack() is not empty), mischief bits (bit
+     * 0 infinite lives, 1 infinite bombs, 2 invincible, 3 power always MAX, 4 unlimited
+     * continues)}. See Options.game().
      */
     public static int[] getGameOptions() {
         Context ctx = SDL.getContext();
-        if (ctx == null) return new int[] {0, 1, 1, 2, 0, 0, 0};
+        if (ctx == null) return new int[] {0, 1, 1, 2, 0, 0, 0, 0};
         return Options.game(ctx);
+    }
+
+    /**
+     * The game-text translation's patch folders (absolute, each ending in "/"), lowest priority
+     * first, e.g. .../files/thcrap/repos/nmlgc/base_tsa/ ... .../repos/thpatch/lang_en/; an
+     * empty array means the original Japanese text. See GameText.
+     */
+    public static String[] getGameTextStack() {
+        Context ctx = SDL.getContext();
+        if (ctx == null) return new String[0];
+        return GameText.stack(ctx);
     }
 
     /** The launcher's display settings: {portrait, scaling, scanlines}. */
@@ -143,14 +156,18 @@ public class GameActivity extends SDLActivity {
         return Options.display(ctx);
     }
 
-    /** The launcher's touch-control settings, see Options.controls(). */
+    /**
+     * The launcher's touch-control settings and practice tools, 11 values: {drag, sensitivity %,
+     * button size %, opacity %, left-handed, focus toggle, auto-fire, vibrate, game speed %,
+     * show hitbox, save states}. See Options.controls().
+     */
     public static int[] getControlOptions() {
         Context ctx = SDL.getContext();
         if (ctx == null) return new int[] {1, 150, 100, 100, 0, 0, 0, 1, 100, 0, 0};
         return Options.controls(ctx);
     }
 
-    /** A short vibration, if the device has a vibrator. */
+    /** A short vibration (a miss or a bomb), if the device has a vibrator. */
     @SuppressWarnings("deprecation")
     public static void vibrate(int milliseconds) {
         Context ctx = SDL.getContext();
@@ -216,11 +233,13 @@ public class GameActivity extends SDLActivity {
     /**
      * The paint for translated (UTF-8) text: a condensed sans-serif for Latin text, the
      * system's CJK font when the text has kana or kanji (an ideographic space alone, as the
-     * English patch's endings indent with, does not count); a slant for italics.
+     * English patch's endings indent with, does not count), in the game-text language's glyph
+     * style (Chinese text in Chinese shapes); a slant for italics.
      */
     private static Paint utf8Paint(String text, int fontSize, boolean italic) {
         if (utf8Paint == null) utf8Paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         Paint p = utf8Paint;
+        p.setTextLocale(GameText.textLocale(SDL.getContext()));
         boolean cjk = false;
         for (int i = 0; i < text.length() && !cjk; ++i) {
             char c = text.charAt(i);
