@@ -132,6 +132,7 @@ class App {
     int refreshHz_ = 60;
     float fps_ = 0;
     std::uint32_t lastDrawCalls_ = 0;
+    int glChecks_ = 180;  // frames with GL error checks after each step (start-up diagnostics)
 };
 
 }  // namespace touhou

@@ -403,6 +403,10 @@ void App::loop() {
         renderFrame(game_->paused() || devLockstep_ ? 1.0f : clock_.alpha());
         developerFrameHooks();
         SDL_GL_SwapWindow(window_);
+        if (glChecks_ > 0) {  // the first frames: GL errors named by the step that made them
+            gl::check("SDL_GL_SwapWindow");
+            --glChecks_;
+        }
 
         if (!vsync_) {
             // No vsync: sleep until the next tick is due rather than spinning.
@@ -632,6 +636,7 @@ void App::renderFrame(float alpha) {
     batch_.begin(static_cast<float>(info.width), static_cast<float>(info.height), &gpu_);
     game_->render(batch_, alpha, frameInfo());
     batch_.end();
+    if (glChecks_ > 0) gl::check("renderFrame: the game picture");
 
     // 2) Onto the screen (letterboxed, or the portrait play view), sharp or smooth, with the
     //    optional scanlines, then the touch controls at full resolution.
@@ -662,6 +667,7 @@ void App::renderFrame(float alpha) {
     }
     touch_.draw(batch_, ui_);
     batch_.end();
+    if (glChecks_ > 0) gl::check("renderFrame: the screen");
     lastDrawCalls_ = batch_.takeDrawCalls();
 }
 

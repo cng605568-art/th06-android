@@ -364,6 +364,33 @@ jobs:
           sleep 25
           mkdir -p sim-out
           xcrun simctl io "$udid" screenshot sim-out/launch.png
+          # The screenshot as text in this log (artifacts may not be reachable): mean colour and
+          # a coarse brightness map.
+          sips -s format bmp sim-out/launch.png --out sim-out/launch.bmp >/dev/null
+          python3 - sim-out/launch.bmp <<'PY'
+          import struct, sys
+          b = open(sys.argv[1], 'rb').read()
+          off, w, h, bpp = struct.unpack_from('<I', b, 10)[0], *struct.unpack_from('<ii', b, 18), struct.unpack_from('<H', b, 28)[0]
+          step, row = bpp // 8, ((w * (bpp // 8) + 3) // 4) * 4
+          flip = h > 0; h = abs(h)
+          def px(x, y):
+              yy = h - 1 - y if flip else y
+              p = off + yy * row + x * step
+              return b[p + 2], b[p + 1], b[p]
+          s = [0, 0, 0]; n = 0
+          for y in range(0, h, 7):
+              for x in range(0, w, 7):
+                  r, g, bl = px(x, y); s[0] += r; s[1] += g; s[2] += bl; n += 1
+          print(f"screenshot {w}x{h}, mean RGB {s[0]//n} {s[1]//n} {s[2]//n}")
+          ramp = " .:-=+*#%@"
+          cols, rows = 96, 32
+          for j in range(rows):
+              line = ""
+              for i in range(cols):
+                  r, g, bl = px(i * w // cols, j * h // rows)
+                  line += ramp[min(9, (r * 3 + g * 6 + bl) // 10 * 10 // 256)]
+              print("|" + line + "|")
+          PY
           data="$(xcrun simctl get_app_container "$udid" io.github.cng605568art.th07 data)"
           ls -laR "$data/Documents" || true
           cp "$data/Documents/Saves/logs/session.log" sim-out/ 2>/dev/null || true
