@@ -78,8 +78,8 @@ is not bit-identical to the x87 code of 2002, so long runs can drift from real r
   artifact at the bottom of the page.
 * **A release:** **Releases → Draft a new release → Choose a tag →** type `v` + the version
   in the `VERSION` file (e.g. `v0.9.0`, or `v0.9.0-beta` for a pre-release) → **Publish**.
-  The workflow builds, signs and attaches the APK and `SHA256SUMS.txt` (a tag that does not
-  match `VERSION` is refused). Tags with a `-` become pre-releases. The launcher's
+  The workflow builds, signs and attaches both APKs (TH06 and TH07) with `SHA256SUMS.txt` and
+  `SHA256SUMS-th07.txt` (a tag that does not match `VERSION` is refused). Tags with a `-` become pre-releases. The launcher's
   **Check for updates** compares its own version with the newest full release.
 
 Versions: `VERSION` holds the next release's number; branch builds are named
@@ -137,7 +137,7 @@ screen and in replays is measured from it. The menu descriptions are read from y
 `th07.exe`.
 
 * **Get it:** every CI run also builds it, signed with the same key, as its own artifact
-  `th07-android-<version>` (it is not attached to GitHub Releases yet). Locally, with the
+  `th07-android-<version>`, and every GitHub Release from v0.10.0 carries it. Locally, with the
   Android SDK: `gradle :th07:assembleRelease` (APK in `th07/build/outputs/apk/release/`).
 * **Files from your own copy (version 1.00b):** `th07.dat` and `th07.exe` are needed (the
   game data, and the program the sound effects and other tables are read from, recognised by

@@ -1,11 +1,11 @@
 # Builds, tests, signs and releases the Android APK.
 #
 #   push to main / pull request  -> host unit tests + release APK as a workflow artifact
-#   push a tag "v*"              -> same, plus a GitHub Release with the signed APK
+#   push a tag "v*"              -> same, plus a GitHub Release with the signed APKs
 #                                   (tags containing "-", e.g. v0.2.0-beta, become pre-releases)
-# The same job also builds the Perfect Cherry Blossom app (:th07, signed with the same key)
-# and uploads it as its own workflow artifact (th07-android-<version>); it is not attached to
-# GitHub Releases yet.
+# The same job also builds the Perfect Cherry Blossom app (:th07, signed with the same key),
+# uploads it as its own workflow artifact (th07-android-<version>) and attaches it to the
+# release next to the th06 APK (checksums in SHA256SUMS-th07.txt).
 #
 # Repository secrets (Settings > Secrets and variables > Actions):
 #   ANDROID_KEYSTORE_BASE64    base64 of your release .jks (required for tags)
@@ -228,7 +228,7 @@ jobs:
           suffix=""
           [ "$HAS_KEYSTORE" = "true" ] || suffix="-debugsigned"
           cp "$apk" "dist-th07/${base}${suffix}.apk"
-          (cd dist-th07 && sha256sum *.apk > SHA256SUMS.txt && cat SHA256SUMS.txt)
+          (cd dist-th07 && sha256sum *.apk > SHA256SUMS-th07.txt && cat SHA256SUMS-th07.txt)
 
       # Unstripped native libraries, to turn the addresses in a player's crash log
       # (libmain.so+0x...) back into function names and lines.
@@ -295,6 +295,8 @@ jobs:
           files: |
             dist/*.apk
             dist/SHA256SUMS.txt
+            dist-th07/*.apk
+            dist-th07/SHA256SUMS-th07.txt
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-') }}
           fail_on_unmatched_files: true
