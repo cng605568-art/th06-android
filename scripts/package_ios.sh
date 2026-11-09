@@ -22,7 +22,7 @@ printf 'APPL????' > "$APP/PkgInfo"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 xcrun actool "$IOS/Assets.xcassets" --compile "$APP" --platform "$PLATFORM" \
-  --minimum-deployment-target 14.0 --app-icon AppIcon --target-device iphone --target-device ipad \
+  --minimum-deployment-target 16.3 --app-icon AppIcon --target-device iphone --target-device ipad \
   --output-partial-info-plist "$TMP/assets.plist" --output-format human-readable-text --notices --warnings
 
 if [ "$PLATFORM" = "iphonesimulator" ]; then

@@ -195,7 +195,8 @@ screen and in replays is measured from it. The menu descriptions are read from y
 
 Every CI run also builds TH07 for iOS (`th07-ios-<version>.ipa`, the **iOS app** job; tag
 releases carry it too). It is the same game code on the same engine (SDL2, OpenGL ES 3), built
-ahead of time for arm64: no JIT, no emulation.
+ahead of time for arm64: no JIT, no emulation. It needs iOS 16.3 or later (iPhone 8 and newer;
+Apple's C++ library has the number formatting the game uses from 16.3 on).
 
 * **Install:** the IPA is unsigned. Sideload it with your own Apple ID through AltStore,
   SideStore or Sideloadly (free accounts re-sign every 7 days; AltStore and SideStore can do

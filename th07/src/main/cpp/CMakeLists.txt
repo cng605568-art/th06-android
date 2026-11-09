@@ -9,7 +9,7 @@
 #   ./build-desktop/th07_desktop /path/to/game/folder
 # and the iOS app (on macOS with Xcode; CI packages it with scripts/package_ios.sh):
 #   cmake -S th07/src/main/cpp -B build-ios -G Ninja -DCMAKE_SYSTEM_NAME=iOS \
-#     -DCMAKE_OSX_SYSROOT=iphoneos -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0
+#     -DCMAKE_OSX_SYSROOT=iphoneos -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=16.3
 #   cmake --build build-ios   (-> build-ios/TH07Port.app)
 cmake_minimum_required(VERSION 3.22)
 project(th07port LANGUAGES C CXX)

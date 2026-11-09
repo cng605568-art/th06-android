@@ -329,7 +329,7 @@ jobs:
         run: |
           xcodebuild -version
           cmake -S th07/src/main/cpp -B build-ios -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphoneos \
-            -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=16.3 -DCMAKE_BUILD_TYPE=Release \
             -DTH07_VERSION="$TH07_VERSION_NAME" -DTH07_BUILD="$GITHUB_RUN_NUMBER"
           cmake --build build-ios --parallel --target TH07Port
 
@@ -352,7 +352,7 @@ jobs:
         continue-on-error: true
         run: |
           cmake -S th07/src/main/cpp -B build-sim -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphonesimulator \
-            -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=16.3 -DCMAKE_BUILD_TYPE=Release
           cmake --build build-sim --parallel --target TH07Port
           bash scripts/package_ios.sh build-sim/TH07Port.app iphonesimulator
           udid="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for k in sorted(d, reverse=True) if "iOS" in k for x in d[k] if x["name"].startswith("iPhone")))')"
