@@ -889,7 +889,7 @@ std::optional<std::vector<std::optional<std::string>>> English::musicComment(int
         } else if (l.string() == "@") {
             // thcrap's music_cmt: "@" is the numbered title, when the title has a translation.
             const auto title = musicTitle(track);
-            const std::string format = stringDef("Music Room Numbered Title").value_or("No. <r$%2d$99>  %s");
+            const std::string format = stringDef("Music Room Numbered Title").value_or("No.%2d %s");
             if (title) lines.emplace_back(formatPatchString(format, track, *title));
             else lines.emplace_back(std::nullopt);
         } else {

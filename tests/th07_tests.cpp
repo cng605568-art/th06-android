@@ -3332,7 +3332,7 @@ static void testEnglishStackAndLookups() {
     writeText(d.base / "th07" / "spells.js", R"({"3": "Base Three", "4": "Four"})");
     writeText(d.lang / "th07" / "spells.js", "{\"3\": \"Lang Three\\u0014a note\"}");
     writeText(d.lang / "themes.js", R"({"th07_01": "Song One", "th06_01": "Not this game"})");
-    writeText(d.base / "stringdefs.js", R"({"Music Room Numbered Title": "No. <r$%2d$99>  %s"})");
+    writeText(d.base / "stringdefs.js", R"({"Music Room Numbered Title": "#<r$%2d$9>: %s"})");
     writeText(d.lang / "th07" / "musiccmt.js", R"({"1": ["@", "First line", ""], "2": ["@", "Second"]})");
     writeText(d.base / "th07" / "stringlocs.v1.00b.js", R"({"Rx98874": "th07 Bomb Reimu A unfocused", "rx98800": "no def", })");
     writeText(d.lang / "stringdefs.js", "{\"th07 Bomb Reimu A unfocused\": \"Spirit Sign \\\"It" + kU8Quote + "s\\\"\"}");
@@ -3346,7 +3346,7 @@ static void testEnglishStackAndLookups() {
     const auto c1 = e.musicComment(1);
     CHECK(c1 && c1->size() == 3);
     if (c1 && c1->size() == 3) {
-        CHECK((*c1)[0] == std::optional<std::string>("No. <r$ 1$99>  Song One"));
+        CHECK((*c1)[0] == std::optional<std::string>("#<r$ 1$9>: Song One"));
         CHECK((*c1)[1] == std::optional<std::string>("First line") && (*c1)[2] == std::optional<std::string>(""));
     }
     const auto c2 = e.musicComment(2);
@@ -3355,7 +3355,7 @@ static void testEnglishStackAndLookups() {
     // stringlocs (the build variant, keys in either case) and stringdefs.
     CHECK(e.exeString(ExeTables::kBombNameAddresses[0]) == std::optional<std::string>("Spirit Sign \"It" + kU8Quote + "s\""));
     CHECK(!e.exeString(0x498800) && !e.exeString(0x1234));
-    CHECK(formatPatchString("No. <r$%2d$99>  %s", 7, "Title") == "No. <r$ 7$99>  Title");
+    CHECK(formatPatchString("#<r$%2d$9>: %s", 7, "Title") == "#<r$ 7$9>: Title");
     CHECK(formatPatchString("%03d|%-4s|%%|%.2d", 5, "ab") == "005|ab  |%|00");
     CHECK(English::gameText("x") == std::string("\x01x"));
 }

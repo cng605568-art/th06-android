@@ -159,7 +159,7 @@ float renderTranslated(TextRenderer& renderer, std::string_view utf8, const Text
 // that gets a line of its own.
 std::vector<std::string> wrapText(std::string_view text, float width, const std::function<float(std::string_view)>& measure);
 
-// printf for the patch's format strings ("No. <r$%2d$99>  %s"): %d with a width, %s, %%.
+// printf for the patch's format strings (for example "#%2d - %s"): %d with a width, %s, %%.
 std::string formatPatchString(std::string_view format, int number, std::string_view text);
 
 }  // namespace touhou::th07
