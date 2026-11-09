@@ -29,7 +29,11 @@ constexpr BombInfo kBombs[6][2] = {
     {{160, 260, 5500, 0.26f, 2.0f}, {300, 420, 6000, 0.29f, 1.5f}},
 };
 
-Vec3f polar(float angle, float length) { return {std::cos(angle) * length, std::sin(angle) * length, 0.0f}; }
+// One rounding: sine and cosine are not narrowed before the product (spec 1.2.2).
+Vec3f polar(float angle, float length) {
+    return {static_cast<float>(std::cos(static_cast<double>(angle)) * static_cast<double>(length)),
+            static_cast<float>(std::sin(static_cast<double>(angle)) * static_cast<double>(length)), 0.0f};
+}
 
 void shake(const World& w, int duration, float from, float to) {
     if (w.shakes) w.shakes->shake(duration, from, to);

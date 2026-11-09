@@ -22,6 +22,13 @@ bool boxesTouch(const Vec3f& c1, float hw1, float hh1, const Vec3f& c2, float hw
     return !(c1.x + hw1 < c2.x - hw2 || c1.x - hw1 > c2.x + hw2 || c1.y + hh1 < c2.y - hh2 || c1.y - hh1 > c2.y + hh2);
 }
 
+// A polar vector with one rounding: sine and cosine are not narrowed before the product
+// with the length (spec 1.2.2), as in the bullet and ECL helpers.
+Vec3f polarOnce(float angle, float length) {
+    return {static_cast<float>(std::cos(static_cast<double>(angle)) * static_cast<double>(length)),
+            static_cast<float>(std::sin(static_cast<double>(angle)) * static_cast<double>(length)), 0.0f};
+}
+
 std::uint32_t withAlpha(std::uint32_t argb, std::int32_t a) {
     return (argb & 0x00FFFFFFu) | (static_cast<std::uint32_t>(std::clamp(a, 0, 255)) << 24);
 }
@@ -463,7 +470,7 @@ void Player::commonShotInit(const World& w, Shot& s, const ShotEntry& e) {
     s.boxH = e.boxH;
     s.angle = e.angle;
     s.speed = e.speed;
-    s.velocity = {std::cos(e.angle) * e.speed, std::sin(e.angle) * e.speed, 0.0f};
+    s.velocity = polarOnce(e.angle, e.speed);
     s.age.reset();
     s.age.assign(0);
     s.behaviour = e.behaviour;
@@ -507,14 +514,14 @@ bool Player::fire(const World& w, Shot& s, int slot, const ShotEntry& e, int cyc
             commonShotInit(w, s, e);
             if (sakuyaTarget_.x > -100.0f) {
                 s.angle = addNormalizeAngle(std::atan2(sakuyaTarget_.y - s.pos.y, sakuyaTarget_.x - s.pos.x), e.angle + kZunPi / 2.0f);
-                s.velocity = {std::cos(s.angle) * e.speed * 1.5f, std::sin(s.angle) * e.speed * 1.5f, 0.0f};
+                s.velocity = polarOnce(s.angle, e.speed * 1.5f);  // the length first
             }
             return true;
         case 5:
             if (!periodic()) return false;
             commonShotInit(w, s, e);
             s.angle = addNormalizeAngle(optionAngle_, e.angle + kZunPi / 2.0f);
-            s.velocity = {std::cos(s.angle) * e.speed, std::sin(s.angle) * e.speed, 0.0f};
+            s.velocity = polarOnce(s.angle, e.speed);
             return true;
         default:
             if (!periodic()) return false;
@@ -849,7 +856,7 @@ int Player::damageQuery(const World& w, const Vec3f& centre, const Vec3f& size, 
                 }
                 if (box != 0.0f) {
                     s.boxW = s.boxH = box;
-                    s.velocity = {std::cos(a) * speed, std::sin(a) * speed, 0.0f};
+                    s.velocity = polarOnce(a, speed);
                 }
             }
             if (!veto && (s.age.current % 6) == 0 && w.effects) w.effects->spawn(w, 5, centre, 1, 0xFFFFFFFFu);

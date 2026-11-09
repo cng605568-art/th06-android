@@ -643,7 +643,9 @@ void BulletManager::updateLasers(const World& w) {
                 l.beam.scale.x = wdt / 16.0f;
                 size.x = wdt / 2.0f;
             }
-            if (l.timer.current < l.hitboxEnd) laserCollision(w, l, centre, size, false);
+            // A fading laser grazes on the same 12-frame rhythm as the other states (from the
+            // fall-through frame, timer 0): missing these grazes shifts the RNG (effect 8).
+            if (l.timer.current < l.hitboxEnd) laserCollision(w, l, centre, size, l.timer.current % 12 == 0);
             if (l.timer.current >= l.endTime) {
                 l.inUse = false;
                 continue;
@@ -701,10 +703,6 @@ void BulletManager::collectAll() {
         it.state = AutoCollect;
         it.velocity = {0.0f, -0.5f, 0.0f};
     }
-}
-
-void BulletManager::removeItems() {
-    for (Item& it : items_) it.inUse = false;
 }
 
 void BulletManager::stopHoming() {

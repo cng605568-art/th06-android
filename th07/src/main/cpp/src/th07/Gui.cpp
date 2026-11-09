@@ -481,7 +481,8 @@ void Gui::startDialogue(int number) {
     line1Used_ = false;
     if (w.bulletManager) {
         w.bulletManager->clearAll(w, 1);
-        w.bulletManager->removeItems();
+        // Every item homes on the player (none is deleted), as at a bomb's start.
+        w.bulletManager->collectAll();
     }
     // (All enemies removed, no score: the enemy manager hooks in here.)
     if (w.onDialogueStart) w.onDialogueStart();
@@ -500,7 +501,7 @@ void Gui::runDialogue(const World& w, std::uint16_t input, std::uint16_t previou
     auto instrTime = [&]() { return msgPos_ + 4 <= msg_.size() ? static_cast<std::int32_t>(static_cast<std::uint16_t>(rd16(msg_, msgPos_))) : 0; };
     if (skippable_ && skip) msgTimer_.assign(instrTime());
     if (w.player && w.player->borderFlag() != Player::BorderFlag::None) w.player->endBorderForDialogue(w);
-    if (w.player && !w.player->dead() && w.bulletManager) w.bulletManager->removeItems();
+    if (w.player && !w.player->dead() && w.bulletManager) w.bulletManager->collectAll();  // items keep homing
     bool stalled = false;
     while (msgPos_ + 4 <= msg_.size() && msgTimer_.current >= instrTime()) {
         const std::uint8_t op = at(msgPos_ + 2);

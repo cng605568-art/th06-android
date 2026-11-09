@@ -136,7 +136,6 @@ class BulletManager final : public BulletField, public ItemField {
     // ItemField.
     void spawn(const Vec3f& pos, int type, int state) override;
     void collectAll() override;
-    void removeItems();  // every item gone (dialogue)
     void stopHoming() override;
 
   private:
