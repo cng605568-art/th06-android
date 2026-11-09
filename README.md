@@ -152,21 +152,29 @@ screen and in replays is measured from it. The menu descriptions are read from y
   instead, with its choices: character and shot type (Reimu A/B, Marisa A/B, Sakuya A/B),
   difficulty (Easy to Lunatic, or Extra and Phantasm with their own stage), stage 1–6, spare
   lives 0–4 and a practice start; touch controls (drag or D-pad, drag speed, button size,
-  opacity, auto-fire, latching Focus, left-handed) and display (landscape or portrait,
-  scaling, scanlines) work as in th06. Back opens the pause menu in a game and cancels in the
-  menus; on the title with the cursor on Quit it returns to the launcher. Without a 1.00b `th07.dat` and
-  `th07.exe` the game shows a status screen saying what is missing. **Save a log** in Help
-  keeps a bug report on the phone until you share it.
+  opacity, auto-fire, latching Focus, left-handed, vibration on a miss and a bomb) and display
+  (landscape or portrait, scaling, scanlines) work as in th06. Back opens the pause menu in a
+  game and cancels in the menus; on the title with the cursor on Quit it returns to the
+  launcher. Without a 1.00b `th07.dat` and `th07.exe` the game shows a status screen saying
+  what is missing.
+* **The th06 launcher's other settings:** the launcher in English, 日本語, 简体中文, 繁體中文 or
+  Bahasa Melayu; **practice tools** (game speed 75 % / 50 %, a hitbox marker, SAVE / LOAD save
+  states); **mischief** (infinite lives or bombs, invincible, power always MAX, unlimited
+  continues); **replace music** (any song with your own audio file, converted to WAV 44.1 kHz
+  stereo and looped, stored as `music/th07_NN.wav`). A game with mischief, slow motion or a
+  loaded save state saves no high scores, clears, spell history, practice bests or replay (the
+  side panel says so). **Help & updates:** an automatic or manual check for a newer release,
+  **Report an issue**, **Save a log**, and a banner after a crash.
 * **Backup:** **Back up to a file** saves `score.dat` (high scores, spell card history, play
   records), `th07.cfg`, the replays and the launcher's settings as one ZIP wherever you choose;
   **Restore from a backup** brings them back (same-name replays are replaced, other replays
-  kept). The game files and the English patch are not in a backup: import them again.
-* **English text (optional):** if you play with the community English patch on the PC (Touhou
-  Patch Center's `lang_en` through the thcrap patcher), keep its `thcrap` folder in the game
-  folder when you import it: the patch's files (`thcrap/repos/thpatch/lang_en` and the patches
-  it depends on, just their `.js` files and `th07` folders) are copied into the app's storage,
-  and **English text (from your thcrap English patch)** turns on (untick it for the original
-  Japanese). The game then reads the patch the way thcrap applies it: dialogue and the boss
+  kept), with your replaced music if you include it. The game files and the game text are
+  not in a backup: import or download them again.
+* **Game text in other languages (optional):** pick a language under **Language → Game text**
+  and **Download** it: the Touhou Patch Center translation's th07 files (and the patches it
+  depends on) are fetched into the app's storage. If you play with the English patch on the PC
+  (thcrap), keeping its `thcrap` folder in the game folder when you import it gives English
+  without a download (the patch's `.js` files and `th07` folders are copied). The game then reads the patch the way thcrap applies it: dialogue and the boss
   introductions, spell card names (score.dat keeps the original names), endings and staff
   roll text, Music Room titles and comments, bomb names, translators' notes beside the
   playfield, and the patch's pictures over the game's (title and select menus, pause and
