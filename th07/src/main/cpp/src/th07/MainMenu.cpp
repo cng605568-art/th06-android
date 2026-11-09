@@ -10,6 +10,7 @@
 #include "gfx/SpriteSink.hpp"
 #include "io/Vfs.hpp"
 #include "th07/Bgm.hpp"
+#include "th07/English.hpp"
 #include "th07/Player.hpp"
 #include "th07/SoundPlayer.hpp"
 
@@ -185,10 +186,21 @@ void MainMenu::highlightRows(int first, int count, int selected) {
     for (int i = first; i < first + count; ++i) highlight(i, i == selected);
 }
 
-void MainMenu::renderDescriptions(int count, const char* const* texts) {
-    for (int i = 0; i < count && i < kDescriptions; ++i) {
-        AnmVm& d = desc_[static_cast<std::size_t>(i)];
-        renderSpriteText(ctx_.textures, ctx_.text, d, texts[i], kDescColor, TextAlign::Centre);
+template <std::size_t N>
+void MainMenu::renderDescriptions(const std::array<ExeTables::MenuText, N>* exe, const char* const* fallback) {
+    for (std::size_t i = 0; i < N && i < static_cast<std::size_t>(kDescriptions); ++i) {
+        AnmVm& d = desc_[i];
+        // The original's Shift-JIS text; in English mode the patch's translation, or the
+        // port's own English when the patch has none for it (thpatch's lang_en has none).
+        std::string text = fallback[i];
+        if (exe && !(*exe)[i].sjis.empty()) {
+            if (ctx_.english && ctx_.english->active()) {
+                if (const auto t = ctx_.english->exeString((*exe)[i].address)) text = English::gameText(*t);
+            } else {
+                text = (*exe)[i].sjis;
+            }
+        }
+        renderSpriteText(ctx_.textures, ctx_.text, d, text, kDescColor, TextAlign::Centre);
     }
 }
 
@@ -361,7 +373,7 @@ bool MainMenu::mainMenu(const MenuInput& in) {
             setState(State::Difficulty);
             return false;
         }
-        renderDescriptions(8, kMainDesc);
+        renderDescriptions(ctx_.tables ? &ctx_.tables->mainMenuText : nullptr, kMainDesc);
         showDescription(cursor_);
     }
     const int moved = verticalMove(in, 8);
@@ -459,7 +471,7 @@ bool MainMenu::option(const MenuInput& in) {
         entered_ = true;
         sendAll(3);
         highlightRows(9, 9, 9 + optionCursor_);
-        renderDescriptions(9, kOptionDesc);
+        renderDescriptions(ctx_.tables ? &ctx_.tables->optionText : nullptr, kOptionDesc);
         showDescription(optionCursor_);
         idle_ = 0;
     }
@@ -573,7 +585,7 @@ bool MainMenu::keyConfig(const MenuInput& in) {
         keyWork_ = c.pad;
         sendAll(4);
         highlightRows(35, 12, 35 + keyCursor_);
-        renderDescriptions(12, kKeyDesc);
+        renderDescriptions(ctx_.tables ? &ctx_.tables->keyConfigText : nullptr, kKeyDesc);
         showDescription(keyCursor_);
         idle_ = 0;
     }

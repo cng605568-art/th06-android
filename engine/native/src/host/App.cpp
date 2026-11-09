@@ -610,7 +610,7 @@ void App::renderFrame(float alpha) {
     glClearColor(0, 0, 0, 1);
     glDepthMask(GL_TRUE);
     glClearDepthf(1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glClear(game_->keepsPreviousFrame() ? GL_DEPTH_BUFFER_BIT : GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     batch_.begin(static_cast<float>(info.width), static_cast<float>(info.height), &gpu_);
     game_->render(batch_, alpha, frameInfo());
     batch_.end();

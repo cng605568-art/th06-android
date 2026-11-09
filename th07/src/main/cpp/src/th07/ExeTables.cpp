@@ -104,6 +104,19 @@ bool loadExeTables(std::span<const std::uint8_t> exe, ExeTables& out, std::strin
         }
     }
     for (std::size_t i = 0; i < 12; ++i) t.bombNames[i] = pe.cString(ExeTables::kBombNameAddresses[i], 48);
+    // The menu descriptions (optional: the menus fall back to the port's own text).
+    const auto menuText = [&](std::uint32_t table, auto& dst) {
+        const std::int64_t off = pe.offsetOf(table, static_cast<std::uint32_t>(4 * dst.size()));
+        if (off < 0) return;
+        for (std::size_t i = 0; i < dst.size(); ++i) {
+            const std::uint32_t va = pe.u32(static_cast<std::size_t>(off) + 4 * i);
+            dst[i].sjis = pe.cString(va, 128);
+            dst[i].address = dst[i].sjis.empty() ? 0 : va;
+        }
+    };
+    menuText(ExeTables::kMainMenuTextTable, t.mainMenuText);
+    menuText(ExeTables::kOptionTextTable, t.optionText);
+    menuText(ExeTables::kKeyConfigTextTable, t.keyConfigText);
     const auto drops = pe.at(kDropCycle, ExeTables::kDrops);
     if (drops.empty()) return fail("drop table missing");
     for (int i = 0; i < ExeTables::kDrops; ++i) t.dropCycle[i] = drops[static_cast<std::size_t>(i)];

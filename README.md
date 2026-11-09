@@ -131,6 +131,10 @@ file's stages and the three playback modes (normal, the recorded slowdown, fast 
 fights; dialogue always plays fast). Fifteen idle seconds on the title start the attract demo
 (the three demo replays in `th07.dat`, in turn). Files saved by the PC game load and play;
 whether they stay in sync for long depends on the simulation matching the PC's exactly.
+The FPS counter sits in the bottom-right corner as in the original (the game's speed in logic
+passes per second; replays also show their recorded FPS), and the slowdown on the result
+screen and in replays is measured from it. The menu descriptions are read from your
+`th07.exe`.
 
 * **Get it:** every CI run also builds it, signed with the same key, as its own artifact
   `th07-android-<version>` (it is not attached to GitHub Releases yet). Locally, with the

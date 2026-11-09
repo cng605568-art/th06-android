@@ -79,6 +79,9 @@ class Gameplay {
         // after a continue, at every stage set-up).
         std::function<void()> playTimeAdd;
         std::function<void()> playTimeRebase;
+        // The supervisor's FPS text, queued with the ASCII strings (drawn after the GUI's
+        // strings, before the pause menu and the screen effects).
+        std::function<void(SpriteSink&)> systemText;
     };
     // What the game asks the supervisor for (once set, it stays until the next start).
     enum class Outcome : std::uint8_t { None, Title, Restart, Results, Ending, ReplayEnd };
@@ -135,6 +138,8 @@ class Gameplay {
     bool takeCaptureRequest();
     void captureRect(int& x, int& y, int& w, int& h) const;
     void setCaptureReady(bool ready);
+    // The current FPS a live recording samples every 30 frames (spec 1.3.6, 7.4.3).
+    void setLiveFps(int fps) { liveFps_ = fps; }
     // Opens the pause menu (Android back button), as Menu pressed would.
     void requestPause() { pauseRequested_ = true; }
     void draw(SpriteSink& sink);
@@ -186,6 +191,7 @@ class Gameplay {
     std::int32_t demoFrame_ = 0;
     bool wasPaused_ = false;  // the "was paused" flag of the recorder
     bool slowSkip_ = false;
+    int liveFps_ = 60;
     int slowLag_ = 0, replayLag_ = 0;
     InGameMenu menu_;
     enum class CaptureOwner : std::uint8_t { None, Menu, Gui };

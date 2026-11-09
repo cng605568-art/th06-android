@@ -5,6 +5,7 @@
 // games, results, ending, Music Room). A status screen says what is missing when the files
 // cannot run the game.
 
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -33,6 +34,7 @@ class Th07Game final : public Game {
 
     bool quitRequested() const override { return quit_; }
     bool paused() const override { return flow_ && flow_->paused(); }
+    bool keepsPreviousFrame() const override { return flow_ && flow_->loadingFrame(); }
     bool showsPlayfield() const override { return flow_ && flow_->inGame(); }
     bool practiceSpeedApplies() const override { return false; }
     void pauseNow() override {
@@ -64,6 +66,11 @@ class Th07Game final : public Game {
     std::unique_ptr<SoundPlayer> sound_;
     int soundsLoaded_ = 0;
     bool lastShoot_ = false;
+    // The speed measurement (spec 1.3.6): logic passes per real second over 0.5 s windows.
+    std::chrono::steady_clock::time_point fpsStart_{};
+    std::uint64_t fpsTicks_ = 0;
+    bool fpsStarted_ = false;
+    int loadingTicks_ = 0;  // passes held back while the loading frame is shown
 
     // Desktop developer option --anm-preview FILE [--anm-bg PICTURE]: every script of an ANM
     // file running side by side over a background, to check the ANM system on real data.

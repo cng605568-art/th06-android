@@ -318,6 +318,13 @@ std::uint16_t buttonWord(const InputState& in) {
 }  // namespace
 
 void Th07Game::tick(const InputState& input) {
+    if (flow_ && flow_->loadingFrame()) {
+        // No logic while the loading frame is presented (render shows it); a frame that is
+        // never rendered does not hold the game back for more than a few passes.
+        if (++loadingTicks_ <= 4) return;
+        flow_->dropLoadingFrame();
+    }
+    loadingTicks_ = 0;
     if (flow_) {
         if (music_) music_->fadeStep();
         flow_->setGameExtras(static_cast<std::uint16_t>((autoFire_ ? BtnShoot : 0) | (holdFocus_ ? BtnFocus : 0)));
@@ -347,7 +354,26 @@ void Th07Game::tick(const InputState& input) {
     if (sound_) sound_->flush();
 }
 
-void Th07Game::render(SpriteSink& sink, float, const FrameInfo&) {
+void Th07Game::render(SpriteSink& sink, float, const FrameInfo& frame) {
+    // The FPS measurement: passes per real second, every 0.5 s or more. A window longer than
+    // 2 s (the app was in the background) starts over instead of reporting a slowdown.
+    if (flow_) {
+        const auto now = std::chrono::steady_clock::now();
+        const double elapsed = std::chrono::duration<double>(now - fpsStart_).count();
+        if (!fpsStarted_ || elapsed > 2.0 || frame.ticks < fpsTicks_) {
+            fpsStart_ = now;
+            fpsTicks_ = frame.ticks;
+            fpsStarted_ = true;
+        } else if (elapsed >= 0.5) {
+            flow_->fpsMeasured(static_cast<float>(static_cast<double>(frame.ticks - fpsTicks_) / elapsed));
+            fpsStart_ = now;
+            fpsTicks_ = frame.ticks;
+        }
+    }
+    if (flow_ && flow_->loadingFrame()) {
+        flow_->drawLoadingFrame(sink);
+        return;
+    }
     // The supervisor's screens (the status screen below when the title cannot open).
     if (flow_ && !(flow_->active() == FlowState::MainMenu && !flow_->mainMenu())) {
         flow_->draw(sink);

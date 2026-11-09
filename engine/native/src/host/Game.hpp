@@ -106,6 +106,9 @@ class Game {
         int x = 0, y = 0, w = 0, h = 0;
     };
     virtual CaptureRect captureRect() const { return {}; }
+    // True: this frame is drawn over the previous one (the game target is not cleared), for
+    // overlays such as th07's "loading" frame. Default: every frame starts from black.
+    virtual bool keepsPreviousFrame() const { return false; }
 
     // A status line for the log every few seconds, and a summary when a desktop test run
     // ends.

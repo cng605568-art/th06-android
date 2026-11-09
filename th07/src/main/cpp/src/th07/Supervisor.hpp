@@ -133,6 +133,18 @@ class Supervisor {
     // Spec 7.6: saves the recording into `path` under `name` (false: the write was skipped,
     // spec 7.6.2, or failed); the recording is freed in every case.
     bool saveReplay(const std::string& path, const std::string& name);
+    // A speed measurement (spec 1.3.6, every 0.5 s or more of real time): the port's logic
+    // passes per real second. Drives the FPS text, the slowdown and live replays' FPS samples.
+    void fpsMeasured(float fps);
+    // The "loading" frame (spec 3.1, 4.2): drawn over the previous frame, twice, while no
+    // logic runs. True while one is still to be shown.
+    bool loadingFrame() const { return loadingFrames_ > 0; }
+    void drawLoadingFrame(SpriteSink& sink);
+    void dropLoadingFrame() { loadingFrames_ = 0; }
+    float displayedFps() const { return displayFps_; }
+    int currentFps() const { return currentFps_; }
+    // The slowdown percentage of the game so far (result screen, high scores, replays).
+    float slowdown() const;
     // Logic passes run in the last pass() call (more than one while fast-forwarding).
     int passesLastCall() const { return passesLastCall_; }
     // Desync diagnostics for every game played back (see Gameplay::onPlaybackFrame).
@@ -158,6 +170,7 @@ class Supervisor {
     void playTimeRebase();
     std::uint64_t now() const;
     void saveConfig();
+    void drawFps(SpriteSink& sink);
 
     Boot boot_;
     FlowContext ctx_;
@@ -186,6 +199,17 @@ class Supervisor {
     bool zeroNextPass_ = false;
     std::function<void(int, std::int32_t, const ReplayEntry&, std::uint32_t)> playbackObserver_;
     std::uint64_t runningBase_ = 0, playBase_ = 0;
+    // Spec 1.3.6: the measured FPS, the current (integer) FPS and the two accumulators.
+    float displayFps_ = 0.0f;
+    int currentFps_ = 60;
+    // The texts, rebuilt at each measurement: "%.02ffps" (empty before the first one) and,
+    // in a replay or the demo with no menu up, the replay's FPS ("%2d", red when its
+    // timing-bad bit is set).
+    std::string fpsString_, replayFpsString_;
+    bool replayFpsBad_ = false;
+    int loadingFrames_ = 0;
+    double fpsAcc_ = 0.0, speedAcc_ = 0.0;
+    AsciiText fpsText_;
 };
 
 }  // namespace touhou::th07

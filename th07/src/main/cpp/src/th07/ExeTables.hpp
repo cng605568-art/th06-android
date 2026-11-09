@@ -56,6 +56,18 @@ struct ExeTables {
     static constexpr std::array<std::uint32_t, 12> kBombNameAddresses = {0x00498874, 0x0049885C, 0x0049884C, 0x00498838,
                                                                          0x00498818, 0x00498800, 0x004987D8, 0x004987BC,
                                                                          0x0049879C, 0x00498788, 0x00498768, 0x00498748};
+    // The menu descriptions (spec 3.2 of the flow spec): Shift-JIS strings behind three
+    // pointer tables, and each string's address (what translation patches key them by).
+    // Empty when a pointer does not lead to a string.
+    struct MenuText {
+        std::string sjis;
+        std::uint32_t address = 0;
+    };
+    std::array<MenuText, 8> mainMenuText;
+    std::array<MenuText, 9> optionText;
+    std::array<MenuText, 12> keyConfigText;
+    static constexpr std::uint32_t kMainMenuTextTable = 0x0049F4CC, kOptionTextTable = 0x0049F4A8,
+                                   kKeyConfigTextTable = 0x0049F478;
 };
 
 // False (with a reason) when `exe` is not th07.exe 1.00b (unless requireKnownVersion is

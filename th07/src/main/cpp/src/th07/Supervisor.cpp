@@ -1,6 +1,7 @@
 #include "th07/Supervisor.hpp"
 
 #include <algorithm>
+#include <format>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -407,6 +408,8 @@ void Supervisor::closeScreens() {
 }
 
 void Supervisor::openMainMenu() {
+    // Spec 3.1: every main menu creation but the first boot shows the loading frame.
+    if (ctx_.previous != FlowState::Init) loadingFrames_ = 2;
     closeScreens();
     menu_ = std::make_unique<MainMenu>(ctx_);
     std::string err;
@@ -440,6 +443,9 @@ void Supervisor::openEnding() {
 
 bool Supervisor::openGame(bool fresh, bool restart) {
     (void)fresh;
+    // Both FPS accumulators restart with every fresh game (not between stages).
+    fpsAcc_ = speedAcc_ = 0.0;
+    loadingFrames_ = 2;  // a fresh set-up starts with the loading frame (spec 4.2, step 1)
     Gameplay::Setup s;
     if (restart) {
         s = setup_;
@@ -516,7 +522,7 @@ void Supervisor::cutGame() {
     refreshRunningTime();
     ctx_.lastGame = g;
     ctx_.lastValid = true;
-    ctx_.lastSlow = 0.0f;  // the port's timing is exact: no slowdown is measured
+    ctx_.lastSlow = slowdown();  // from the measured speed (spec 1.3.6)
     ctx_.stage = g.stage;
     ctx_.practice = g.practice;
     ctx_.character = std::clamp(g.shotIndex, 0, 5) / 2;
@@ -557,6 +563,7 @@ void Supervisor::gameHooks(Gameplay& game) {
     };
     h.playTimeAdd = [this]() { playTimeAdd(); };
     h.playTimeRebase = [this]() { playTimeRebase(); };
+    h.systemText = [this](SpriteSink& sink) { drawFps(sink); };
     game.setHooks(std::move(h));
     game.onPlaybackFrame = playbackObserver_;
 }
@@ -717,9 +724,66 @@ void Supervisor::draw(SpriteSink& sink) {
             break;
         case FlowState::Ending:
             if (ending_) ending_->draw(sink);
-            break;
+            return;  // no FPS text during the ending
         default: break;
     }
+    // The FPS text (draw priority 15); a running game draws it with its ASCII strings.
+    if (!(active_ == FlowState::Game && game_ && game_->running())) drawFps(sink);
+}
+
+void Supervisor::drawLoadingFrame(SpriteSink& sink) {
+    // Translucent black over the last frame and ascii.anm's "loading" sprite at (528, 448),
+    // presented twice (so the second is darker), with no logic pass in between.
+    if (loadingFrames_ <= 0) return;
+    --loadingFrames_;
+    fillScreen(sink, boot_.ui, 0xA0000000u);
+    if (boot_.anm && boot_.anm->loaded(1)) {
+        AnmVm v;
+        if (v.selectSprite(*boot_.anm, 0x10C)) {
+            v.flags = AnmVm::Visible | AnmVm::Active;
+            v.position = {528.0f, 448.0f, 0.0f};
+            drawVm(sink, v, AnmDrawState{});
+        }
+    }
+}
+
+void Supervisor::drawFps(SpriteSink& sink) {
+    if (!boot_.anm || !boot_.anm->loaded(1)) return;
+    if (!fpsString_.empty()) fpsText_.add(512.0f, 464.0f, fpsString_);
+    if (active_ == FlowState::Game && game_ && game_->running() && game_->replay() && !game_->paused() &&
+        !replayFpsString_.empty()) {
+        fpsText_.add(384.0f, 448.0f, replayFpsString_, replayFpsBad_ ? 0xFFFF4040u : 0xFFFFFFD0u);
+    }
+    fpsText_.draw(sink, *boot_.anm);
+}
+
+void Supervisor::fpsMeasured(float fps) {
+    displayFps_ = fps;
+    fpsString_ = std::format("{:.2f}fps", fps);
+    const bool playing = active_ == FlowState::Game && game_ && game_->running();
+    if (playing && !game_->paused() && game_->replay()) {
+        // The replay's current FPS (its FPS block, every 30 frames) and timing-bad bit.
+        replayFpsString_ = std::format("{:2d}", game_->feed().fps());
+        replayFpsBad_ = game_->feed().fpsBad();
+    }
+    if (playing && !game_->paused()) {
+        // Spec 1.3.6: during play with no menu up, every measurement adds 60 to the fps
+        // accumulator and 60/48/36/30 by speed band to the speed accumulator.
+        fpsAcc_ += 60.0;
+        speedAcc_ += fps > 54.0f ? 60.0 : fps > 42.0f ? 48.0 : fps > 30.0f ? 36.0 : 30.0;
+    }
+    // Live play's current FPS (fps + 0.5, truncated; never above 60 here: the port's logic
+    // is paced at 60 passes a second, and faster desktop test runs must not record more).
+    if (!ctx_.replay) currentFps_ = std::clamp(static_cast<int>(fps + 0.5f), 0, 60);
+    if (playing) game_->setLiveFps(currentFps_);
+}
+
+float Supervisor::slowdown() const {
+    // f = clamp((speed / fps - 0.5) x 2, 0, 1), slowdown = (1 - f) x 100. A game too short for
+    // one measurement divides 0 by 0 in the original [QUIRK]; the port reports 0%.
+    if (fpsAcc_ <= 0.0) return 0.0f;
+    const double f = std::clamp((speedAcc_ / fpsAcc_ - 0.5) * 2.0, 0.0, 1.0);
+    return static_cast<float>((1.0 - f) * 100.0);
 }
 
 void Supervisor::shutdown() {

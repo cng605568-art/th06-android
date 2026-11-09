@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "th07/Anm.hpp"
+#include "th07/ExeTables.hpp"
 #include "th07/Flow.hpp"
 #include "th07/GameConfig.hpp"
 #include "th07/Replay.hpp"
@@ -85,7 +86,10 @@ class MainMenu {
     void sendAll(int interrupt);
     void highlight(int instance, bool on);
     void highlightRows(int first, int count, int selected);
-    void renderDescriptions(int count, const char* const* texts);
+    // The descriptions: the player's th07.exe strings (or the English patch's) when there,
+    // otherwise the port's own text.
+    template <std::size_t N>
+    void renderDescriptions(const std::array<ExeTables::MenuText, N>* exe, const char* const* fallback);
     void showDescription(int row);
     void hideDescription();
     void loadBackground(const char* path);

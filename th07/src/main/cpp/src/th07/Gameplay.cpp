@@ -479,7 +479,7 @@ bool Gameplay::tick(std::uint16_t raw) {
     if (!playback_) {
         prevGameInput_ = gameInput_;
         gameInput_ = raw;
-        if (recorder_ && !g.slowMode) recorder_->write(raw, static_cast<std::uint16_t>(g.eventFlags));
+        if (recorder_ && !g.slowMode) recorder_->write(raw, static_cast<std::uint16_t>(g.eventFlags), liveFps_);
     }
     if (playback_ && onPlaybackFrame) onPlaybackFrame(g.stage, feed_.frame(), feed_.upcoming(), g.eventFlags);
     // The playback's fast-forward hook (priority 17).
@@ -509,6 +509,7 @@ void Gameplay::draw(SpriteSink& sink) {
     gui_->drawPopups(sink);
     gui_->draw(sink, drawState_);
     gui_->drawText(sink);
+    if (hooks_.systemText) hooks_.systemText(sink);
     menu_.draw(sink);
     gui_->drawDemoMarker(sink);
     if (res_.ui) screenFx_.draw(sink, res_.ui->white);
