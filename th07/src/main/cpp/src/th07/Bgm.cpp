@@ -166,6 +166,7 @@ void BgmPlayer::startSong(const std::string& path) {
     }
     current_ = rec->name;
     prepared_ = std::move(stream);
+    log::debug("thbgm: {} (offset {}, intro {} bytes, {} bytes)", rec->name, rec->start, rec->intro, rec->total);
 }
 
 bool BgmPlayer::pump() {

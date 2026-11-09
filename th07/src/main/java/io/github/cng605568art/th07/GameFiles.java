@@ -29,11 +29,20 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Each file is recognised by its contents, the way the engine checks it: th07.dat is a PBG4
  * archive, thbgm.dat starts with the game's ZWAV header, and th07.exe must be the 1.00b
  * program (its SHA-256). The engine opens the copies through GameActivity.getDataSources().
+ *
+ * The same import also brings over the player's PC progress: score.dat (scores, unlocks,
+ * spell history, play statistics; recognised by its decoded header) goes where the port
+ * keeps its own (the app's files folder; an earlier one is kept as score.dat.bak), and
+ * replays (th7_NN.rpy, th7_udXXXX.rpy; "T7RP" header) go into its replay folder.
  */
 final class GameFiles {
     static final String DAT = "th07.dat";
     static final String EXE = "th07.exe";
     static final String BGM = "thbgm.dat";
+    /** Kinds of the PC's own records (not game files): score.dat and replays. */
+    static final String SCORE = "score.dat";
+    static final String REPLAY = "replay";
+    private static final long SCORE_MAX = 1024 * 1024;
     /** th07.exe 1.00b, as the engine checks it (th07/src/main/cpp/src/th07/ExeTables.hpp). */
     static final String EXE_100B_SHA256 = "35467eaf8dc7fc85f024f16fb2037255f151cefda33cf4867bc9122aaa2e80ca";
     // A Windows program of plausible size, as the engine's Vfs::looksLikeGameExecutable.
@@ -140,6 +149,10 @@ final class GameFiles {
         return got;
     }
 
+    private static int le16(byte[] b, int at) {
+        return (b[at] & 0xff) | (b[at + 1] & 0xff) << 8;
+    }
+
     private static long le32(byte[] b, int at) {
         return (b[at] & 0xffL) | (b[at + 1] & 0xffL) << 8 | (b[at + 2] & 0xffL) << 16 | (b[at + 3] & 0xffL) << 24;
     }
@@ -156,7 +169,38 @@ final class GameFiles {
             return BGM;
         }
         if (n >= 2 && head[0] == 'M' && head[1] == 'Z' && (size < 0 || (size >= EXE_MIN && size <= EXE_MAX))) return EXE;
+        // A replay: "T7RP", version 0x1100 (as the engine's loader checks it).
+        if (n >= 6 && head[0] == 'T' && head[1] == '7' && head[2] == 'R' && head[3] == 'P' && le16(head, 4) == 0x1100) {
+            return REPLAY;
+        }
+        if (n >= 12 && (size < 0 || (size >= 0x1C && size <= SCORE_MAX)) && scoreHeader(head)) return SCORE;
         return null;
+    }
+
+    /**
+     * score.dat (format 11): from byte 2 on it is obfuscated with a running key that starts
+     * at byte 1 (rotate left by 3, XOR, then add the plain byte). Decoded, the version at
+     * offset 4 is 11 and the first record starts at 0x1C.
+     */
+    private static boolean scoreHeader(byte[] head) {
+        byte[] plain = new byte[12];
+        int k = head[1] & 0xff;
+        for (int p = 2; p < 12; ++p) {
+            k = ((k << 3) | (k >>> 5)) & 0xff;
+            plain[p] = (byte) ((head[p] & 0xff) ^ k);
+            k = (k + (plain[p] & 0xff)) & 0xff;
+        }
+        return le16(plain, 4) == 11 && le32(plain, 8) == 0x1C;
+    }
+
+    /** Where the port keeps its own score.dat (SDL's preferences path on Android). */
+    static File scoreFile(Context ctx) {
+        return new File(ctx.getFilesDir(), SCORE);
+    }
+
+    /** Where the port keeps its replays. */
+    static File replayDir(Context ctx) {
+        return new File(ctx.getFilesDir(), REPLAY);
     }
 
     /** Deletes every imported file. */
@@ -219,7 +263,7 @@ final class GameFiles {
                         continue;
                     }
                     String lower = name.toLowerCase(Locale.ROOT);
-                    if (!lower.endsWith(".dat") && !lower.endsWith(".exe")) continue;
+                    if (!lower.endsWith(".dat") && !lower.endsWith(".exe") && !lower.endsWith(".rpy")) continue;
                     found.add(new Source(name, DocumentsContract.buildDocumentUriUsingTree(tree, id), size));
                 }
             } catch (RuntimeException ignored) {
@@ -271,8 +315,9 @@ final class GameFiles {
     static String importFrom(Context ctx, List<Source> sources, boolean pickedOneByOne, Progress progress)
             throws IOException {
         ContentResolver cr = ctx.getContentResolver();
-        Source dat = null, bgm = null;
+        Source dat = null, bgm = null, score = null;
         List<Source> exes = new ArrayList<>();
+        List<Source> replays = new ArrayList<>();
         List<String> skipped = new ArrayList<>();
         for (Source s : sources) {
             progress.report(ctx.getString(R.string.import_checking, s.name));
@@ -292,12 +337,20 @@ final class GameFiles {
             } else if (EXE.equals(s.kind)) {
                 if (lower.equals(EXE)) exes.add(0, s);  // the game's own name first
                 else exes.add(s);
+            } else if (SCORE.equals(s.kind)) {
+                if (score == null || (lower.equals(SCORE) && !score.name.equalsIgnoreCase(SCORE))) score = s;
+            } else if (REPLAY.equals(s.kind)) {
+                replays.add(s);
             } else {
                 skipped.add(s.name);
             }
         }
         if (dat == null && bgm == null && exes.isEmpty()) {
-            return ctx.getString(R.string.import_nothing);
+            // Only the PC's records (a backup of scores or replays): import just those.
+            if (score == null && replays.isEmpty()) return ctx.getString(R.string.import_nothing);
+            StringBuilder report = new StringBuilder();
+            importRecords(ctx, score, replays, report, progress);
+            return report.toString().trim();
         }
 
         File dir = dir(ctx);
@@ -350,10 +403,86 @@ final class GameFiles {
         } else {
             notFound(ctx, report, BGM);
         }
+        importRecords(ctx, score, replays, report, progress);
         if (pickedOneByOne && !skipped.isEmpty()) {
             line(report, ctx.getString(R.string.import_skipped, join(skipped)));
         }
         return report.toString().trim();
+    }
+
+    /** score.dat and replays from the PC, where the port keeps its own. */
+    private static void importRecords(Context ctx, Source score, List<Source> replays, StringBuilder report,
+            Progress progress) throws IOException {
+        if (score != null) {
+            File target = scoreFile(ctx);
+            File part = copyToPart(ctx, score, target, null, progress);
+            boolean kept = false;
+            if (target.isFile()) {
+                File bak = new File(target.getParentFile(), SCORE + ".bak");
+                //noinspection ResultOfMethodCallIgnored
+                bak.delete();
+                kept = target.renameTo(bak);
+            }
+            commit(part, target);
+            line(report, ctx.getString(kept ? R.string.import_done_score_kept : R.string.import_done_score));
+        }
+        if (replays.isEmpty()) return;
+        File dir = replayDir(ctx);
+        if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException(ctx.getString(R.string.import_cannot_store));
+        int added = 0, already = 0;
+        for (Source s : replays) {
+            MessageDigest md;
+            try {
+                md = MessageDigest.getInstance("SHA-256");
+            } catch (NoSuchAlgorithmException e) {
+                throw new IOException(e.toString());
+            }
+            File part = copyToPart(ctx, s, new File(dir, "import.rpy"), md, progress);
+            String digest = hex(md.digest());
+            if (sameReplayThere(dir, part.length(), digest)) {
+                //noinspection ResultOfMethodCallIgnored
+                part.delete();
+                ++already;
+                continue;
+            }
+            String name = replayName(dir, s.name);
+            if (name == null) {
+                //noinspection ResultOfMethodCallIgnored
+                part.delete();
+                line(report, ctx.getString(R.string.import_replays_full));
+                break;
+            }
+            commit(part, new File(dir, name));
+            ++added;
+        }
+        line(report, ctx.getString(R.string.import_done_replays, added, already));
+    }
+
+    /** A replay with these bytes is already in the folder (imported before). */
+    private static boolean sameReplayThere(File dir, long length, String digest) {
+        File[] files = dir.listFiles();
+        if (files == null) return false;
+        for (File f : files) {
+            if (f.isFile() && f.getName().endsWith(".rpy") && f.length() == length && digest.equals(sha256(f))) return true;
+        }
+        return false;
+    }
+
+    /**
+     * The name the port lists a replay under: the PC's own name when it is one of the port's
+     * (th7_01 to th7_15, or th7_ud plus 4 characters) and free; otherwise the next free
+     * th7_udNNNN. Null when no name is free.
+     */
+    static String replayName(File dir, String original) {
+        String lower = original.toLowerCase(Locale.ROOT);
+        boolean slot = lower.matches("th7_(0[1-9]|1[0-5])\\.rpy");
+        boolean user = lower.matches("th7_ud.{4}\\.rpy");
+        if ((slot || user) && !new File(dir, lower).exists()) return lower;
+        for (int i = 0; i < 10000; ++i) {
+            String name = String.format(Locale.ROOT, "th7_ud%04d.rpy", i);
+            if (!new File(dir, name).exists()) return name;
+        }
+        return null;
     }
 
     private static void line(StringBuilder sb, String s) {
