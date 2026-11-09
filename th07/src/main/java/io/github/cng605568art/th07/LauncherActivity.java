@@ -24,6 +24,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.ref.WeakReference;
 import java.text.SimpleDateFormat;
@@ -44,17 +45,24 @@ public class LauncherActivity extends Activity {
     private static final int REQUEST_FOLDER = 1;
     private static final int REQUEST_FILES = 2;
     private static final int REQUEST_LOG = 3;
+    private static final int REQUEST_BACKUP = 4;
+    private static final int REQUEST_RESTORE = 5;
+    private static final String EXTRA_RESTORED = "restored";
 
     // An import runs on its own thread and reports to whichever launcher page is showing.
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static WeakReference<LauncherActivity> current = new WeakReference<>(null);
     private static volatile String lastImport;  // the latest import progress or result
+    private static volatile String lastBackup;  // the latest backup/restore progress or result
 
     private Ui ui;
     private TextView status;
     private TextView importStatus;
     private TextView playHint;
     private TextView logStatus;
+    private TextView backupStatus;
+    private Button backupButton;
+    private Button restoreButton;
     private Button playButton;
     private Button folderButton;
     private Button filesButton;
@@ -96,6 +104,7 @@ public class LauncherActivity extends Activity {
         addStartSection(page);
         addControlsSection(page);
         addDisplaySection(page);
+        addBackupSection(page);
         addHelpSection(page);
 
         TextView footer = ui.body(getString(R.string.footer), 12, Ui.MUTED);
@@ -129,6 +138,11 @@ public class LauncherActivity extends Activity {
             return insets;
         });
 
+        String restored = getIntent().getStringExtra(EXTRA_RESTORED);
+        if (restored != null) {
+            lastBackup = restored;
+            getIntent().removeExtra(EXTRA_RESTORED);
+        }
         refresh();
     }
 
@@ -281,18 +295,21 @@ public class LauncherActivity extends Activity {
     private void refresh() {
         status.setText(describeFiles());
         if (lastImport != null) importStatus.setText(lastImport);
+        if (lastBackup != null) backupStatus.setText(lastBackup);
         updateBusy();
         updateEnglish();
         updatePlayHint();
     }
 
     private void updateBusy() {
-        boolean busy = GameFiles.importing();
+        boolean busy = GameFiles.importing() || Backup.busy();
         folderButton.setEnabled(!busy);
         filesButton.setEnabled(!busy);
         removeButton.setEnabled(!busy && imported);
         playButton.setEnabled(!busy);
         english.setEnabled(!busy && GameFiles.englishPresent(this));
+        backupButton.setEnabled(!busy);
+        restoreButton.setEnabled(!busy);
     }
 
     private void confirmRemove() {
@@ -300,7 +317,7 @@ public class LauncherActivity extends Activity {
                 .setTitle(R.string.files_remove_title)
                 .setMessage(R.string.files_remove_body)
                 .setPositiveButton(R.string.files_remove_ok, (d, which) -> {
-                    if (GameFiles.importing()) return;
+                    if (GameFiles.importing() || Backup.busy()) return;
                     GameFiles.removeAll(this);
                     lastImport = getString(R.string.files_removed);
                     refresh();
@@ -315,6 +332,10 @@ public class LauncherActivity extends Activity {
         if (resultCode != RESULT_OK || data == null) return;
         if (requestCode == REQUEST_LOG) {
             if (data.getData() != null) writeLog(data.getData());
+        } else if (requestCode == REQUEST_BACKUP) {
+            if (data.getData() != null) backUp(data.getData());
+        } else if (requestCode == REQUEST_RESTORE) {
+            if (data.getData() != null) confirmRestore(data.getData());
         } else if (requestCode == REQUEST_FOLDER) {
             if (data.getData() != null) startImport(data.getData(), null);
         } else if (requestCode == REQUEST_FILES) {
@@ -334,7 +355,7 @@ public class LauncherActivity extends Activity {
 
     /** Imports from a picked folder (`tree`) or from picked files (`docs`) on a worker thread. */
     private void startImport(Uri tree, List<Uri> docs) {
-        if (!GameFiles.beginImport()) {
+        if (Backup.busy() || !GameFiles.beginImport()) {
             importStatus.setText(R.string.import_busy);
             return;
         }
@@ -462,6 +483,10 @@ public class LauncherActivity extends Activity {
             playHint.setText(R.string.hint_importing);
             return;
         }
+        if (Backup.busy()) {
+            playHint.setText(R.string.hint_backup);
+            return;
+        }
         if (!ready) {
             playHint.setText(R.string.hint_import);
             return;
@@ -533,6 +558,115 @@ public class LauncherActivity extends Activity {
         CheckBox scan = ui.check(getString(R.string.display_scanlines), Options.controlFlag(this, "scanlines", false));
         scan.setOnCheckedChangeListener((b, checked) -> Options.setControlFlag(this, "scanlines", checked));
         card.addView(scan, Ui.matchWrap());
+    }
+
+    // ---- backup -----------------------------------------------------------------------------
+
+    /** Backup and restore of high scores, game options, replays and launcher settings. */
+    private void addBackupSection(LinearLayout page) {
+        LinearLayout card = ui.card(page, getString(R.string.backup_title), getString(R.string.backup_body));
+        backupButton = ui.primary(getString(R.string.backup_save));
+        backupButton.setOnClickListener(v -> {
+            Intent create = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            create.addCategory(Intent.CATEGORY_OPENABLE);
+            create.setType("application/zip");
+            create.putExtra(Intent.EXTRA_TITLE, Backup.suggestedName());
+            launch(create, REQUEST_BACKUP, backupStatus);
+        });
+        card.addView(backupButton, ui.matchWrap(10, 4));
+        restoreButton = ui.secondary(getString(R.string.backup_restore));
+        restoreButton.setOnClickListener(v -> {
+            Intent open = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            open.addCategory(Intent.CATEGORY_OPENABLE);
+            open.setType("*/*");
+            open.putExtra(Intent.EXTRA_MIME_TYPES, new String[] {"application/zip", "application/x-zip-compressed", "application/octet-stream"});
+            launch(open, REQUEST_RESTORE, backupStatus);
+        });
+        card.addView(restoreButton, ui.matchWrap(0, 0));
+        backupStatus = ui.body("", 14, Ui.INK);
+        backupStatus.setPadding(ui.dp(4), ui.dp(10), ui.dp(4), 0);
+        card.addView(backupStatus, Ui.matchWrap());
+    }
+
+    /** A backup or restore line, from any thread. */
+    private static void reportBackup(String message) {
+        lastBackup = message;
+        onUi(a -> a.backupStatus.setText(message));
+    }
+
+    /** Takes the backup lock (imports, backups and restores never overlap). */
+    private boolean beginBackup() {
+        if (GameFiles.importing() || !Backup.begin()) {
+            backupStatus.setText(R.string.backup_busy);
+            return false;
+        }
+        updateBusy();
+        updatePlayHint();
+        return true;
+    }
+
+    private void backUp(Uri target) {
+        if (!beginBackup()) return;
+        final Context app = getApplicationContext();
+        reportBackup(getString(R.string.backup_saving));
+        new Thread(() -> {
+            String message;
+            try (OutputStream out = app.getContentResolver().openOutputStream(target, "wt")) {
+                if (out == null) throw new IOException(app.getString(R.string.err_cannot_write));
+                message = app.getString(R.string.backup_saved, Backup.create(app, out));
+            } catch (IOException | RuntimeException e) {
+                message = app.getString(R.string.backup_save_failed, String.valueOf(e.getMessage()));
+            } finally {
+                Backup.end();
+            }
+            final String result = message;
+            lastBackup = result;
+            onUi(a -> {
+                a.backupStatus.setText(result);
+                a.refresh();
+            });
+        }, "th07-backup").start();
+    }
+
+    private void confirmRestore(Uri source) {
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.backup_confirm_title)
+                .setMessage(R.string.backup_confirm_body)
+                .setPositiveButton(R.string.backup_confirm_ok, (d, w) -> restore(source))
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
+    private void restore(Uri source) {
+        if (!beginBackup()) return;
+        final Context app = getApplicationContext();
+        reportBackup(getString(R.string.backup_restoring));
+        new Thread(() -> {
+            String message;
+            boolean ok = false;
+            try (InputStream in = app.getContentResolver().openInputStream(source)) {
+                if (in == null) throw new IOException(app.getString(R.string.err_cannot_read));
+                message = app.getString(R.string.backup_restored, Backup.restore(app, in, LauncherActivity::reportBackup));
+                ok = true;
+            } catch (IOException | RuntimeException e) {
+                message = app.getString(R.string.backup_restore_failed, String.valueOf(e.getMessage()));
+            } finally {
+                Backup.end();
+            }
+            final String result = message;
+            final boolean restored = ok;
+            lastBackup = result;
+            onUi(a -> {
+                if (restored) {
+                    // The launcher's settings changed under its controls: rebuild the page.
+                    a.getIntent().putExtra(EXTRA_RESTORED, result);
+                    a.recreate();
+                } else {
+                    a.backupStatus.setText(result);
+                    a.refresh();
+                }
+            });
+        }, "th07-restore").start();
     }
 
     // ---- help -------------------------------------------------------------------------------

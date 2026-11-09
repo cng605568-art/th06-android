@@ -7,6 +7,7 @@
     <string name="play">Play</string>
     <string name="hint_import">Import th07.dat and th07.exe first (Game files, below). Without them the game only shows which files are missing.</string>
     <string name="hint_importing">Importing your files…</string>
+    <string name="hint_backup">Backing up or restoring…</string>
     <string name="hint_title">Opens the title screen</string>
     <string name="hint_stage">Starts at stage %1$d  ·  %2$s  ·  %3$s</string>
     <string name="hint_extra">Starts the Extra stage  ·  %1$s</string>
@@ -100,6 +101,31 @@
     <string name="help_log_saved">Log saved. Attach it to your bug report.</string>
     <string name="help_log_failed">Could not save the log: %1$s</string>
     <string name="err_cannot_write">cannot write there</string>
+    <string name="err_cannot_read">cannot read that file</string>
+    <string name="list_separator">", "</string>
+
+    <string name="backup_title">Backup</string>
+    <string name="backup_body">Keep your high scores and play records, game options, replays and launcher settings in one file (in Downloads, a cloud drive …), and bring them back after reinstalling or on a new phone. Your game files are not in it: import them again from your copy.</string>
+    <string name="backup_save">Back up to a file</string>
+    <string name="backup_restore">Restore from a backup</string>
+    <string name="backup_busy">Wait for the import or backup that is running.</string>
+    <string name="backup_saving">Saving…</string>
+    <string name="backup_saved">Saved: %1$s.</string>
+    <string name="backup_save_failed">Could not save the backup: %1$s</string>
+    <string name="backup_confirm_title">Restore this backup?</string>
+    <string name="backup_confirm_body">Your current high scores, game options and launcher settings are replaced by the backup\'s. Replays with the same name are replaced; your other replays are kept.</string>
+    <string name="backup_confirm_ok">Restore</string>
+    <string name="backup_restoring">Restoring…</string>
+    <string name="backup_reading">Reading %1$s…</string>
+    <string name="backup_restored">Restored: %1$s.</string>
+    <string name="backup_restore_failed">Could not restore: %1$s</string>
+    <string name="backup_part_scores">high scores and records</string>
+    <string name="backup_part_options">game options</string>
+    <string name="backup_part_settings">launcher settings</string>
+    <string name="backup_empty">nothing (the backup was empty)</string>
+    <string name="backup_err_not_backup">this is not a TH07 port backup</string>
+    <string name="backup_err_newer">this backup comes from a newer version of the app; update the app first</string>
+    <string name="backup_err_damaged">the backup is damaged</string>
 
     <string name="footer">A fan-made port for your own copy of 東方妖々夢 ～ Perfect Cherry Blossom (Team Shanghai Alice). No game files are included.</string>
 
@@ -159,4 +185,8 @@
         <item>Sharp pixels</item>
         <item>Pixel-perfect (whole multiples)</item>
     </string-array>
+    <plurals name="backup_part_replays">
+        <item quantity="one">%d replay</item>
+        <item quantity="other">%d replays</item>
+    </plurals>
 </resources>

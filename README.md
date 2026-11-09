@@ -153,6 +153,10 @@ whether they stay in sync for long depends on the simulation matching the PC's e
   menus; on the title with the cursor on Quit it returns to the launcher. Without a 1.00b `th07.dat` and
   `th07.exe` the game shows a status screen saying what is missing. **Save a log** in Help
   keeps a bug report on the phone until you share it.
+* **Backup:** **Back up to a file** saves `score.dat` (high scores, spell card history, play
+  records), `th07.cfg`, the replays and the launcher's settings as one ZIP wherever you choose;
+  **Restore from a backup** brings them back (same-name replays are replaced, other replays
+  kept). The game files and the English patch are not in a backup: import them again.
 * **English text (optional):** if you play with the community English patch on the PC (Touhou
   Patch Center's `lang_en` through the thcrap patcher), keep its `thcrap` folder in the game
   folder when you import it: the patch's files (`thcrap/repos/thpatch/lang_en` and the patches
