@@ -238,7 +238,10 @@ bool Supervisor::passOnce(std::uint16_t raw, bool first) {
         case FlowState::MainMenu:
             if (menu_) {
                 menu_->update(input_);
-                if (menu_->done()) menu_.reset();
+                // A finished menu has asked for its next state: it stays (and is drawn) until
+                // that transition at the next pass, so no frame goes without a screen and the
+                // loading frame dims the menu's last picture.
+                if (menu_->done() && requested_ == FlowState::MainMenu) menu_.reset();
             }
             break;
         case FlowState::Game:
@@ -246,7 +249,10 @@ bool Supervisor::passOnce(std::uint16_t raw, bool first) {
                 // The port's held buttons (launcher, desktop) join live play's raw input, but
                 // not in the pass of a transition (nothing is held then) nor in playback.
                 const bool extras = !transitioned && !game_->paused() && !game_->replay();
-                again = game_->tick(static_cast<std::uint16_t>(input_.current() | (extras ? gameExtras_ : 0)));
+                // Auto-fire lets go of Shot during dialogue, so pressing Shot advances it (as in
+                // the th06 app); a held Focus stays.
+                const std::uint16_t held = game_->dialogueShown() ? static_cast<std::uint16_t>(gameExtras_ & ~BtnShoot) : gameExtras_;
+                again = game_->tick(static_cast<std::uint16_t>(input_.current() | (extras ? held : 0)));
                 if (game_->nextStagePending()) requested_ = FlowState::NextStage;
                 switch (game_->outcome()) {
                     case Gameplay::Outcome::Title: requested_ = FlowState::MainMenu; break;

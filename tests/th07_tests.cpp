@@ -2566,8 +2566,10 @@ static void testSupervisor() {
         const std::uint32_t writes = s.writes();
         const std::uint32_t draws = f.rng.generations();
         s.pass(BtnShoot);
-        CHECK(!s.mainMenu() && s.requested() == FlowState::ResultViewer);
+        // The finished menu stays (and is drawn) until the transition: no frame without a screen.
+        CHECK(s.mainMenu() && s.mainMenu()->done() && s.requested() == FlowState::ResultViewer && !s.titleFailed());
         s.pass(BtnShoot);  // the transition pass: nothing is held for the screen
+        CHECK(!s.mainMenu());
         CHECK(s.active() == FlowState::ResultViewer && s.resultScreen() && s.resultScreen()->mode() == ResultScreen::Mode::Viewer);
         CHECK(s.resultScreen()->state() == ResultScreen::State::Menu && s.resultScreen()->menuCursor() == 1);
         idle(s, 21);

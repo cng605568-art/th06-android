@@ -95,6 +95,8 @@ class Supervisor {
 
     void request(FlowState s) { requested_ = s; }
     FlowState active() const { return active_; }
+    // The title could not be created (missing or wrong game files): the host's status screen.
+    bool titleFailed() const { return active_ == FlowState::MainMenu && requested_ == FlowState::MainMenu && !menu_; }
     FlowState requested() const { return requested_; }
     FlowState previous() const { return previous_; }
     bool quit() const { return quit_; }

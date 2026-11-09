@@ -374,8 +374,8 @@ void Th07Game::render(SpriteSink& sink, float, const FrameInfo& frame) {
         flow_->drawLoadingFrame(sink);
         return;
     }
-    // The supervisor's screens (the status screen below when the title cannot open).
-    if (flow_ && !(flow_->active() == FlowState::MainMenu && !flow_->mainMenu())) {
+    // The supervisor's screens (the status screen below only when the title cannot open).
+    if (flow_ && !flow_->titleFailed()) {
         flow_->draw(sink);
         return;
     }

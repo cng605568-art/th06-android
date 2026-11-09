@@ -122,6 +122,8 @@ class Gameplay {
     // The pass was stopped by slow mode (the supervisor merges the next pass's input).
     bool slowSkipped() const { return slowSkip_; }
     bool replay() const { return playback_ != nullptr; }
+    // A dialogue is on screen (the launcher's auto-fire lets go of Shot meanwhile).
+    bool dialogueShown() const { return running_ && gui_->dialogueCurrent(); }
     bool demo() const { return demo_; }
     std::int32_t demoFrame() const { return demoFrame_; }
     // The game input the player, bombs and dialogue read (spec 1.5.2).
