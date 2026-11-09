@@ -146,6 +146,12 @@ class Gameplay {
     std::uint16_t stageSeed() const { return stageSeed_; }
     // Developer aid: test patterns and items every second (on top of the stage's enemies).
     void setTestPatterns(bool on) { testPatterns_ = on; }
+    // Developer aid: at stage frame 30, dialogue script `script` and / or the banner of spell
+    // card `card` (-1: none), to look at their text.
+    void setTestText(int script, int card) {
+        testDialogue_ = script;
+        testSpell_ = card;
+    }
 
   private:
     bool setUpStage(bool fresh, std::string* error);
@@ -193,6 +199,7 @@ class Gameplay {
     bool running_ = false;
     bool etamaLoaded_ = false;
     bool testPatterns_ = false;
+    int testDialogue_ = -1, testSpell_ = -1;
 };
 
 }  // namespace touhou::th07

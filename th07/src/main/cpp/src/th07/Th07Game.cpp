@@ -135,6 +135,9 @@ bool Th07Game::start(const GameContext& ctx) {
     // or a stage background on their own.
     std::string previewFile, previewBackground;
     bool testBullets = false;
+    // --test-msg N and --test-spell N show dialogue script N / spell card N's banner at the
+    // started stage's frame 30 (to look at their text, e.g. with --english).
+    int testMsg = -1, testSpell = -1;
     // --replay FILE [--replay-stage N (1-7)] [--replay-mode M (0-2)] plays a replay file;
     // --demo N plays attract demo N (0-2) from th07.dat; --replay-check compares each played
     // frame's event flags with the recorded ones; --replay-log N logs the state every N frames.
@@ -157,6 +160,8 @@ bool Th07Game::start(const GameContext& ctx) {
         else if (a == "--replay-mode") replayMode = std::clamp(std::atoi(ctx.argv[i + 1]), 0, 2);
         else if (a == "--demo") demoIndex = std::clamp(std::atoi(ctx.argv[i + 1]), 0, 2);
         else if (a == "--replay-log") check_.logEvery = std::max(0, std::atoi(ctx.argv[i + 1]));
+        else if (a == "--test-msg") testMsg = std::max(0, std::atoi(ctx.argv[i + 1]));
+        else if (a == "--test-spell") testSpell = std::clamp(std::atoi(ctx.argv[i + 1]), 0, ExeTables::kSpellCards - 1);
         else if (a == "--anm-preview") previewFile = ctx.argv[i + 1];
         else if (a == "--anm-bg") previewBackground = ctx.argv[i + 1];
         else if (a == "--play") play.stage = std::atoi(ctx.argv[i + 1]), startPlay = true;
@@ -180,6 +185,7 @@ bool Th07Game::start(const GameContext& ctx) {
     // 0-5 (4 Extra, 5 Phantasm: their own stage), stage 1-6, spare lives 0-4, practice, and
     // "skip the title screen". Without the last one (or with it off) the title opens.
     const bool testBullets = false;
+    const int testMsg = -1, testSpell = -1;
     const bool preview = false;
     autoFire_ = ctx.controls.autoFire;
     const std::vector<int> options = androidIntArray("getGameOptions");
@@ -254,7 +260,10 @@ bool Th07Game::start(const GameContext& ctx) {
             }
         } else if (startPlay && exe_) {
             if (!flow_->startGame(play)) log::warn("Could not start stage {}: the title opens instead", play.stage);
-            else if (flow_->game()) flow_->game()->setTestPatterns(testBullets);
+            else if (flow_->game()) {
+                flow_->game()->setTestPatterns(testBullets);
+                flow_->game()->setTestText(testMsg, testSpell);
+            }
         }
     }
     return true;

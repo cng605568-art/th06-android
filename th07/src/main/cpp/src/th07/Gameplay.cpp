@@ -441,6 +441,8 @@ bool Gameplay::tick(std::uint16_t raw) {
         if (hooks_.playTimeAdd) hooks_.playTimeAdd();
     }
     enemies_->update(world_);
+    if (g.stageFrame == 30 && testDialogue_ >= 0) gui_->startDialogue(testDialogue_);
+    if (g.stageFrame == 30 && testSpell_ >= 0) gui_->spellCardStart(testSpell_, -1, "test");
     if (testPatterns_ && g.stageFrame % 60 == 30) {
         const int k = static_cast<int>(g.stageFrame / 60) % 11;
         Shooter s;
