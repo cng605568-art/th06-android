@@ -127,6 +127,9 @@ class English {
     // entries) and which patches were logged.
     mutable std::vector<std::pair<std::string, std::vector<std::uint8_t>>> anmCache_;
     mutable std::set<std::string> logged_;
+    // The text images' cell counts (title, name), once looked up (-1: not yet; 0: none).
+    mutable int textImageCells_[2] = {-1, -1};
+    void lookUpTextImages() const;
 };
 
 // ---- thcrap's layout markup ------------------------------------------------------------------

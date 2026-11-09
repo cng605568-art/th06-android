@@ -740,20 +740,28 @@ static std::optional<std::array<TextImageDef, 2>> textImageDefs(const Json* th07
     return out;
 }
 
+void English::lookUpTextImages() const {
+    if (textImageCells_[0] >= 0) return;
+    const auto defs = textImageDefs(json("th07.js"), [this](const std::string& r) { return resolve(r); });
+    textImageCells_[0] = defs ? (*defs)[0].count() : 0;
+    textImageCells_[1] = defs ? (*defs)[1].count() : 0;
+}
+
 bool English::hasTextImages() const {
     std::lock_guard lock(mutex_);
-    return textImageDefs(json("th07.js"), [this](const std::string& r) { return resolve(r); }).has_value();
+    lookUpTextImages();
+    return textImageCells_[0] > 0 && textImageCells_[1] > 0;
 }
 
 int English::textImageSprite(int line, int stage, int faceSprite) const {
     std::lock_guard lock(mutex_);
-    const auto defs = textImageDefs(json("th07.js"), [this](const std::string& r) { return resolve(r); });
-    if (!defs || line < 0 || line > 1) return -1;
+    lookUpTextImages();
+    if (line < 0 || line > 1) return -1;
     // base_tsa's th07.v1.00b.js (textimage_set): one cell per boss in stage order, the three
     // Prismriver sisters of stage 4 told apart by the enemy portrait (three faces each).
     const int sister = stage == 4 ? std::max(0, faceSprite - 0x4AD) / 3 : 0;
     const int cell = stage - 1 + (stage >= 5 ? 2 : 0) + sister;
-    const int countTitle = (*defs)[0].count(), countName = (*defs)[1].count();
+    const int countTitle = textImageCells_[0], countName = textImageCells_[1];
     if (cell < 0 || cell >= countTitle || cell >= countName) return -1;  // both or neither
     return line == 0 ? cell : countTitle + cell;
 }

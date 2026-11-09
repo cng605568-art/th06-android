@@ -153,6 +153,17 @@ whether they stay in sync for long depends on the simulation matching the PC's e
   menus; on the title with the cursor on Quit it returns to the launcher. Without a 1.00b `th07.dat` and
   `th07.exe` the game shows a status screen saying what is missing. **Save a log** in Help
   keeps a bug report on the phone until you share it.
+* **English text (optional):** if you play with the community English patch on the PC (Touhou
+  Patch Center's `lang_en` through the thcrap patcher), keep its `thcrap` folder in the game
+  folder when you import it: the patch's files (`thcrap/repos/thpatch/lang_en` and the patches
+  it depends on, just their `.js` files and `th07` folders) are copied into the app's storage,
+  and **English text (from your thcrap English patch)** turns on (untick it for the original
+  Japanese). The game then reads the patch the way thcrap applies it: dialogue and the boss
+  introductions, spell card names (score.dat keeps the original names), endings and staff
+  roll text, Music Room titles and comments, bomb names, translators' notes beside the
+  playfield, and the patch's pictures over the game's (title and select menus, pause and
+  continue menus, side panel, stage titles, result screens, Music Room, staff roll). Nothing
+  of the patch ships with the app.
 * Desktop development build: `cmake -S th07/src/main/cpp -B build-th07 && cmake --build build-th07`,
   then `./build-th07/th07_desktop /path/to/game/folder` (the title), or add `--play 1 --shot 0
   --difficulty 1 [--practice] [--lives N]` to start a stage, `--ending SHOT [--continued]
@@ -160,7 +171,9 @@ whether they stay in sync for long depends on the simulation matching the PC's e
   stage, `--replay FILE [--replay-stage 1-7] [--replay-mode 0-2]` to play a replay or `--demo
   0-2` an attract demo; `--replay-check` compares every played frame's event flags with the
   recorded ones and logs where they first differ, `--replay-log N` logs the state every N
-  frames.
+  frames. `--english` shows the English patch from the game folder's `thcrap` folder
+  (`--thcrap DIR` names another); `--test-msg N` / `--test-spell N` show dialogue script N or
+  spell card N's banner at the stage's frame 30.
 
 ## Languages
 
