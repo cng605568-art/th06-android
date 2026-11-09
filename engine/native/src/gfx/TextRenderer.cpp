@@ -27,15 +27,78 @@ bool FallbackTextRenderer::render(std::span<const std::uint8_t> sjis, const Text
     return any;
 }
 
+float TextRenderer::measureUtf8(std::string_view utf8, const TextStyle& style) {
+    if (utf8.empty()) return 0.0f;
+    constexpr int kScratch = 2048;
+    Image scratch(kScratch, 16);
+    return renderUtf8(utf8, style, 0.0f, static_cast<float>(kScratch), TextAlign::Left, scratch);
+}
+
+namespace {
+
+// The nearest ASCII for the punctuation and letters translations use (0: none).
+const char* asciiFor(char32_t cp) {
+    switch (cp) {
+        case 0x00A0: return " ";
+        case 0x3000: return "  ";  // ideographic space: a full-width cell
+        case 0x2018: case 0x2019: case 0x201A: case 0x2032: return "'";
+        case 0x201C: case 0x201D: case 0x201E: case 0x2033: return "\"";
+        case 0x2010: case 0x2011: case 0x2012: case 0x2013: case 0x2014: case 0x2015: case 0x2212: return "-";
+        case 0x2026: return "...";
+        case 0x30FB: case 0x00B7: return ".";
+        case 0xFF5E: case 0x301C: return "~";
+        default: break;
+    }
+    // Latin-1 and Latin Extended-A letters with diacritics: the base letter.
+    static constexpr const char* kLatin1 = "AAAAAAACEEEEIIIIDNOOOOOxOUUUUYTsaaaaaaaceeeeiiiidnooooo/ouuuuyty";
+    if (cp >= 0xC0 && cp <= 0xFF) {
+        static thread_local char one[2] = {0, 0};
+        one[0] = kLatin1[cp - 0xC0];
+        return one;
+    }
+    static constexpr const char* kExtA =
+        "AaAaAaCcCcCcCcDdDdEeEeEeEeEeGgGgGgGgHhHhIiIiIiIiIiIiJjKkkLlLlLlLlLlNnNnNnnNnOoOoOoOoRrRrRrSsSsSsSsTtTtTtUuUuUuUuUuUuWwYyYZzZzZzs";
+    static_assert(std::char_traits<char>::length(kExtA) == 0x80);
+    static_assert(std::char_traits<char>::length(kLatin1) == 0x40);
+    if (cp >= 0x100 && cp <= 0x17F) {
+        static thread_local char one[2] = {0, 0};
+        one[0] = kExtA[cp - 0x100];
+        return one;
+    }
+    return nullptr;
+}
+
+}  // namespace
+
+std::string asciiFallback(std::string_view utf8) {
+    std::string out;
+    for (std::size_t i = 0; i < utf8.size();) {
+        const auto c = static_cast<unsigned char>(utf8[i]);
+        const int n = c < 0x80 ? 1 : (c >> 5) == 6 ? 2 : (c >> 4) == 14 ? 3 : (c >> 3) == 30 ? 4 : 1;
+        char32_t cp = n == 1 ? c : c & (0x7F >> n);
+        for (int k = 1; k < n && i + static_cast<std::size_t>(k) < utf8.size(); ++k) {
+            cp = (cp << 6) | (static_cast<unsigned char>(utf8[i + static_cast<std::size_t>(k)]) & 0x3F);
+        }
+        i += static_cast<std::size_t>(n);
+        if (cp >= 0x20 && cp < 0x7F) {
+            out.push_back(static_cast<char>(cp));
+        } else if (const char* a = asciiFor(cp)) {
+            out += a;
+        } else {
+            out.push_back(' ');
+        }
+    }
+    return out;
+}
+
+float FallbackTextRenderer::measureUtf8(std::string_view utf8, const TextStyle&) {
+    return 6.0f * static_cast<float>(asciiFallback(utf8).size());
+}
+
 // ASCII in the 5x7 font, 6 texels a character (other characters count as one blank cell).
 float FallbackTextRenderer::renderUtf8(std::string_view utf8, const TextStyle& style, float left, float width, TextAlign align,
                                        Image& band) {
-    std::string ascii;
-    for (std::size_t i = 0; i < utf8.size(); ++i) {
-        const auto c = static_cast<unsigned char>(utf8[i]);
-        if ((c & 0xC0) == 0x80) continue;  // continuation bytes
-        ascii.push_back(c >= 0x20 && c < 0x7f ? static_cast<char>(c) : ' ');
-    }
+    const std::string ascii = asciiFallback(utf8);
     const float advance = 6.0f;
     const float full = advance * static_cast<float>(ascii.size());
     const float drawn = std::min(full, width);

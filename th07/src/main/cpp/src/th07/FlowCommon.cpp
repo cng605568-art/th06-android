@@ -6,6 +6,7 @@
 #include "gfx/SpriteSink.hpp"
 #include "gfx/TextureLibrary.hpp"
 #include "io/Vfs.hpp"
+#include "th07/English.hpp"
 #include "th07/Flow.hpp"
 #include "th07/SoundPlayer.hpp"
 
@@ -135,7 +136,13 @@ void renderSpriteText(TextureLibrary* textures, TextRenderer* text, AnmVm& vm, s
         TextStyle style;
         style.fontSize = size;
         style.rgb = ((colorRef & 0xFF) << 16) | (colorRef & 0xFF00) | ((colorRef >> 16) & 0xFF);
-        text->render(bytes, style, std::max(0.0f, x), band);
+        if (isUtf8Text(bytes)) {  // translated: within the sprite's own rectangle
+            std::string_view utf8 = sjis.substr(1);
+            utf8 = utf8.substr(0, utf8.find('\x14'));
+            renderTranslated(*text, utf8, style, sp->startX, sp->endX - sp->startX, align, band);
+        } else {
+            text->render(bytes, style, std::max(0.0f, x), band);
+        }
         finishTextBand(band);
     }
     for (int y = 0; y < 16 && top + y < img->height; ++y) {

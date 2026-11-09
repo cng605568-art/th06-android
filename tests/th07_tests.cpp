@@ -36,6 +36,7 @@
 #include "th07/Player.hpp"
 #include "th07/World.hpp"
 #include "th07/Ending.hpp"
+#include "th07/English.hpp"
 #include "th07/Flow.hpp"
 #include "th07/MainMenu.hpp"
 #include "th07/MusicRoom.hpp"
@@ -3177,6 +3178,416 @@ static void dumpSynthetic(const char* dir) {
     std::printf("synthetic th07.dat and thbgm.dat written to %s\n", dir);
 }
 
+// ---- English text mode (a synthetic thcrap patch stack) ------------------------------------
+
+namespace {
+
+void writeText(const std::filesystem::path& p, const std::string& s) {
+    std::filesystem::create_directories(p.parent_path());
+    std::ofstream(p, std::ios::binary) << s;
+}
+void writeBytes(const std::filesystem::path& p, const Bytes& b) {
+    std::filesystem::create_directories(p.parent_path());
+    std::ofstream(p, std::ios::binary).write(reinterpret_cast<const char*>(b.data()), static_cast<std::streamsize>(b.size()));
+}
+
+// A PNG (RGBA8, zlib "stored" blocks) of w x h pixels.
+Bytes pngFile(int w, int h, const Bytes& rgba) {
+    auto be32 = [](Bytes& b, std::uint32_t v) {
+        for (int k = 3; k >= 0; --k) b.push_back(static_cast<std::uint8_t>(v >> (8 * k)));
+    };
+    auto crc32 = [](const Bytes& b, std::size_t from) {
+        std::uint32_t c = 0xFFFFFFFFu;
+        for (std::size_t i = from; i < b.size(); ++i) {
+            c ^= b[i];
+            for (int k = 0; k < 8; ++k) c = (c >> 1) ^ (0xEDB88320u & (0u - (c & 1u)));
+        }
+        return ~c;
+    };
+    Bytes raw;
+    for (int y = 0; y < h; ++y) {
+        raw.push_back(0);
+        raw.insert(raw.end(), rgba.begin() + static_cast<std::ptrdiff_t>(y * w * 4), rgba.begin() + static_cast<std::ptrdiff_t>((y + 1) * w * 4));
+    }
+    Bytes z = {0x78, 0x01};
+    std::size_t pos = 0;
+    do {
+        const std::size_t n = std::min<std::size_t>(65535, raw.size() - pos);
+        z.push_back(pos + n == raw.size() ? 1 : 0);
+        put16(z, static_cast<std::uint16_t>(n));
+        put16(z, static_cast<std::uint16_t>(~n));
+        z.insert(z.end(), raw.begin() + static_cast<std::ptrdiff_t>(pos), raw.begin() + static_cast<std::ptrdiff_t>(pos + n));
+        pos += n;
+    } while (pos < raw.size());
+    std::uint32_t a = 1, b = 0;
+    for (std::uint8_t c : raw) {
+        a = (a + c) % 65521;
+        b = (b + a) % 65521;
+    }
+    be32(z, (b << 16) | a);
+    Bytes png = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+    auto chunk = [&](const char* type, const Bytes& data) {
+        be32(png, static_cast<std::uint32_t>(data.size()));
+        const std::size_t start = png.size();
+        png.insert(png.end(), type, type + 4);
+        png.insert(png.end(), data.begin(), data.end());
+        be32(png, crc32(png, start));
+    };
+    Bytes ihdr;
+    be32(ihdr, static_cast<std::uint32_t>(w));
+    be32(ihdr, static_cast<std::uint32_t>(h));
+    ihdr.insert(ihdr.end(), {8, 6, 0, 0, 0});
+    chunk("IHDR", ihdr);
+    chunk("IDAT", z);
+    chunk("IEND", {});
+    return png;
+}
+Bytes solid(int w, int h, std::uint8_t r, std::uint8_t g, std::uint8_t b, std::uint8_t a) {
+    Bytes p;
+    for (int i = 0; i < w * h; ++i) p.insert(p.end(), {r, g, b, a});
+    return p;
+}
+
+// msgN.dat: script count, offsets, then each script's commands and a (0, 0) terminator.
+struct MsgCmd {
+    std::uint16_t time;
+    std::uint8_t op;
+    Bytes args;
+};
+Bytes msgLine(int side, int line, const std::string& s) {
+    Bytes b;
+    put16(b, static_cast<std::uint16_t>(side));
+    put16(b, static_cast<std::uint16_t>(line));
+    b.insert(b.end(), s.begin(), s.end());
+    b.push_back(0);
+    return b;
+}
+Bytes msgFile(const std::vector<std::vector<MsgCmd>>& scripts) {
+    Bytes b;
+    put32(b, static_cast<std::uint32_t>(scripts.size()));
+    for (std::size_t i = 0; i < scripts.size(); ++i) put32(b, 0);
+    for (std::size_t i = 0; i < scripts.size(); ++i) {
+        set32(b, 4 + 4 * i, static_cast<std::uint32_t>(b.size()));
+        for (const MsgCmd& c : scripts[i]) {
+            put16(b, c.time);
+            b.push_back(c.op);
+            b.push_back(static_cast<std::uint8_t>(c.args.size()));
+            b.insert(b.end(), c.args.begin(), c.args.end());
+        }
+        put32(b, 0);  // the terminator: time 0, opcode 0, no arguments
+    }
+    return b;
+}
+struct MsgText {
+    int time, op, side, line;
+    std::string text;
+    bool operator==(const MsgText&) const = default;
+};
+// The text commands of script `index`, from its offset up to its terminator.
+std::vector<MsgText> msgTexts(const Bytes& b, int index) {
+    std::vector<MsgText> out;
+    std::size_t p = b[4 + 4 * static_cast<std::size_t>(index)] | b[5 + 4 * static_cast<std::size_t>(index)] << 8;
+    while (p + 4 <= b.size()) {
+        const int time = b[p] | b[p + 1] << 8, op = b[p + 2], n = b[p + 3];
+        if (op == 3 || op == 8) {
+            std::string s;
+            for (std::size_t i = p + 8; i < p + 4 + static_cast<std::size_t>(n) && b[i]; ++i) s.push_back(static_cast<char>(b[i]));
+            out.push_back({time, op, b[p + 4] | b[p + 5] << 8, b[p + 6] | b[p + 7] << 8, s});
+        }
+        p += 4 + static_cast<std::size_t>(n);
+        if (time == 0 && op == 0) break;
+    }
+    return out;
+}
+
+// thcrap/repos with lang_en, base_tsa and script_latin (and a missing dependency).
+struct PatchDirs {
+    std::filesystem::path root, base, latin, lang;
+    PatchDirs() {
+        root = std::filesystem::temp_directory_path() / ("th07_english_test_" + std::to_string(::getpid())) / "thcrap";
+        std::filesystem::remove_all(root.parent_path());
+        base = root / "repos" / "nmlgc" / "base_tsa";
+        latin = root / "repos" / "nmlgc" / "script_latin";
+        lang = root / "repos" / "thpatch" / "lang_en";
+        writeText(base / "patch.js", R"({"id": "base_tsa"})");
+        writeText(latin / "patch.js", R"({"id": "script_latin", "dependencies": ["base_tsa"]})");
+        writeText(lang / "patch.js", R"({"id": "lang_en", "dependencies": ["nmlgc/base_tsa", "nmlgc/missing", "nmlgc/script_latin",]})");
+    }
+    ~PatchDirs() { std::filesystem::remove_all(root.parent_path()); }
+};
+
+const std::string kU8Quote = "\xE2\x80\x99";  // ’
+
+}  // namespace
+
+static void testEnglishStackAndLookups() {
+    PatchDirs d;
+    const auto stack = English::discoverStack(d.root.string());
+    CHECK(stack.size() == 3);
+    if (stack.size() == 3) {
+        CHECK(stack[0] == d.base.string() + "/" && stack[1] == d.latin.string() + "/" && stack[2] == d.lang.string() + "/");
+    }
+    CHECK(English::discoverStack((d.root / "nowhere").string()).empty());
+
+    writeText(d.base / "th07" / "spells.js", R"({"3": "Base Three", "4": "Four"})");
+    writeText(d.lang / "th07" / "spells.js", "{\"3\": \"Lang Three\\u0014a note\"}");
+    writeText(d.lang / "themes.js", R"({"th07_01": "Song One", "th06_01": "Not this game"})");
+    writeText(d.base / "stringdefs.js", R"({"Music Room Numbered Title": "No. <r$%2d$99>  %s"})");
+    writeText(d.lang / "th07" / "musiccmt.js", R"({"1": ["@", "First line", ""], "2": ["@", "Second"]})");
+    writeText(d.base / "th07" / "stringlocs.v1.00b.js", R"({"Rx98874": "th07 Bomb Reimu A unfocused", "rx98800": "no def", })");
+    writeText(d.lang / "stringdefs.js", "{\"th07 Bomb Reimu A unfocused\": \"Spirit Sign \\\"It" + kU8Quote + "s\\\"\"}");
+    English e(stack);
+    CHECK(e.active() && e.stack().size() == 3);
+    // spells.js merged over the stack (the higher patch wins), translator's note dropped.
+    CHECK(e.spellName(3) == std::optional<std::string>("Lang Three") && e.spellName(4) == std::optional<std::string>("Four"));
+    CHECK(!e.spellName(5));
+    // themes.js and musiccmt.js: "@" is the numbered title from stringdefs.
+    CHECK(e.musicTitle(1) == std::optional<std::string>("Song One") && !e.musicTitle(2));
+    const auto c1 = e.musicComment(1);
+    CHECK(c1 && c1->size() == 3);
+    if (c1 && c1->size() == 3) {
+        CHECK((*c1)[0] == std::optional<std::string>("No. <r$ 1$99>  Song One"));
+        CHECK((*c1)[1] == std::optional<std::string>("First line") && (*c1)[2] == std::optional<std::string>(""));
+    }
+    const auto c2 = e.musicComment(2);
+    CHECK(c2 && c2->size() == 2 && !(*c2)[0] && (*c2)[1] == std::optional<std::string>("Second"));  // no title: the game's line
+    CHECK(!e.musicComment(3));
+    // stringlocs (the build variant, keys in either case) and stringdefs.
+    CHECK(e.exeString(ExeTables::kBombNameAddresses[0]) == std::optional<std::string>("Spirit Sign \"It" + kU8Quote + "s\""));
+    CHECK(!e.exeString(0x498800) && !e.exeString(0x1234));
+    CHECK(formatPatchString("No. <r$%2d$99>  %s", 7, "Title") == "No. <r$ 7$99>  Title");
+    CHECK(formatPatchString("%03d|%-4s|%%|%.2d", 5, "ab") == "005|ab  |%|00");
+    CHECK(English::gameText("x") == std::string("\x01x"));
+}
+
+static void testEnglishMsgPatch() {
+    PatchDirs d;
+    // Script 0: two boxes at time 10, a boss introduction (op 8) and a box at 20, a box
+    // without a translation at 30, a box whose first translated line is bad ruby at 40.
+    const Bytes msg = msgFile({
+        {{0, 1, {0, 0, 0, 0}},
+         {10, 3, msgLine(0, 0, "A")}, {10, 3, msgLine(0, 1, "B")}, {10, 4, {60, 0, 0, 0}},
+         {10, 3, msgLine(1, 0, "C")}, {10, 4, {60, 0, 0, 0}},
+         {20, 8, msgLine(1, 0, "T")}, {20, 8, msgLine(1, 1, "N")},
+         {20, 3, msgLine(0, 0, "D")}, {20, 4, {60, 0, 0, 0}},
+         {30, 3, msgLine(0, 0, "E")}, {30, 3, msgLine(0, 1, "F")}, {30, 4, {60, 0, 0, 0}},
+         {40, 3, msgLine(0, 0, "H")}, {40, 3, msgLine(0, 1, "I")},
+         {50, 0, {}}},
+        {{5, 3, msgLine(0, 0, "G")}, {5, 4, {60, 0, 0, 0}}, {6, 0, {}}},
+    });
+    writeText(d.lang / "th07" / "msg1.dat.jdiff", R"({
+        "0": {"10_0": {"lines": ["one"]}, "10_1": {"lines": ["x", "y", "z"]}, "20_h1_0": {"lines": ["Title", "Name"]},
+              "20_0": ["dee"], "40_0": {"lines": ["|bad ruby", "eye"]}},
+        "1": {"5_0": {"lines": ["Gee\u0014a note"]}}
+    })");
+    English e(English::discoverStack(d.root.string()));
+    Bytes out = msg;
+    std::string why;
+    const auto diff = Json::parse(R"({"0": {"10_0": ["one"]}})", &why);
+    CHECK(diff.has_value());
+    auto u8 = [](const std::string& s) { return std::string("\x01") + s; };
+    // Through the Vfs read filter, as the game reads it.
+    Vfs vfs;
+    vfs.mount(openArchive("th07.dat", mem(pbg4({{"msg1.dat", msg}, {"other.dat", text("unchanged")}})), &why));
+    vfs.setReadFilter([&e](const std::string& name, std::optional<Bytes> b) { return e.filterFile(name, std::move(b)); });
+    const auto patched = vfs.read("data/msg1.dat");
+    CHECK(patched.has_value() && vfs.read("other.dat") == std::optional<Bytes>(text("unchanged")));
+    if (!patched) return;
+    const std::vector<MsgText> want0 = {
+        {10, 3, 0, 0, u8("one")},                         // "B" dropped: beyond the translation's lines
+        {10, 3, 1, 0, u8("x")}, {10, 3, 1, 1, u8("y")}, {10, 3, 1, 2, u8("z")},  // extra lines after the box
+        {20, 8, 1, 0, u8("Title")}, {20, 8, 1, 1, u8("Name")},  // "<time>_h1_<i>"
+        {20, 3, 0, 0, u8("dee")},                         // the index restarts after an introduction
+        {30, 3, 0, 0, "E"}, {30, 3, 0, 1, "F"},           // no translation: the original
+        {40, 3, 0, 1, u8("eye")},                         // bad ruby: that line dropped
+    };
+    const auto got0 = msgTexts(*patched, 0);
+    CHECK(got0 == want0);
+    // Script 1 moved with the commands; its note kept as an index.
+    const auto got1 = msgTexts(*patched, 1);
+    CHECK(got1.size() == 1 && !got1.empty() && got1[0].text == u8("Gee") + "\x14" "0" && e.note(0) == "a note" && e.note(1).empty());
+    // The extra lines sit before the box's pause; the commands around are kept.
+    std::size_t p = 4 + 8, ops = 0, pauses = 0;
+    while (p + 4 <= patched->size() && !((*patched)[p] == 0 && (*patched)[p + 1] == 0 && (*patched)[p + 2] == 0)) {
+        if ((*patched)[p + 2] == 4) ++pauses;
+        ++ops;
+        p += 4 + (*patched)[p + 3];
+    }
+    CHECK(pauses == 4 && ops == 4 + 10 + 1 + 1);
+    // patchMsg on its own: unchanged without a matching entry.
+    Bytes untouched = msg;
+    const auto none = Json::parse(R"({"7": {"10_0": ["x"]}})", &why);
+    CHECK(none && !e.patchMsg(untouched, *none) && untouched == msg);
+    CHECK(e.patchMsg(out, *diff) && msgTexts(out, 0).front().text == u8("one"));
+}
+
+static void testEnglishEnding() {
+    // .end jdiff: the run of text lines starting at line L replaced by jdiff["L"].
+    const std::string end = std::string("@s3\0" "0\0\n@c255\0\n", 14) + std::string("orig one\0\n", 10) + std::string("orig two\0\n", 10) +
+                            std::string("@w5\0" "0\0\n", 7) + std::string("kept\0\n", 6) + std::string("@z\n", 3);
+    std::string why;
+    const auto diff = Json::parse(R"({"2": {"lines": ["<c$Reimu:$12345678> \"Hi.\"", "<c$$12345678\"> There.\u0014note", ""]},
+                                      "3": {"lines": ["never: not the start of a run"]}})",
+                                  &why);
+    CHECK(diff.has_value());
+    if (!diff) return;
+    Bytes b(end.begin(), end.end());
+    CHECK(English::patchEnd(b, *diff));
+    const std::string want = std::string("@s3\0" "0\0\n@c255\0\n", 14) + "\x01<c$Reimu:$12345678> \"Hi.\"" + std::string("\0\n", 2) +
+                             "\x01<c$$12345678\"> There." + std::string("\0\n", 2) + std::string("\0\n", 2) +
+                             std::string("@w5\0" "0\0\n", 7) + std::string("kept\0\n", 6) + std::string("@z\n", 3);
+    CHECK(std::string(b.begin(), b.end()) == want);
+
+    // The ending reads a translated line whole: odd lengths, longer than the 66-byte buffer.
+    const std::string longLine = std::string("\x01") + std::string(81, 'x');
+    Bytes script(longLine.begin(), longLine.end());
+    for (char c : std::string("\0\n@z\n", 5)) script.push_back(static_cast<std::uint8_t>(c));
+    FlowContext ctx;
+    AnmLibrary anm;
+    ZunRng rng{1};
+    ScoreData scores;
+    ctx.anm = &anm;
+    ctx.rng = &rng;
+    ctx.scores = &scores;
+    ctx.request = [](FlowState) {};
+    Ending ending(ctx);
+    ending.startScript(script, "test.end");
+    MenuInput in;
+    in.sample(0);
+    ending.update(in);
+    CHECK(ending.lastLine() == longLine);
+
+    // The layout markup (thcrap's layout_process), 6 texels a character.
+    auto measure = [](std::string_view s, bool) { return 6.0f * static_cast<float>(s.size()); };
+    float total = 0.0f;
+    auto runs = layoutMarkup("<c$Reimu:$12345678> \"Hi.\"", measure, 512.0f, &total);
+    CHECK(runs.size() == 2 && total == 84.0f);
+    if (runs.size() == 2) {
+        CHECK(runs[0].text == "Reimu:" && runs[0].x == 6.0f && runs[0].width == 36.0f);  // centred in the width of "12345678"
+        CHECK(runs[1].text == " \"Hi.\"" && runs[1].x == 48.0f);
+    }
+    runs = layoutMarkup("<c$$12345678\"> There.", measure, 512.0f, &total);
+    CHECK(runs.size() == 1 && !runs.empty() && runs[0].x == 54.0f);  // after the quote of the line above
+    runs = layoutMarkup("No. <r$ 7$99>  Title", measure, 512.0f, &total);
+    CHECK(runs.size() == 3 && runs[1].text == " 7" && runs[1].x == 24.0f && runs[2].x == 36.0f);
+    runs = layoutMarkup("say <i$this> now", measure, 512.0f, &total);
+    CHECK(runs.size() == 3 && runs[1].italic && runs[1].x == 24.0f && !runs[2].italic && runs[2].x == 48.0f);
+    runs = layoutMarkup("<s$hidden>shown <single>", measure, 512.0f, &total);
+    CHECK(runs.size() == 2 && runs[0].text == "shown " && runs[0].x == 0.0f && runs[1].text == "<single>");
+    // Drawn: narrowed as a whole when wider than the room.
+    FallbackTextRenderer fb;
+    Image band(128, 16);
+    TextStyle style;
+    CHECK(renderTranslated(fb, "<c$Reimu:$12345678> \"Hi.\"", style, 0.0f, 60.0f, TextAlign::Left, band) == 60.0f);
+    CHECK(renderTranslated(fb, "plain", style, 10.0f, 100.0f, TextAlign::Right, band) == 30.0f);
+    // The desktop fallback shows typographic punctuation and accents as ASCII.
+    CHECK(asciiFallback("It" + kU8Quote + "s \xE2\x80\x9Cok\xE2\x80\x9D\xE2\x80\xA6 \xC3\xA9\xC5\x8D\xE3\x80\x80!") == "It's \"ok\"... eo  !");
+    CHECK(wrapText("aaa bbb ccc\nd", 42.0f, [](std::string_view s) { return 6.0f * static_cast<float>(s.size()); }) ==
+          std::vector<std::string>({"aaa bbb", "ccc", "d"}));
+}
+
+static void testEnglishPictures() {
+    // thcrap's PNG-over-THTX blits: an opaque original gets the picture blended over it, a
+    // transparent one is overwritten, an empty part of the picture leaves it alone.
+    Bytes tex;
+    for (int i = 0; i < 8; ++i) tex.insert(tex.end(), {10, 20, 30, 255});  // 4 x 2, BGRA
+    Bytes pic;
+    for (int y = 0; y < 2; ++y) {
+        for (int x = 0; x < 4; ++x) {
+            if (x < 2) pic.insert(pic.end(), {200, 100, 50, 128});
+            else pic.insert(pic.end(), {1, 2, 3, 0});
+        }
+    }
+    std::string why;
+    const auto img = decodeImage(pngFile(4, 2, pic), &why);
+    CHECK(img.has_value());
+    if (!img) return;
+    CHECK(English::blitPng(tex.data(), 1, 4, 2, {{0, 0, 2, 2}, {2, 0, 2, 2}}, *img, 0, 0));
+    const std::uint8_t blended[4] = {(10 * 127 + 50 * 128) >> 8, (20 * 127 + 100 * 128) >> 8, (30 * 127 + 200 * 128) >> 8, 255};
+    CHECK(std::memcmp(tex.data(), blended, 4) == 0 && std::memcmp(tex.data() + 4 * 5, blended, 4) == 0);
+    CHECK(tex[8] == 10 && tex[9] == 20 && tex[10] == 30 && tex[11] == 255);  // the empty half: unchanged
+    Bytes tex5 = {0xF0, 0x80, 0xF0, 0x80};  // A4R4G4B4, alpha 8: not opaque
+    const auto red = decodeImage(pngFile(2, 1, solid(2, 1, 255, 0, 0, 255)), &why);
+    CHECK(red && English::blitPng(tex5.data(), 5, 2, 1, {}, *red, 0, 0) && tex5 == Bytes({0x00, 0xFF, 0x00, 0xFF}));
+    Bytes tex3 = {0, 0};
+    CHECK(red && English::blitPng(tex3.data(), 3, 1, 1, {}, *red, 2, 0) == false && tex3 == Bytes({0, 0}));  // outside the picture
+    CHECK(red && English::blitPng(tex3.data(), 3, 1, 1, {}, *red, 1, 0) && tex3 == Bytes({0x00, 0xF8}));  // R5G6B5: overwritten
+
+    // Through the file filter: every patch's picture in stack order, sprite by sprite, and
+    // whole-file replacements.
+    PatchDirs d;
+    writeBytes(d.base / "th07" / "data" / "test.png", pngFile(16, 16, solid(16, 16, 255, 0, 0, 255)));
+    Bytes half;
+    for (int y = 0; y < 16; ++y) {
+        for (int x = 0; x < 16; ++x) {
+            if (x < 8) half.insert(half.end(), {0, 0, 0, 0});
+            else half.insert(half.end(), {0, 0, 255, 255});
+        }
+    }
+    writeBytes(d.lang / "th07" / "data" / "test.png", pngFile(16, 16, half));
+    writeText(d.latin / "th07" / "text.anm", "replaced");
+    English e(English::discoverStack(d.root.string()));
+    EntryDef entry;  // 16 x 16 THTX named data/test.png, one sprite: the whole texture
+    entry.sprites.push_back({0, 0, 0, 16, 16});
+    Bytes anm = anmFile({entry});
+    const Bytes original = anm;
+    CHECK(e.patchAnm(anm, "front.anm"));
+    std::size_t thtx = 0;
+    for (std::size_t i = 0; i + 4 < anm.size(); ++i) {
+        if (std::memcmp(anm.data() + i, "THTX", 4) == 0) thtx = i + 0x10;
+    }
+    CHECK(thtx != 0);
+    const std::uint8_t r1 = (255 * 255) >> 8;  // base: red blended over the opaque original
+    const std::uint8_t keep = static_cast<std::uint8_t>((r1 * 255) >> 8), blue = (255 * 255) >> 8;
+    CHECK(anm[thtx + 2] == keep && anm[thtx + 0] == 0 && anm[thtx + 3] == 255);  // left: the base's red (lang empty there)
+    CHECK(anm[thtx + 8 * 4 + 0] == blue && anm[thtx + 8 * 4 + 2] == 0);           // right: the lang patch's blue on top
+    const auto filtered = e.filterFile("front.anm", original);
+    CHECK(filtered == std::optional<Bytes>(anm));
+    CHECK(e.filterFile("text.anm", text("original")) == std::optional<Bytes>(text("replaced")));
+    EntryDef blank;  // a blank '@' texture: never patched
+    blank.format = 0;
+    const Bytes blankAnm = anmFile({blank});
+    CHECK(e.filterFile("etama.anm", blankAnm) == std::optional<Bytes>(blankAnm));
+    CHECK(!e.filterFile("missing.dat", std::nullopt));
+}
+
+static void testEnglishTextImages() {
+    PatchDirs d;
+    // base_tsa's th07.js defines the images; lang_en has them: title 3 cells, name 4 cells.
+    writeText(d.base / "th07.js", R"({"breakpoints": {"textimage_init": {"images": {
+        "0x702": {"filename": "ti_bosstitle.png", "texture_slot": 50, "sprite_w": 8, "sprite_h": 4,
+                  "script": "0300 0c00 00000000 02000000 0600 1400 00000000 +224.0f +352.0f +0.0f ffff 0800 1000 0000"},
+        "0x703": {"filename": "ti_bossname.png", "texture_slot": 51, "sprite_w": 8, "sprite_h": 4,
+                  "script": "0300 0c00 00000000 03000000 0600 1400 00000000 +100.0f -8.5f +0.0f ffff 0800 1000 0000"}}}}})");
+    {
+        English none(English::discoverStack(d.root.string()));
+        CHECK(!none.hasTextImages() && none.textImageSprite(0, 1, 0) == -1 && !none.textImageAnm());
+    }
+    writeBytes(d.lang / "th07" / "ti_bosstitle.png", pngFile(8, 12, solid(8, 12, 255, 255, 255, 255)));
+    writeBytes(d.lang / "th07" / "ti_bossname.png", pngFile(8, 16, solid(8, 16, 0, 255, 0, 255)));
+    English e(English::discoverStack(d.root.string()));
+    CHECK(e.hasTextImages());
+    CHECK(e.textImageSprite(0, 2, 0) == 1 && e.textImageSprite(1, 2, 0) == 3 + 1);  // stage 2: the second boss
+    CHECK(e.textImageSprite(0, 3, 0) == 2 && e.textImageSprite(1, 3, 0) == 5);
+    CHECK(e.textImageSprite(0, 4, 0x4AD + 6) == -1);  // the third sister of stage 4: cell 5, not in the title image
+    CHECK(e.textImageSprite(2, 1, 0) == -1);
+    // The synthesized ANM loads like a game file through the Vfs filter.
+    Vfs vfs;
+    std::string why;
+    vfs.mount(openArchive("th07.dat", mem(pbg4({{"text.anm", anmFile({EntryDef{}})}})), &why));
+    vfs.setReadFilter([&e](const std::string& name, std::optional<Bytes> b) { return e.filterFile(name, std::move(b)); });
+    TextureLibrary textures;
+    AnmLibrary lib;
+    CHECK(lib.load(vfs, textures, English::kTextImageFile, 48, 0x5E0, &why));
+    const th07::AnmSprite* name1 = lib.sprite(0x5E0 + 4);
+    CHECK(name1 && name1->startY == 12.0f + 4.0f && name1->endX == 8.0f && lib.sprite(0x5E0 + 6) && !lib.sprite(0x5E0 + 7));
+    ZunRng rng{1};
+    AnmVm vm;
+    vm.startFresh(lib, rng, 0x5E1);
+    CHECK(vm.position.x == 100.0f && vm.position.y == -8.5f && vm.activeSprite == 0x5E0 + 3);
+    CHECK(vm.selectSprite(lib, 0x5E0 + 5) && vm.sprite && vm.sprite->startY == 12.0f + 8.0f);
+}
+
 int main() {
     struct Test {
         const char* name;
@@ -3217,6 +3628,11 @@ int main() {
         {"pause and continue menus: snapshot, locks", testInGameMenus},
         {"playfield camera: projected sprites", testPlayfieldCamera},
         {"screen effects: shake draws, pulses, fades", testScreenEffects},
+        {"English text: patch stack, spells, music, strings", testEnglishStackAndLookups},
+        {"English text: msg jdiff keys and line rules", testEnglishMsgPatch},
+        {"English text: endings, layout markup, fallback", testEnglishEnding},
+        {"English text: PNG over THTX, replacements", testEnglishPictures},
+        {"English text: boss introduction text images", testEnglishTextImages},
     };
     for (const Test& t : tests) {
         const int before = g_failures;

@@ -103,9 +103,7 @@ bool loadExeTables(std::span<const std::uint8_t> exe, ExeTables& out, std::strin
             return fail("unknown routine in the effect table");
         }
     }
-    static constexpr std::uint32_t kBombNames[12] = {0x00498874, 0x0049885C, 0x0049884C, 0x00498838, 0x00498818, 0x00498800,
-                                                     0x004987D8, 0x004987BC, 0x0049879C, 0x00498788, 0x00498768, 0x00498748};
-    for (int i = 0; i < 12; ++i) t.bombNames[static_cast<std::size_t>(i)] = pe.cString(kBombNames[i], 48);
+    for (std::size_t i = 0; i < 12; ++i) t.bombNames[i] = pe.cString(ExeTables::kBombNameAddresses[i], 48);
     const auto drops = pe.at(kDropCycle, ExeTables::kDrops);
     if (drops.empty()) return fail("drop table missing");
     for (int i = 0; i < ExeTables::kDrops; ++i) t.dropCycle[i] = drops[static_cast<std::size_t>(i)];

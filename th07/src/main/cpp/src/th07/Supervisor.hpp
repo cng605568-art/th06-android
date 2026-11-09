@@ -34,6 +34,7 @@ namespace touhou::th07 {
 
 class BgmPlayer;
 class Ending;
+class English;
 class MainMenu;
 class MusicRoom;
 class ResultScreen;
@@ -52,6 +53,7 @@ class Supervisor {
         const ExeTables* tables = nullptr;
         AnmLibrary* anm = nullptr;
         ZunRng* rng = nullptr;
+        const English* english = nullptr;  // the English text mode (null: the original text)
         // The app's storage, ending in '/' (score.dat, th07.cfg); empty: nothing is saved.
         std::string storageDir;
         std::vector<std::uint8_t> verFile;  // th07_0100b.ver (the VRSM check and stamp)

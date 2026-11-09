@@ -7,6 +7,7 @@
 #include "gfx/SpriteSink.hpp"
 #include "io/Vfs.hpp"
 #include "th07/Bgm.hpp"
+#include "th07/English.hpp"
 #include "th07/Player.hpp"
 
 namespace touhou::th07 {
@@ -74,6 +75,25 @@ bool MusicRoom::create(std::string* error) {
     loaded_ = true;
     if (const auto txt = ctx_.vfs->read("data/musiccmt.txt")) tracks_ = parseMusicComments(*txt);
     else log::warn("data/musiccmt.txt is missing: an empty Music Room");
+    if (ctx_.english) {
+        // English text mode (thcrap's music_title and music_cmt): the title from themes.js,
+        // the comment from musiccmt.js; its first entry is the line after the game's always
+        // empty line 0.
+        for (std::size_t i = 0; i < tracks_.size(); ++i) {
+            MusicTrack& t = tracks_[i];
+            const int track = static_cast<int>(i) + 1;
+            if (const auto title = ctx_.english->musicTitle(track)) t.title = English::gameText(*title);
+            const auto comment = ctx_.english->musicComment(track);
+            if (!comment) continue;
+            for (std::size_t l = 1; l < t.lines.size(); ++l) {
+                if (l - 1 >= comment->size()) {
+                    t.lines[l].clear();
+                } else if ((*comment)[l - 1]) {
+                    t.lines[l] = (*comment)[l - 1]->empty() ? std::string() : English::gameText(*(*comment)[l - 1]);
+                }
+            }
+        }
+    }
     deco_ = AnmVm{};
     deco_.startFresh(lib, *ctx_.rng, kMusicScripts);
     for (int i = 0; i < kTitles; ++i) {
@@ -97,9 +117,9 @@ bool MusicRoom::create(std::string* error) {
 void MusicRoom::renderDescription(int track) {
     for (int i = 0; i < 8; ++i) {
         AnmVm& d = desc_[static_cast<std::size_t>(i)];
-        const std::string line = track >= 0 && track < static_cast<int>(tracks_.size())
-                                     ? tracks_[static_cast<std::size_t>(track)].lines[static_cast<std::size_t>(i)].substr(0, 64)
-                                     : std::string();
+        std::string line = track >= 0 && track < static_cast<int>(tracks_.size()) ? tracks_[static_cast<std::size_t>(track)].lines[static_cast<std::size_t>(i)]
+                                                                                 : std::string();
+        if (!isUtf8Text(std::span(reinterpret_cast<const std::uint8_t*>(line.data()), line.size()))) line = line.substr(0, 64);
         descActive_[static_cast<std::size_t>(i)] = !line.empty();
         if (!line.empty()) renderSpriteText(ctx_.textures, ctx_.text, d, line, kDescColor);
     }

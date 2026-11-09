@@ -24,6 +24,7 @@ class Background;
 class BulletManager;
 class Effects;
 class EnemyManager;
+class English;
 class Player;
 class SoundPlayer;
 struct ExeTables;
@@ -194,6 +195,7 @@ struct World {
     ZunRng* rng = nullptr;
     AnmLibrary* anm = nullptr;
     const ExeTables* tables = nullptr;
+    const English* english = nullptr;  // the English text mode (null: the original text)
     SoundSink* sound = nullptr;
     Player* player = nullptr;
     Effects* effects = nullptr;

@@ -121,6 +121,11 @@ class Gui final : public StageGui, public PopupSink {
     };
     void startVm(AnmVm& vm, int script);
     void renderText(AnmVm& vm, const std::string& sjis, std::uint32_t colorRef, bool rightAligned);
+    // The English text mode's translator notes ("\x14<index>" after a dialogue line), shown
+    // over the lower side panel while their box is up, as thcrap shows them.
+    void showNote(const std::string& line);
+    void clearNote();
+    void drawNote(SpriteSink& sink);
     void runDialogue(const World& w, std::uint16_t input, std::uint16_t previousInput);
     void bossHudUpdate();
     void drawSidePanel(SpriteSink& sink, const AnmDrawState& state);
@@ -186,6 +191,12 @@ class Gui final : public StageGui, public PopupSink {
     std::array<Element, 2> portraits_{};
     std::array<AnmVm, 2> lines_{}, introLines_{};
     bool line1Used_ = false;
+    // English text mode: the boss introduction's text images are loaded (slot 48), and the
+    // translator's note on screen (its texture and the height of its text).
+    bool textImages_ = false;
+    std::string note_;
+    std::uint16_t noteTexture_ = 0;
+    float noteHeight_ = 0;
 
     // Stage clear.
     int clearState_ = 0;  // 0 playing, 1 results recorded, 2 bonus given

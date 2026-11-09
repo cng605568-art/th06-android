@@ -10,6 +10,7 @@
 
 #include "core/Log.hpp"
 #include "gfx/SpriteSink.hpp"
+#include "th07/English.hpp"
 #include "th07/GameConfig.hpp"
 #include "th07/Player.hpp"
 #include "th07/Replay.hpp"
@@ -300,6 +301,10 @@ void ResultScreen::renderSpellPage() {
         }
         const SpellRecord& s = sd.spells[static_cast<std::size_t>(card)];
         std::string name = s.attempts[6] == 0 ? std::string("?????") : std::string(reinterpret_cast<const char*>(s.name.data()));
+        // English text mode (thcrap's spell_name#result): shown translated, kept as it is.
+        if (s.attempts[6] != 0 && ctx_.english) {
+            if (const auto t = ctx_.english->spellName(card)) name = English::gameText(*t);
+        }
         renderText(1 + r, name);
     }
 }

@@ -50,8 +50,12 @@ struct ExeTables {
     std::array<std::uint8_t, kDrops> dropCycle{};
     std::array<std::uint32_t, kSpellCards> spellBonus{};
     std::array<Effect, kEffects> effects{};
-    // The bomb names (Shift-JIS), [shot index * 2 + focused]; empty if not readable.
+    // The bomb names (Shift-JIS), [shot index * 2 + focused]; empty if not readable. Their
+    // addresses in th07.exe 1.00b (also what translation patches key them by).
     std::array<std::string, 12> bombNames;
+    static constexpr std::array<std::uint32_t, 12> kBombNameAddresses = {0x00498874, 0x0049885C, 0x0049884C, 0x00498838,
+                                                                         0x00498818, 0x00498800, 0x004987D8, 0x004987BC,
+                                                                         0x0049879C, 0x00498788, 0x00498768, 0x00498748};
 };
 
 // False (with a reason) when `exe` is not th07.exe 1.00b (unless requireKnownVersion is

@@ -4,6 +4,8 @@
 #include <cmath>
 
 #include "th07/Effects.hpp"
+#include "th07/English.hpp"
+#include "th07/ExeTables.hpp"
 #include "th07/Player.hpp"
 #include "th07/World.hpp"
 
@@ -61,7 +63,11 @@ void Player::bombStartUp(const World& w, int invulnerability, int minCost, float
     // The portrait and name banner (it plays the banner sound).
     static constexpr int kFace[12] = {1, 1, 1, 1, 3, 2, 1, 2, 1, 1, 3, 3};
     const int which = shotIndex_ * 2 + (bombFocus_ ? 1 : 0);
-    if (w.gui) w.gui->bombBanner(0x4A0 + kFace[which], w.tables ? w.tables->bombNames[static_cast<std::size_t>(which)] : std::string());
+    std::string name = w.tables ? w.tables->bombNames[static_cast<std::size_t>(which)] : std::string();
+    if (w.english) {  // the English text mode: the patch's name for the program's string
+        if (const auto t = w.english->exeString(ExeTables::kBombNameAddresses[static_cast<std::size_t>(which)])) name = English::gameText(*t);
+    }
+    if (w.gui) w.gui->bombBanner(0x4A0 + kFace[which], name);
     else w.playSound(14);
     stateTimer_.assign(invulnerability);
     if (w.effects) bombRing_ = &w.effects->spawnSpecial(w, 25, pos_, 0, 0xFFFF8080u);

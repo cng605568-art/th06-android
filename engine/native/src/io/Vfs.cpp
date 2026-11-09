@@ -136,14 +136,18 @@ std::size_t Vfs::mountDirectory(const std::string& dir, bool preferNewClassic) {
 bool Vfs::exists(std::string_view path) const { return index_.contains(normalize(path)); }
 
 std::optional<std::vector<std::uint8_t>> Vfs::read(std::string_view path) const {
-    const auto it = index_.find(normalize(path));
-    if (it == index_.end()) return std::nullopt;
-    std::vector<std::uint8_t> out;
-    std::string err;
-    if (!it->second.archive->extract(it->second.index, out, &err)) {
-        log::error("Failed to read {}: {}", path, err);
-        return std::nullopt;
+    const std::string name = normalize(path);
+    const auto it = index_.find(name);
+    std::optional<std::vector<std::uint8_t>> out;
+    if (it != index_.end()) {
+        out.emplace();
+        std::string err;
+        if (!it->second.archive->extract(it->second.index, *out, &err)) {
+            log::error("Failed to read {}: {}", path, err);
+            out.reset();
+        }
     }
+    if (filter_) return filter_(name, std::move(out));
     return out;
 }
 

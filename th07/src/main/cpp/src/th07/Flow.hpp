@@ -31,6 +31,7 @@ struct UiArt;
 namespace touhou::th07 {
 
 class BgmPlayer;
+class English;
 class SoundPlayer;
 struct ExeTables;
 struct GameConfig;
@@ -96,6 +97,7 @@ struct FlowContext {
     const ExeTables* tables = nullptr;
     GameConfig* config = nullptr;
     ScoreData* scores = nullptr;
+    const English* english = nullptr;  // the English text mode (null: the original text)
 
     // Requests a supervisor state (acted on at the start of the next pass).
     std::function<void(FlowState)> request;
@@ -180,6 +182,8 @@ class AsciiText {
 
 // Renders Shift-JIS (or ASCII) text into the band of the VM's sprite (the whole texture width,
 // spec 8 of the ANM spec) and makes the VM visible. `colorRef` is a GDI colour (0x00BBGGRR).
+// Translated text (kUtf8TextMarker first) is laid out within the sprite's own rectangle,
+// with the English patch's markup; a translator's note after U+0014 is not drawn.
 void renderSpriteText(TextureLibrary* textures, TextRenderer* text, AnmVm& vm, std::string_view sjis, std::uint32_t colorRef,
                       TextAlign align = TextAlign::Left);
 

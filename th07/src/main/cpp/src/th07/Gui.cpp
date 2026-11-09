@@ -1,6 +1,7 @@
 #include "th07/Gui.hpp"
 
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <format>
 
@@ -11,6 +12,7 @@
 #include "io/Vfs.hpp"
 #include "th07/Background.hpp"
 #include "th07/Bullets.hpp"
+#include "th07/English.hpp"
 #include "th07/Player.hpp"
 
 namespace touhou::th07 {
@@ -19,6 +21,12 @@ namespace {
 
 constexpr int kFront = 0x600, kText = 0x700, kFace = 0x4A0, kStageFace = 0x4AD, kStageText = 0x800, kLoading = 0x61E;
 constexpr int kCapture = 0x724;
+// The English text mode's boss-introduction images: slot 48 (unused by the game) and an
+// index range no game file uses.
+constexpr int kTextImageSlot = 48, kTextImage = 0x5E0;
+// Where translator's notes go: the side panel below the score lines (thcrap's region for
+// PCB, 864,416 + 384x512 at 1280x960).
+constexpr float kNoteX = 432.0f, kNoteY = 208.0f, kNoteW = 192.0f, kNoteH = 256.0f;
 
 std::uint32_t colorRefToRgb(std::uint32_t c) { return ((c & 0xFF) << 16) | (c & 0xFF00) | ((c >> 16) & 0xFF); }
 
@@ -109,6 +117,14 @@ bool Gui::stageStart(const World& w, const Resources& res, bool firstStage, std:
     }
     if (!load(std::format("data/face_0{}_00.anm", stage_), 28, kStageFace)) return false;
     if (!load(std::format("data/std{}txt.anm", stage_), 24, kStageText)) return false;
+    // The English patch's pictures for the boss introductions (kept for the session).
+    textImages_ = false;
+    if (w.english && w.english->hasTextImages()) {
+        std::string why;
+        textImages_ = lib.loaded(kTextImageSlot) || lib.load(*res.vfs, *res.textures, English::kTextImageFile, kTextImageSlot, kTextImage, &why);
+        if (!textImages_) log::warn("English text: the boss introduction pictures could not be loaded: {}", why);
+    }
+    clearNote();
     msg_.clear();
     msgScripts_.clear();
     if (auto bytes = res.vfs->read(std::format("data/msg{}.dat", stage_))) {
@@ -326,7 +342,14 @@ void Gui::renderText(AnmVm& vm, const std::string& sjis, std::uint32_t colorRef,
         TextStyle style;
         style.fontSize = size;
         style.rgb = colorRefToRgb(colorRef);
-        res_.text->render(bytes, style, x, band);
+        if (isUtf8Text(bytes)) {  // translated: laid out within the sprite's own rectangle
+            std::string_view utf8 = std::string_view(sjis).substr(1);
+            utf8 = utf8.substr(0, utf8.find('\x14'));
+            renderTranslated(*res_.text, utf8, style, sp->startX, sp->endX - sp->startX, rightAligned ? TextAlign::Right : TextAlign::Left,
+                             band);
+        } else {
+            res_.text->render(bytes, style, x, band);
+        }
         finishTextBand(band);
     }
     for (int y = 0; y < 16 && top + y < img->height; ++y) {
@@ -336,7 +359,6 @@ void Gui::renderText(AnmVm& vm, const std::string& sjis, std::uint32_t colorRef,
 }
 
 void Gui::spellCardStart(int card, int portrait, const std::string& name) {
-    (void)card;
     const World& w = *world_;
     if (portrait >= 0) {
         startVm(enemyPortrait_.vm, kFace + 3);
@@ -350,10 +372,67 @@ void Gui::spellCardStart(int card, int portrait, const std::string& name) {
     enemyDecorD_.vm.selectSprite(*w.anm, kFace + 12);
     startVm(enemyName_.vm, kText + 5);
     enemyName_.vm.fontWidth = enemyName_.vm.fontHeight = 15;
-    renderText(enemyName_.vm, name, 0xFFF0F0u, true);
+    // English text mode: the card's name from spells.js, for the banner only (the ECL's
+    // Shift-JIS name stays the one score.dat's spell history is kept under).
+    std::string shown = name;
+    if (w.english) {
+        if (const auto t = w.english->spellName(card)) shown = English::gameText(*t);
+    }
+    clearNote();  // (thcrap removes notes at every spell card)
+    renderText(enemyName_.vm, shown, 0xFFF0F0u, true);
     enemyNameBg_.interrupt(1);
     captureIndicator_.interrupt(1);
     w.playSound(14);
+}
+
+// ---- translator's notes (English text mode) --------------------------------------------------
+
+void Gui::showNote(const std::string& line) {
+    if (!world_ || !world_->english || line.empty() || static_cast<std::uint8_t>(line[0]) != kUtf8TextMarker) return;
+    const std::size_t at = line.find('\x14');
+    if (at == std::string::npos || !res_.textures || !res_.text) return;
+    const std::string note = world_->english->note(std::atoi(line.c_str() + at + 1));
+    if (note.empty() || note == note_) return;
+    note_ = note;
+    noteTexture_ = res_.textures->addDynamic("th07-tlnote", 256, 256, TextureFilter::LinearWrap);
+    Image* img = res_.textures->pixels(noteTexture_);
+    if (!img) return;
+    std::fill(img->rgba.begin(), img->rgba.end(), 0);
+    TextStyle style;
+    style.fontSize = 15;
+    style.rgb = 0xFFFFFF;
+    const float room = kNoteW - 4.0f;
+    std::vector<std::string> rows = wrapText(note, room, [&](std::string_view s) { return res_.text->measureUtf8(s, style); });
+    if (rows.size() > 16) rows.resize(16);
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        Image band(img->width, 16);
+        renderTranslated(*res_.text, rows[i], style, 2.0f, room, TextAlign::Left, band);
+        finishTextBand(band);
+        for (int y = 0; y < 16; ++y) std::memcpy(img->pixel(0, static_cast<int>(i) * 16 + y), band.pixel(0, y), static_cast<std::size_t>(img->width) * 4);
+    }
+    noteHeight_ = 16.0f * static_cast<float>(rows.size());
+    res_.textures->touch(noteTexture_);
+}
+
+void Gui::clearNote() {
+    note_.clear();
+    noteHeight_ = 0.0f;
+}
+
+void Gui::drawNote(SpriteSink& sink) {
+    if (note_.empty() || noteHeight_ <= 0.0f || noteTexture_ == 0) return;
+    const float top = kNoteY + kNoteH - noteHeight_;  // (thcrap: bottom-aligned)
+    rect(sink, kNoteX, top - 4.0f, kNoteX + kNoteW, kNoteY + kNoteH, 0xA0000000u);
+    SpriteInstance s;
+    s.x = kNoteX + kNoteW / 2.0f;
+    s.y = top + noteHeight_ / 2.0f;
+    s.w = kNoteW;
+    s.h = noteHeight_;
+    s.u0 = 0.0f;
+    s.v0 = 0.0f;
+    s.u1 = kNoteW / 256.0f;
+    s.v1 = noteHeight_ / 256.0f;
+    sink.draw(noteTexture_, Blend::Alpha, s);
 }
 
 void Gui::bombBanner(int sprite, const std::string& name) {
@@ -426,7 +505,10 @@ void Gui::runDialogue(const World& w, std::uint16_t input, std::uint16_t previou
         const std::size_t a = msgPos_ + 4;
         bool advance = true;
         switch (op) {
-            case 0: msgIndex_ = -1; return;
+            case 0:
+                msgIndex_ = -1;
+                clearNote();
+                return;
             case 1: {
                 const int side = rd16(msg_, a) & 1, index = rd16(msg_, a + 2);
                 Element& p = portraits_[static_cast<std::size_t>(side)];
@@ -457,10 +539,21 @@ void Gui::runDialogue(const World& w, std::uint16_t input, std::uint16_t previou
                     lines_[static_cast<std::size_t>(line)].fontWidth = lines_[static_cast<std::size_t>(line)].fontHeight = 15;
                     renderText(lines_[static_cast<std::size_t>(line)], text, kColors[color], false);
                     if (line == 1) line1Used_ = true;
+                    if (line == 0) clearNote();  // a new box
+                    showNote(text);
                 } else {
-                    startVm(introLines_[static_cast<std::size_t>(line)], kText + 2 + line);
-                    introLines_[static_cast<std::size_t>(line)].fontWidth = introLines_[static_cast<std::size_t>(line)].fontHeight = 15;
-                    renderText(introLines_[static_cast<std::size_t>(line)], text, kColors[color], true);
+                    // English text mode: the patch's pictures in place of the two lines, when
+                    // it has them for this boss (thcrap's text images: both or neither).
+                    AnmVm& vm = introLines_[static_cast<std::size_t>(line)];
+                    const int picture = textImages_ && w.english ? w.english->textImageSprite(line, stage_, portraits_[1].vm.activeSprite) : -1;
+                    if (picture >= 0) {
+                        startVm(vm, kTextImage + line);
+                        vm.selectSprite(*w.anm, kTextImage + picture);
+                    } else {
+                        startVm(vm, kText + 2 + line);
+                        vm.fontWidth = vm.fontHeight = 15;
+                        renderText(vm, text, kColors[color], true);
+                    }
                 }
                 waited_ = 0;
                 break;
@@ -907,6 +1000,7 @@ void Gui::draw(SpriteSink& sink, AnmDrawState& state) {
     }
     drawBossHud(sink, state);
     drawSidePanel(sink, state);
+    drawNote(sink);
     if (bonus_.shown) {
         const float x = bonus_.timer.current < 30 ? static_cast<float>(bonus_.timer.current * -312 / 30 + 416) : 104.0f;
         queueText(x, bonus_.y, std::format("BONUS {:8d}", bonus_.value), 0xFFFFFF80u, 1.0f, 1.0f, 14.0f, true);

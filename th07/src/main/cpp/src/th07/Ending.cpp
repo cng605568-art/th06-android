@@ -227,6 +227,14 @@ bool Ending::step(const MenuInput& in) {
         }
         // A text line, two bytes (one Shift-JIS character) at a time.
         std::string line;
+        if (data_[pos_] == kUtf8TextMarker) {
+            // A translated line (English text mode): UTF-8 with layout markup, read whole, as
+            // thcrap's ending_copy_rem hack makes the game read it (no 2-byte stepping, no
+            // 68-byte buffer).
+            while (pos_ < data_.size() && data_[pos_] != 0 && data_[pos_] != '\r' && data_[pos_] != '\n') {
+                line.push_back(static_cast<char>(data_[pos_++]));
+            }
+        }
         while (pos_ < data_.size() && data_[pos_] != 0 && data_[pos_] != '\r' && data_[pos_] != '\n') {
             for (int k = 0; k < 2 && pos_ < data_.size(); ++k, ++pos_) {
                 if (line.size() < kLineMax) line.push_back(static_cast<char>(data_[pos_]));

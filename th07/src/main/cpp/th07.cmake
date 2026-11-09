@@ -20,6 +20,7 @@ add_library(th07_game STATIC
   ${TH07_SRC}/th07/Effects.cpp
   ${TH07_SRC}/th07/Enemies.cpp
   ${TH07_SRC}/th07/Ending.cpp
+  ${TH07_SRC}/th07/English.cpp
   ${TH07_SRC}/th07/ExeTables.cpp
   ${TH07_SRC}/th07/FlowCommon.cpp
   ${TH07_SRC}/th07/GameConfig.cpp

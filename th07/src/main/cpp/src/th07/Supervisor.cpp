@@ -76,6 +76,7 @@ bool Supervisor::start(const Boot& boot) {
     ctx_.sound = boot_.sound;
     ctx_.music = boot_.music;
     ctx_.tables = boot_.tables;
+    ctx_.english = boot_.english;
     ctx_.config = &config_;
     ctx_.scores = &scores_;
     ctx_.request = [this](FlowState s) { requested_ = s; };
@@ -492,6 +493,7 @@ bool Supervisor::openGame(bool fresh, bool restart) {
     res.music = boot_.music;
     res.text = boot_.text;
     res.ui = boot_.ui;
+    res.english = boot_.english;
     std::string err;
     if (!game_->start(res, s, &err)) {
         log::warn("Could not start stage {}: {}", s.stage, err);
@@ -651,6 +653,7 @@ bool Supervisor::startGame(const Gameplay::Setup& setup) {
     res.music = boot_.music;
     res.text = boot_.text;
     res.ui = boot_.ui;
+    res.english = boot_.english;
     std::string err;
     if (!game_->start(res, s, &err)) {
         log::warn("Could not start stage {}: {}", s.stage, err);

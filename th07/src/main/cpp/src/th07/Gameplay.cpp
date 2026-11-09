@@ -67,6 +67,7 @@ bool Gameplay::start(const Resources& res, const Setup& setup, std::string* erro
     world_.rng = res.rng;
     world_.anm = res.anm;
     world_.tables = res.tables;
+    world_.english = res.english;
     world_.sound = res.sound;
     world_.player = player_.get();
     world_.effects = res.tables ? &effects_ : nullptr;

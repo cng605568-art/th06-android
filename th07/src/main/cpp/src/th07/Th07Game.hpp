@@ -15,6 +15,7 @@
 #include "th07/Anm.hpp"
 #include "th07/Background.hpp"
 #include "th07/Bgm.hpp"
+#include "th07/English.hpp"
 #include "th07/ExeTables.hpp"
 #include "th07/Gameplay.hpp"
 #include "th07/SoundPlayer.hpp"
@@ -97,6 +98,11 @@ class Th07Game final : public Game {
     mutable ReplayCheck check_;
     void installReplayCheck();
     void closeReplayCheckStage() const;
+    // The English text mode (launcher option; desktop --english or --thcrap DIR): the
+    // player's thcrap English patch, applied through the Vfs's read filter.
+    void setUpEnglish(const GameContext& ctx);
+    std::unique_ptr<English> english_;
+    Vfs* vfs_ = nullptr;
     // The supervisor (declared last: it goes first, while the ANM library, music and sound
     // it uses still exist). Desktop --play STAGE [--shot N] [--difficulty D] [--practice]
     // and the launcher's "skip the title screen" start a game straight away.

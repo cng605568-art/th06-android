@@ -34,10 +34,49 @@ const GameInfo& Th07Game::info() const {
 Th07Game::~Th07Game() {
     if (flow_) flow_->shutdown();
     flow_.reset();
+    if (vfs_) vfs_->setReadFilter(nullptr);  // (the files outlive the game)
+}
+
+void Th07Game::setUpEnglish(const GameContext& ctx) {
+    std::string root;
+    bool wanted = false;
+#if !defined(__ANDROID__)
+    // Desktop: --english reads the thcrap folder inside the game folder (the folder given
+    // first, as the data mount takes it, or $TH07_DATA, or ./gamedata); --thcrap DIR names a
+    // thcrap folder (the one holding repos/) and implies --english.
+    std::string gameDir = "gamedata";
+    if (ctx.argc > 1 && ctx.argv[1] && ctx.argv[1][0] != '-') gameDir = ctx.argv[1];
+    else if (const char* env = std::getenv("TH07_DATA")) gameDir = env;
+    for (int i = 1; i < ctx.argc; ++i) {
+        const std::string a = ctx.argv[i] ? ctx.argv[i] : "";
+        if (a == "--english") wanted = true;
+        else if (a == "--thcrap" && i + 1 < ctx.argc) root = ctx.argv[++i], wanted = true;
+    }
+    if (wanted && root.empty()) root = gameDir + "/thcrap";
+#else
+    // The launcher's "English text" option (GameActivity.getGameOptions(), the 7th value);
+    // the launcher imports the patch's files into the app's storage under thcrap/.
+    const std::vector<int> options = androidIntArray("getGameOptions");
+    wanted = options.size() >= 7 && options[6] != 0;
+    root = ctx.storageDir + "thcrap";
+#endif
+    if (!wanted || !ctx.vfs) return;
+    auto stack = English::discoverStack(root);
+    if (stack.empty()) {
+        log::warn("English text: no thcrap English patch (repos/*/lang_en) in {}: the original text is shown", root);
+        return;
+    }
+    english_ = std::make_unique<English>(std::move(stack));
+    const English* e = english_.get();
+    ctx.vfs->setReadFilter([e](const std::string& name, std::optional<std::vector<std::uint8_t>> bytes) {
+        return e->filterFile(name, std::move(bytes));
+    });
 }
 
 bool Th07Game::start(const GameContext& ctx) {
     ui_ = ctx.ui;
+    vfs_ = ctx.vfs;
+    setUpEnglish(ctx);
     files_ = ctx.vfs ? ctx.vfs->fileCount() : 0;
     if (ctx.vfs) {
         if (const auto ver = ctx.vfs->read(kVersionFile)) {
@@ -170,6 +209,7 @@ bool Th07Game::start(const GameContext& ctx) {
         b.tables = &tables_;
         b.anm = &anm_;
         b.rng = &rng_;
+        b.english = english_.get();
         b.storageDir = ctx.storageDir;
         b.verFile = verFile_;
         b.exe = exeId_;

@@ -92,6 +92,7 @@ class Gameplay {
         BgmPlayer* music = nullptr;
         TextRenderer* text = nullptr;
         const UiArt* ui = nullptr;
+        const English* english = nullptr;  // the English text mode (null: the original text)
     };
 
     Gameplay();
