@@ -62,6 +62,10 @@ class Effects {
     // (each channel truncated, at most 255). The stages set (1, 1, 1, 1) on their second
     // frame and fade it later. Render only.
     void setColorMultiplier(float r, float g, float b, float a) { colorMultiplier_ = {r, g, b, a}; }
+    // th07.cfg's effect quality (0 worst, 1 medium, 2 beautiful): drawing only. Below 2 the
+    // stage layer draws nothing (medium too: the original's skip of odd effects stops at the
+    // first one, spec 5.7 [QUIRK]).
+    void setQuality(int quality) { quality_ = quality; }
 
   private:
     Effect& fill(const World& w, int id, const Vec3f& pos, const Vec3f& custom, int count, std::uint32_t color, bool zwriteOff);
@@ -75,6 +79,7 @@ class Effects {
     std::array<std::array<std::int16_t, kSlots>, 4> layers_{};
     std::array<int, 4> layerCount_{};
     std::array<float, 4> colorMultiplier_{1.0f, 1.0f, 1.0f, 1.0f};
+    int quality_ = 2;
     Background* background_ = nullptr;  // the playfield camera for layer 2 (from the World)
 };
 

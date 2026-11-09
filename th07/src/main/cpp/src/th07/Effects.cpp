@@ -281,6 +281,7 @@ void Effects::update(const World& w) {
 }
 
 void Effects::drawStageLayer(SpriteSink& sink, const AnmDrawState& state, Background& bg) {
+    if (quality_ < 2) return;
     for (int k = 0; k < layerCount_[1]; ++k) {
         Effect& e = slots_[static_cast<std::size_t>(layers_[1][static_cast<std::size_t>(k)])];
         if (!e.inUse) continue;

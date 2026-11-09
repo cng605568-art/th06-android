@@ -225,6 +225,7 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
     // The enemy manager (stgNenm.anm, two RNG draws), then the stage's ECL.
     if (!enemies_->stageStart(w, *res_.vfs, *res_.textures, g.stage, error)) return false;
     effects_.reset();
+    effects_.setQuality(setup_.config.effectQuality);  // the live setting (drawing only)
     if (!loadEffectFiles(error)) return false;
     screenFx_.clear();
     if (hooks_.playTimeRebase) hooks_.playTimeRebase();
