@@ -1,0 +1,305 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher text in Simplified Chinese: the same keys and placeholders as values/strings.xml. -->
+<resources>
+    <string name="header_tag">Android 移植版  ·  使用你自己的游戏副本（1.00b 版）游玩</string>
+    <string name="play">开始游戏</string>
+    <string name="hint_import">请先导入 th07.dat 和 th07.exe（见下方“游戏文件”）。没有它们时，游戏只会显示缺少哪些文件。</string>
+    <string name="hint_importing">正在导入你的文件…</string>
+    <string name="hint_gametext_downloading">正在下载游戏文本…</string>
+    <string name="hint_backup">正在备份或恢复…</string>
+    <string name="hint_title">打开标题画面</string>
+    <string name="hint_stage">从第 %1$d 面开始  ·  %2$s  ·  %3$s</string>
+    <string name="hint_extra">从 Extra 关卡开始  ·  %1$s</string>
+    <string name="hint_phantasm">从 Phantasm 关卡开始  ·  %1$s</string>
+    <string name="hint_gametext">"  ·  文本：%1$s"</string>
+
+    <string name="lang_title">语言</string>
+    <string name="lang_body">用于本启动器以及游戏内的文本（剧情对话、符卡名、结局、曲名与音乐评论）。</string>
+    <string name="lang_system">跟随系统</string>
+    <string name="gametext_caption">游戏内文本（剧情、符卡、结局、音乐）</string>
+    <string name="gametext_same">与应用相同</string>
+    <string name="gametext_original">游戏原本的日文文本。</string>
+    <string name="gametext_not_installed">从 Touhou Patch Center（thpatch.net）下载翻译。只获取 TH07 的文本和翻译过的文字图片（几 MB）。</string>
+    <string name="gametext_not_installed_en">从 Touhou Patch Center（thpatch.net）下载翻译：只获取 TH07 的文本和翻译过的文字图片（几 MB）。如果你在电脑上使用英文补丁游玩，也可以把它的 thcrap 文件夹留在游戏文件夹中，再次导入该文件夹（见下方“游戏文件”）。</string>
+    <string name="gametext_installed">已安装：%1$d 个文件，8 个关卡中 %2$d 个关卡的对话，更新于 %3$s。</string>
+    <string name="gametext_imported">来自你导入的 thcrap 文件夹：%1$d 个文件，8 个关卡中 %2$d 个关卡的对话。</string>
+    <string name="gametext_download">下载翻译</string>
+    <string name="gametext_update">检查翻译更新</string>
+    <string name="gametext_remove">删除已下载的翻译</string>
+    <string name="gametext_connecting">正在连接 thpatch.net…</string>
+    <string name="gametext_downloading">正在下载 %1$s：第 %2$d 个，共 %3$d 个…</string>
+    <string name="gametext_done">完成（%1$d 个新文件）。下次启动游戏时开始使用翻译。</string>
+    <string name="gametext_failed">无法下载：%1$s</string>
+    <string name="gametext_unavailable">Touhou Patch Center 目前还没有本作在该语言下的文本翻译，因此保持日文。</string>
+    <string name="gametext_removed">已删除下载的翻译。</string>
+    <string name="gametext_busy">请等待正在进行的导入、下载或备份完成。</string>
+    <string name="gametext_credit">游戏文本翻译：Touhou Patch Center 贡献者（thpatch.net），CC BY-SA 3.0，按 thcrap 补丁工具的方式应用。</string>
+
+    <string name="files_title">游戏文件</string>
+    <string name="files_body">把你自己的《东方妖妖梦》（1.00b 版）复制到这部手机上，然后在这里选择它的文件夹，或直接选择文件本身。需要 th07.dat 和 th07.exe；有 thbgm.dat 才有音乐。电脑上的 score.dat（分数与解锁记录）和录像（replay 文件夹）也会一并导入；如果你在电脑上使用英文补丁游玩，补丁也会一起导入（游戏文件夹中的 thcrap 文件夹）。文件会复制到应用自己的存储空间，导入后可以删除原文件夹。</string>
+    <string name="files_choose_folder">选择游戏文件夹</string>
+    <string name="files_choose_files">选择文件</string>
+    <string name="files_remove">删除已导入的文件</string>
+    <string name="files_remove_title">要删除已导入的游戏文件吗？</string>
+    <string name="files_remove_body">th07.dat、th07.exe、thbgm.dat 以及导入的英文补丁将从应用的存储空间中删除（在“语言”中下载的游戏文本会保留）。你自己的副本不受影响；重新导入即可游玩。</string>
+    <string name="files_remove_ok">删除</string>
+    <string name="files_removed">已删除导入的文件。</string>
+    <string name="files_no_picker">这部手机没有可用于此操作的文件选择器。</string>
+    <string name="cancel">取消</string>
+
+    <string name="status_ok_size">%1$.1f MB</string>
+    <string name="status_ok_exe">1.00b 版</string>
+    <string name="status_missing_needed">缺少（必需）</string>
+    <string name="status_missing_optional">缺少（可选：音乐）</string>
+    <string name="status_bad_dat">已损坏（不是 PBG4 档案）</string>
+    <string name="status_bad_exe">不是 1.00b 版</string>
+    <string name="status_bad_bgm">不是游戏的音乐文件</string>
+    <string name="status_english_ok">英文补丁（%1$d 个文件）</string>
+    <string name="status_english_missing">无英文补丁（可选）</string>
+    <string name="status_music_replaced">已替换 %1$d 首曲子（见下方“替换音乐”）</string>
+    <string name="status_ready">可以游玩，有音乐。</string>
+    <string name="status_ready_no_music">可以游玩（无音乐：thbgm.dat 为可选）。</string>
+    <string name="status_not_ready">需要 th07.dat 和 th07.exe 才能游玩。</string>
+
+    <string name="import_starting">正在读取你的文件…</string>
+    <string name="import_scanning_path">正在查找 %1$s</string>
+    <string name="import_checking">正在检查 %1$s…</string>
+    <string name="import_copying">正在复制 %1$s…  %2$d / %3$d MB</string>
+    <string name="import_copying_unknown">正在复制 %1$s…  %2$d MB</string>
+    <string name="import_done_file">%1$s：已导入（%2$.1f MB）。</string>
+    <string name="import_done_exe">%1$s：已导入（1.00b 版）。</string>
+    <string name="import_exe_wrong">%1$s 不是 1.00b 版的 th07.exe，因此没有导入（本移植版读取 1.00b 版的程序）。</string>
+    <string name="import_not_found">%1$s：未找到（游玩所必需）。</string>
+    <string name="import_bgm_not_found">thbgm.dat：未找到（可选：有它才有音乐）。</string>
+    <string name="import_kept">%1$s：未找到；保留之前导入的副本。</string>
+    <string name="import_nothing">在那里没有找到任何游戏文件（th07.dat、th07.exe、thbgm.dat、score.dat、录像）。</string>
+    <string name="import_done_score">score.dat：已导入电脑上的分数、解锁记录和符卡记录。</string>
+    <string name="import_done_score_kept">score.dat：已导入电脑上的分数、解锁记录和符卡记录（移植版原来的 score.dat 保留为 score.dat.bak）。</string>
+    <string name="import_done_replays">录像：导入 %1$d 个，%2$d 个已存在。</string>
+    <string name="import_replays_full">录像：已没有可用的录像文件名，其余的没有导入。</string>
+    <string name="import_done_english">英文补丁：已导入 %1$d 个文件（%2$s）。</string>
+    <string name="import_english_none">thcrap：其 repos 文件夹中没有英文补丁（lang_en）。</string>
+    <string name="import_copying_english">正在复制英文补丁…  %1$d 个文件</string>
+    <string name="import_skipped">已跳过（不是游戏的文件）：%1$s</string>
+    <string name="import_failed">导入中断：%1$s</string>
+    <string name="import_no_space">没有足够的空间存放 %1$s：需要 %2$d MB，剩余 %3$d MB。</string>
+    <string name="import_cannot_read">无法读取 %1$s</string>
+    <string name="import_cannot_store">无法创建应用的游戏文件夹</string>
+    <string name="import_busy">导入仍在进行中。</string>
+
+    <string name="start_title">开始</string>
+    <string name="start_body">“开始游戏”会打开游戏的标题画面：在那里选择难度、角色和机体类型；分数和游玩数据会被保存（录像尚未移植）。为了测试，也可以直接从某一关开始。</string>
+    <string name="start_skip_title">跳过标题画面（直接从所选关卡开始）</string>
+    <string name="start_shot">角色与机体类型</string>
+    <string name="start_difficulty">难度（Extra 和 Phantasm 有各自的关卡）</string>
+    <string name="start_stage">关卡</string>
+    <string name="start_lives">残机</string>
+    <string name="start_practice">以练习模式开始（第 2 面起满火力；练习模式以 8 个残机开始）</string>
+
+    <string name="controls_title">操作</string>
+    <string name="controls_body">游戏的触屏操作（也可以使用蓝牙或 USB 手柄）。</string>
+    <string name="controls_movement">移动</string>
+    <string name="controls_drag_speed">拖动速度（手指移动时角色移动的距离）</string>
+    <string name="controls_button_size">按钮大小</string>
+    <string name="controls_opacity">按钮不透明度</string>
+    <string name="controls_autofire">自动射击（游戏中始终按住射击）</string>
+    <string name="controls_focus_toggle">低速按钮改为切换式（点一下开，再点一下关）</string>
+    <string name="controls_left">左手模式（按钮在左侧）</string>
+    <string name="controls_vibrate">中弹和使用炸弹时振动</string>
+
+    <string name="display_title">显示</string>
+    <string name="display_body">竖屏游玩时，游戏区域占满整个宽度，下方是分数，再下方是操作按钮。</string>
+    <string name="display_screen">屏幕方向</string>
+    <string name="display_scaling">缩放方式</string>
+    <string name="display_scanlines">CRT 扫描线</string>
+
+    <string name="practice_title">练习工具</string>
+    <string name="practice_body">原作中没有的功能。使用慢动作或读取即时存档后，该局的分数不会保存；显示判定点则没有任何影响。</string>
+    <string name="practice_speed">游戏速度</string>
+    <string name="practice_hitbox">显示角色的判定点</string>
+    <string name="practice_states">即时存档（SAVE / LOAD 按钮；键盘为 F5 / F9，手柄为 L3 / R3）</string>
+
+    <string name="mischief_title">恶作剧</string>
+    <string name="mischief_body">原作中没有的功能。只要开启其中任意一项，分数、通关记录、符卡记录和游玩记录都不会保存。</string>
+
+    <string name="music_title">替换音乐</string>
+    <string name="music_body">用你自己的音频文件（MP3、AAC、OGG、FLAC、WAV 等）替换游戏中的某首曲子。它会被转换为 WAV（44,100 Hz，立体声），并像游戏音乐一样循环播放；thbgm.dat 不会被修改。</string>
+    <string name="music_song">曲目</string>
+    <string name="music_replaced_mark">（已替换）</string>
+    <string name="music_loop">循环起点（从曲子开头算起的秒数；留空或 0 = 整首循环）</string>
+    <string name="music_choose">选择音频文件</string>
+    <string name="music_restore">恢复游戏原曲</string>
+    <string name="music_restored">已恢复：重新播放游戏原曲。</string>
+    <string name="music_now_yours">当前：你的音乐（%1$s）</string>
+    <string name="music_now_game">当前：游戏原曲</string>
+    <string name="music_loop_nan">循环起点必须是秒数。</string>
+    <string name="music_reading">正在读取文件…</string>
+    <string name="music_done">完成：%1$s 现在播放你的音乐（%2$s）。</string>
+    <string name="music_failed">无法使用该文件：%1$s</string>
+    <string name="music_busy">请等待正在进行的转换或备份完成。</string>
+    <string name="music_converting">正在转换为 WAV（44,100 Hz，立体声）…</string>
+    <string name="music_converting_pct">正在转换… %1$d%%</string>
+    <string name="music_decoding_pct">正在解码… %1$d%%</string>
+    <string name="music_describe">%1$s，从 %2$s 开始循环，%3$.1f MB</string>
+    <string name="music_err_no_audio">该文件没有音轨</string>
+    <string name="music_err_nothing">无法从该文件解码出任何内容</string>
+    <string name="music_err_cannot">无法解码此文件：%1$s</string>
+
+    <string name="backup_title">备份</string>
+    <string name="backup_body">把最高分和游玩记录、游戏设置、录像、启动器设置，以及（可选的）替换音乐保存到一个文件中（下载文件夹、云盘等），重装后或在新手机上可以恢复。备份中不包含游戏文件和下载的游戏文本：请重新导入或下载。</string>
+    <string name="backup_music">包括替换的音乐（文件更大）</string>
+    <string name="backup_save">备份到文件</string>
+    <string name="backup_restore">从备份恢复</string>
+    <string name="backup_busy">请等待正在进行的导入、转换或备份完成。</string>
+    <string name="backup_saving">正在保存…</string>
+    <string name="backup_saved">已保存：%1$s。</string>
+    <string name="backup_save_failed">无法保存备份：%1$s</string>
+    <string name="backup_confirm_title">要恢复此备份吗？</string>
+    <string name="backup_confirm_body">当前的最高分、游戏设置和启动器设置将被备份中的内容替换（如果备份含有音乐，替换的音乐也会被替换）。同名的录像会被替换；其他录像会保留。</string>
+    <string name="backup_confirm_ok">恢复</string>
+    <string name="backup_restoring">正在恢复…</string>
+    <string name="backup_reading">正在读取 %1$s…</string>
+    <string name="backup_saving_music">正在保存音乐：%1$s…</string>
+    <string name="backup_reading_music">正在读取音乐：%1$s…</string>
+    <string name="backup_restored">已恢复：%1$s。</string>
+    <string name="backup_restore_failed">无法恢复：%1$s</string>
+    <string name="backup_part_scores">最高分和记录</string>
+    <string name="backup_part_options">游戏设置</string>
+    <string name="backup_part_settings">启动器设置</string>
+    <string name="backup_empty">无（备份是空的）</string>
+    <string name="backup_err_not_backup">这不是 TH07 移植版的备份</string>
+    <string name="backup_err_newer">此备份来自更新版本的应用，请先更新应用</string>
+    <string name="backup_err_damaged">备份已损坏</string>
+
+    <string name="crash_title">游戏意外关闭</string>
+    <string name="crash_body">很抱歉。发生情况的日志已保存在这部手机上；你可以保存它并附加到 GitHub 上的错误报告中。不会自动发送任何内容。</string>
+    <string name="crash_save">保存日志</string>
+    <string name="crash_dismiss">关闭</string>
+    <string name="update_title">版本 %1$s 已发布</string>
+    <string name="update_body">你当前的版本是 %1$s。请从发布页面下载新的 APK 并覆盖安装（分数和设置会保留）。</string>
+    <string name="update_open">打开发布页面</string>
+    <string name="no_browser">找不到可打开 %1$s 的浏览器</string>
+
+    <string name="help_title">帮助与更新</string>
+    <string name="help_version">版本 %1$s（构建 %2$d）。</string>
+    <string name="help_auto">每天检查一次新版本</string>
+    <string name="help_check">立即检查更新</string>
+    <string name="help_checking">正在检查…</string>
+    <string name="help_none_published">尚未发布任何正式版本。</string>
+    <string name="help_newer">版本 %1$s 已发布（见本页顶部）。</string>
+    <string name="help_latest">已是最新版本（最新发布为 %1$s）。</string>
+    <string name="help_check_failed">无法检查：%1$s</string>
+    <string name="help_bug">发现错误？保存日志（在你分享之前它只保存在你的手机上），并将其附加到 GitHub 的 Issue 中。</string>
+    <string name="help_save_log">保存用于错误报告的日志</string>
+    <string name="help_report">在 GitHub 上报告问题</string>
+    <string name="help_log_saved">日志已保存。请将其附加到你的错误报告中。</string>
+    <string name="help_log_failed">无法保存日志：%1$s</string>
+    <string name="err_cannot_write">无法写入该位置</string>
+    <string name="err_cannot_read">无法读取该文件</string>
+    <string name="list_separator">、</string>
+
+    <string name="footer">供你使用自己拥有的《東方妖々夢 ～ Perfect Cherry Blossom》（上海爱丽丝幻乐团）游玩的同人移植版。不包含任何游戏文件。</string>
+
+    <string-array name="stages">
+        <item>1 面</item>
+        <item>2 面</item>
+        <item>3 面</item>
+        <item>4 面</item>
+        <item>5 面</item>
+        <item>6 面</item>
+    </string-array>
+    <string-array name="lives">
+        <item>0</item>
+        <item>1</item>
+        <item>2（游戏默认）</item>
+        <item>3</item>
+        <item>4</item>
+    </string-array>
+    <string-array name="move_modes">
+        <item>任意位置拖动（触摸板式）</item>
+        <item>方向键</item>
+    </string-array>
+    <string-array name="button_sizes">
+        <item>小</item>
+        <item>标准</item>
+        <item>大</item>
+        <item>特大</item>
+    </string-array>
+    <string-array name="opacities">
+        <item>很淡</item>
+        <item>较淡</item>
+        <item>标准</item>
+        <item>不透明</item>
+    </string-array>
+    <string-array name="layouts">
+        <item>横屏</item>
+        <item>竖屏（游戏区域占满宽度）</item>
+    </string-array>
+    <string-array name="scalings">
+        <item>平滑</item>
+        <item>锐利像素</item>
+        <item>像素完美（整数倍）</item>
+    </string-array>
+    <string-array name="speeds">
+        <item>正常速度</item>
+        <item formatted="false">75%（慢动作）</item>
+        <item formatted="false">50%（慢动作）</item>
+    </string-array>
+    <string-array name="mischief">
+        <item>无限残机</item>
+        <item>无限炸弹</item>
+        <item>无敌（不会被任何东西击中）</item>
+        <item>火力始终 MAX</item>
+        <item>无限续关</item>
+    </string-array>
+    <string-array name="track_titles">
+        <item>妖々夢　～ Snow or Cherry Petal</item>
+        <item>無何有の郷　～ Deep Mountain</item>
+        <item>クリスタライズシルバー</item>
+        <item>遠野幻想物語</item>
+        <item>ティアオイエツォン(withered leaf)</item>
+        <item>ブクレシュティの人形師</item>
+        <item>人形裁判　～ 人の形弄びし少女</item>
+        <item>天空の花の都</item>
+        <item>幽霊楽団　～ Phantom Ensemble</item>
+        <item>東方妖々夢　～ Ancient Temple</item>
+        <item>広有射怪鳥事　～ Till When?</item>
+        <item>アルティメットトゥルース</item>
+        <item>幽雅に咲かせ、墨染の桜　～ Border of Life</item>
+        <item>ボーダーオブライフ</item>
+        <item>妖々跋扈</item>
+        <item>少女幻葬　～ Necro-Fantasy</item>
+        <item>妖々跋扈　～ Who done it!</item>
+        <item>ネクロファンタジア</item>
+        <item>春風の夢</item>
+        <item>さくらさくら　～ Japanize Dream...</item>
+    </string-array>
+    <string-array name="track_places">
+        <item>标题画面</item>
+        <item>1 面</item>
+        <item>1 面 Boss（蕾蒂）</item>
+        <item>2 面</item>
+        <item>2 面 Boss（橙）</item>
+        <item>3 面</item>
+        <item>3 面 Boss（爱丽丝）</item>
+        <item>4 面</item>
+        <item>4 面 Boss（骚灵三姐妹）</item>
+        <item>5 面</item>
+        <item>5 面 Boss（妖梦）</item>
+        <item>6 面</item>
+        <item>6 面 Boss（幽幽子）</item>
+        <item>幽幽子的最终符卡</item>
+        <item>Extra 关卡</item>
+        <item>Extra Boss（蓝）</item>
+        <item>Phantasm 关卡</item>
+        <item>Phantasm Boss（紫）</item>
+        <item>结局</item>
+        <item>制作人员名单</item>
+    </string-array>
+    <plurals name="backup_part_replays">
+        <item quantity="other">%d 个录像</item>
+    </plurals>
+    <plurals name="backup_part_songs">
+        <item quantity="other">%d 首替换的音乐</item>
+    </plurals>
+</resources>

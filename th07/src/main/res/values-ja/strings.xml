@@ -1,0 +1,305 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher text in Japanese: the same keys and placeholders as values/strings.xml. -->
+<resources>
+    <string name="header_tag">Android 移植版  ·  お手持ちのゲーム（バージョン 1.00b）で遊べます</string>
+    <string name="play">プレイ</string>
+    <string name="hint_import">先に th07.dat と th07.exe を取り込んでください（下の「ゲームファイル」）。取り込むまでは、足りないファイルが表示されるだけです。</string>
+    <string name="hint_importing">ファイルを取り込み中…</string>
+    <string name="hint_gametext_downloading">ゲームテキストをダウンロード中…</string>
+    <string name="hint_backup">バックアップまたは復元中…</string>
+    <string name="hint_title">タイトル画面を開きます</string>
+    <string name="hint_stage">ステージ %1$d から開始  ·  %2$s  ·  %3$s</string>
+    <string name="hint_extra">Extra ステージから開始  ·  %1$s</string>
+    <string name="hint_phantasm">Phantasm ステージから開始  ·  %1$s</string>
+    <string name="hint_gametext">"  ·  テキスト: %1$s"</string>
+
+    <string name="lang_title">言語</string>
+    <string name="lang_body">このランチャーと、ゲーム内のテキスト（会話・スペルカード・エンディング・曲名と曲コメント）の言語です。</string>
+    <string name="lang_system">端末の設定に合わせる</string>
+    <string name="gametext_caption">ゲーム内のテキスト（会話・スペルカード・エンディング・音楽）</string>
+    <string name="gametext_same">アプリと同じ</string>
+    <string name="gametext_original">ゲームの元の日本語テキストです。</string>
+    <string name="gametext_not_installed">Touhou Patch Center（thpatch.net）から翻訳をダウンロードします。取得するのは TH07 のテキストと、翻訳された文字画像だけです（数 MB）。</string>
+    <string name="gametext_not_installed_en">Touhou Patch Center（thpatch.net）から翻訳をダウンロードします。取得するのは TH07 のテキストと、翻訳された文字画像だけです（数 MB）。PC で英語パッチを使って遊んでいるなら、その thcrap フォルダをゲームフォルダに入れたまま、フォルダをもう一度取り込んでもかまいません（下の「ゲームファイル」）。</string>
+    <string name="gametext_installed">インストール済み: %1$d ファイル、全 8 ステージ中 %2$d ステージの会話、%3$s 更新。</string>
+    <string name="gametext_imported">取り込んだ thcrap フォルダから: %1$d ファイル、全 8 ステージ中 %2$d ステージの会話。</string>
+    <string name="gametext_download">翻訳をダウンロード</string>
+    <string name="gametext_update">新しい翻訳を確認</string>
+    <string name="gametext_remove">ダウンロードした翻訳を削除</string>
+    <string name="gametext_connecting">thpatch.net に接続中…</string>
+    <string name="gametext_downloading">%1$s をダウンロード中: %3$d 個中 %2$d 個目…</string>
+    <string name="gametext_done">完了しました（新しいファイル %1$d 個）。次回ゲームを起動したときから翻訳が使われます。</string>
+    <string name="gametext_failed">ダウンロードできませんでした: %1$s</string>
+    <string name="gametext_unavailable">Touhou Patch Center にはこのゲームのこの言語のテキスト翻訳がまだないため、日本語のままになります。</string>
+    <string name="gametext_removed">ダウンロードした翻訳を削除しました。</string>
+    <string name="gametext_busy">実行中の取り込み・ダウンロード・バックアップが終わるまでお待ちください。</string>
+    <string name="gametext_credit">ゲームテキストの翻訳: Touhou Patch Center の協力者の皆さん（thpatch.net）、CC BY-SA 3.0。thcrap パッチャーと同じ方法で適用されます。</string>
+
+    <string name="files_title">ゲームファイル</string>
+    <string name="files_body">お手持ちの『東方妖々夢』（バージョン 1.00b）をこのスマートフォンにコピーし、ここでそのフォルダか、ファイルそのものを選んでください。必要なのは th07.dat と th07.exe で、thbgm.dat があれば音楽が流れます。PC の score.dat（スコアと解放状況）とリプレイ（replay フォルダ）も一緒に取り込まれ、PC で英語パッチを使っていればそれも取り込まれます（ゲームフォルダ内の thcrap フォルダ）。ファイルはアプリ専用の保存領域にコピーされるので、取り込んだ後は元のフォルダを削除してもかまいません。</string>
+    <string name="files_choose_folder">ゲームフォルダを選ぶ</string>
+    <string name="files_choose_files">ファイルを選ぶ</string>
+    <string name="files_remove">取り込んだファイルを削除</string>
+    <string name="files_remove_title">取り込んだゲームファイルを削除しますか？</string>
+    <string name="files_remove_body">th07.dat・th07.exe・thbgm.dat と、取り込んだ英語パッチがアプリの保存領域から削除されます（「言語」でダウンロードしたゲームテキストは残ります）。お手持ちの元のファイルには触れません。遊ぶにはもう一度取り込んでください。</string>
+    <string name="files_remove_ok">削除</string>
+    <string name="files_removed">取り込んだファイルを削除しました。</string>
+    <string name="files_no_picker">この端末には、そのためのファイル選択画面がありません。</string>
+    <string name="cancel">キャンセル</string>
+
+    <string name="status_ok_size">%1$.1f MB</string>
+    <string name="status_ok_exe">バージョン 1.00b</string>
+    <string name="status_missing_needed">なし（必要）</string>
+    <string name="status_missing_optional">なし（任意: 音楽）</string>
+    <string name="status_bad_dat">破損（PBG4 アーカイブではありません）</string>
+    <string name="status_bad_exe">バージョン 1.00b ではありません</string>
+    <string name="status_bad_bgm">ゲームの音楽ファイルではありません</string>
+    <string name="status_english_ok">英語パッチ（%1$d ファイル）</string>
+    <string name="status_english_missing">英語パッチなし（任意）</string>
+    <string name="status_music_replaced">%1$d 曲を差し替え済み（下の「曲の差し替え」）</string>
+    <string name="status_ready">プレイできます（音楽あり）。</string>
+    <string name="status_ready_no_music">プレイできます（音楽なし: thbgm.dat は任意です）。</string>
+    <string name="status_not_ready">プレイするには th07.dat と th07.exe が必要です。</string>
+
+    <string name="import_starting">ファイルを読み込み中…</string>
+    <string name="import_scanning_path">%1$s を検索中</string>
+    <string name="import_checking">%1$s を確認中…</string>
+    <string name="import_copying">%1$s をコピー中…  %3$d MB 中 %2$d MB</string>
+    <string name="import_copying_unknown">%1$s をコピー中…  %2$d MB</string>
+    <string name="import_done_file">%1$s: 取り込みました（%2$.1f MB）。</string>
+    <string name="import_done_exe">%1$s: 取り込みました（バージョン 1.00b）。</string>
+    <string name="import_exe_wrong">%1$s は th07.exe のバージョン 1.00b ではないため、取り込みませんでした（この移植版は 1.00b のプログラムを読み込みます）。</string>
+    <string name="import_not_found">%1$s: 見つかりません（プレイに必要）。</string>
+    <string name="import_bgm_not_found">thbgm.dat: 見つかりません（任意: あれば音楽が流れます）。</string>
+    <string name="import_kept">%1$s: 見つかりません。前に取り込んだものをそのまま使います。</string>
+    <string name="import_nothing">そこにはゲームのファイル（th07.dat・th07.exe・thbgm.dat・score.dat・リプレイ）が見つかりませんでした。</string>
+    <string name="import_done_score">score.dat: PC のスコア・解放状況・スペルカード履歴を取り込みました。</string>
+    <string name="import_done_score_kept">score.dat: PC のスコア・解放状況・スペルカード履歴を取り込みました（移植版のそれまでの score.dat は score.dat.bak として残してあります）。</string>
+    <string name="import_done_replays">リプレイ: %1$d 件を取り込みました（%2$d 件は取り込み済み）。</string>
+    <string name="import_replays_full">リプレイ: 空いているリプレイ名がなくなったため、残りは取り込みませんでした。</string>
+    <string name="import_done_english">英語パッチ: %1$d ファイルを取り込みました（%2$s）。</string>
+    <string name="import_english_none">thcrap: repos フォルダに英語パッチ（lang_en）がありません。</string>
+    <string name="import_copying_english">英語パッチをコピー中…  %1$d ファイル</string>
+    <string name="import_skipped">スキップ（ゲームのファイルではありません）: %1$s</string>
+    <string name="import_failed">取り込みが中断されました: %1$s</string>
+    <string name="import_no_space">%1$s を保存する空き容量が足りません: %2$d MB 必要ですが、空きは %3$d MB です。</string>
+    <string name="import_cannot_read">%1$s を読み込めません</string>
+    <string name="import_cannot_store">アプリのゲームフォルダを作成できません</string>
+    <string name="import_busy">取り込みがまだ実行中です。</string>
+
+    <string name="start_title">開始</string>
+    <string name="start_body">「プレイ」でゲームのタイトル画面が開きます。難易度・キャラクター・装備はそこで選んでください。スコアとプレイデータは保存されます（リプレイはまだ移植されていません）。テスト用に、ステージを直接始めることもできます。</string>
+    <string name="start_skip_title">タイトル画面を飛ばす（選んだステージから直接始める）</string>
+    <string name="start_shot">キャラクターと装備</string>
+    <string name="start_difficulty">難易度（Extra と Phantasm は専用のステージ）</string>
+    <string name="start_stage">ステージ</string>
+    <string name="start_lives">残機</string>
+    <string name="start_practice">プラクティスとして開始（2 面以降はパワー最大。プラクティスは残機 8 で始まります）</string>
+
+    <string name="controls_title">操作</string>
+    <string name="controls_body">ゲームのタッチ操作です（Bluetooth / USB のゲームパッドも使えます）。</string>
+    <string name="controls_movement">移動</string>
+    <string name="controls_drag_speed">ドラッグ速度（指の移動量に対するキャラクターの移動量）</string>
+    <string name="controls_button_size">ボタンの大きさ</string>
+    <string name="controls_opacity">ボタンの不透明度</string>
+    <string name="controls_autofire">オート連射（プレイ中はショットを押しっぱなしにする）</string>
+    <string name="controls_focus_toggle">低速ボタンを切り替え式にする（タップでオン／オフ）</string>
+    <string name="controls_left">左利き（ボタンを左側に）</string>
+    <string name="controls_vibrate">被弾時とボム使用時に振動する</string>
+
+    <string name="display_title">画面</string>
+    <string name="display_body">縦画面では、プレイ画面を横幅いっぱいに表示し、その下にスコア、さらに下に操作ボタンを置きます。</string>
+    <string name="display_screen">画面の向き</string>
+    <string name="display_scaling">拡大方法</string>
+    <string name="display_scanlines">ブラウン管風の走査線</string>
+
+    <string name="practice_title">練習ツール</string>
+    <string name="practice_body">原作にはない機能です。スローモーションやステートロードを使ったゲームのスコアは保存されません。当たり判定の表示は何も変えません。</string>
+    <string name="practice_speed">ゲーム速度</string>
+    <string name="practice_hitbox">キャラクターの当たり判定を表示する</string>
+    <string name="practice_states">ステートセーブ（SAVE / LOAD ボタン。キーボードは F5 / F9、ゲームパッドは L3 / R3）</string>
+
+    <string name="mischief_title">いたずら</string>
+    <string name="mischief_body">原作にはない機能です。どれか一つでもオンの間は、スコア・クリア記録・スペルカード・プレイ記録は保存されません。</string>
+
+    <string name="music_title">曲の差し替え</string>
+    <string name="music_body">ゲームの曲のかわりに、お好きな音声ファイル（MP3、AAC、OGG、FLAC、WAV など）を流します。WAV（44,100 Hz・ステレオ）に変換され、ゲームの BGM と同じようにループします。thbgm.dat は変更されません。</string>
+    <string name="music_song">曲</string>
+    <string name="music_replaced_mark">（差し替え済み）</string>
+    <string name="music_loop">ループ開始位置（曲の先頭からの秒数。空欄か 0 で曲全体）</string>
+    <string name="music_choose">音声ファイルを選ぶ</string>
+    <string name="music_restore">元の曲に戻す</string>
+    <string name="music_restored">元に戻しました。ゲームの元の曲が流れます。</string>
+    <string name="music_now_yours">現在: あなたの曲（%1$s）</string>
+    <string name="music_now_game">現在: ゲームの元の曲</string>
+    <string name="music_loop_nan">ループ開始位置は秒数（数字）で入力してください。</string>
+    <string name="music_reading">ファイルを読み込み中…</string>
+    <string name="music_done">完了: %1$s であなたの曲が流れます（%2$s）。</string>
+    <string name="music_failed">そのファイルは使えませんでした: %1$s</string>
+    <string name="music_busy">実行中の変換かバックアップが終わるまでお待ちください。</string>
+    <string name="music_converting">WAV（44,100 Hz・ステレオ）に変換中…</string>
+    <string name="music_converting_pct">変換中… %1$d%%</string>
+    <string name="music_decoding_pct">デコード中… %1$d%%</string>
+    <string name="music_describe">%1$s、%2$s からループ、%3$.1f MB</string>
+    <string name="music_err_no_audio">そのファイルには音声トラックがありません</string>
+    <string name="music_err_nothing">そのファイルからは何もデコードできませんでした</string>
+    <string name="music_err_cannot">このファイルはデコードできません: %1$s</string>
+
+    <string name="backup_title">バックアップ</string>
+    <string name="backup_body">ハイスコアとプレイ記録・ゲーム設定・リプレイ・ランチャーの設定、必要なら差し替えた曲も、一つのファイルにまとめて（ダウンロードフォルダやクラウドなどに）保存し、再インストール後や新しいスマートフォンで復元できます。ゲームファイルとダウンロードしたゲームテキストは含まれないので、もう一度取り込むかダウンロードしてください。</string>
+    <string name="backup_music">差し替えた曲も含める（ファイルが大きくなります）</string>
+    <string name="backup_save">ファイルにバックアップ</string>
+    <string name="backup_restore">バックアップから復元</string>
+    <string name="backup_busy">実行中の取り込み・変換・バックアップが終わるまでお待ちください。</string>
+    <string name="backup_saving">保存中…</string>
+    <string name="backup_saved">保存しました: %1$s。</string>
+    <string name="backup_save_failed">バックアップを保存できませんでした: %1$s</string>
+    <string name="backup_confirm_title">このバックアップを復元しますか？</string>
+    <string name="backup_confirm_body">現在のハイスコア・ゲーム設定・ランチャーの設定は、バックアップの内容に置き換えられます（バックアップに曲が含まれていれば、差し替えた曲も）。同じ名前のリプレイは置き換えられ、それ以外のリプレイは残ります。</string>
+    <string name="backup_confirm_ok">復元</string>
+    <string name="backup_restoring">復元中…</string>
+    <string name="backup_reading">%1$s を読み込み中…</string>
+    <string name="backup_saving_music">曲を保存中: %1$s…</string>
+    <string name="backup_reading_music">曲を読み込み中: %1$s…</string>
+    <string name="backup_restored">復元しました: %1$s。</string>
+    <string name="backup_restore_failed">復元できませんでした: %1$s</string>
+    <string name="backup_part_scores">ハイスコアと記録</string>
+    <string name="backup_part_options">ゲーム設定</string>
+    <string name="backup_part_settings">ランチャーの設定</string>
+    <string name="backup_empty">なし（バックアップは空でした）</string>
+    <string name="backup_err_not_backup">TH07 移植版のバックアップではありません</string>
+    <string name="backup_err_newer">このバックアップは新しいバージョンのアプリで作られています。先にアプリを更新してください</string>
+    <string name="backup_err_damaged">バックアップが壊れています</string>
+
+    <string name="crash_title">ゲームが予期せず終了しました</string>
+    <string name="crash_body">ご迷惑をおかけしました。何が起きたかのログがこの端末に残っています。保存して GitHub の不具合報告に添付できます。自動で送信されることはありません。</string>
+    <string name="crash_save">ログを保存</string>
+    <string name="crash_dismiss">閉じる</string>
+    <string name="update_title">バージョン %1$s が公開されています</string>
+    <string name="update_body">現在のバージョンは %1$s です。リリースページから新しい APK をダウンロードし、上書きインストールしてください（スコアや設定はそのまま残ります）。</string>
+    <string name="update_open">リリースページを開く</string>
+    <string name="no_browser">%1$s を開くブラウザが見つかりません</string>
+
+    <string name="help_title">ヘルプと更新</string>
+    <string name="help_version">バージョン %1$s（ビルド %2$d）。</string>
+    <string name="help_auto">1 日 1 回、新しいバージョンを確認する</string>
+    <string name="help_check">今すぐ更新を確認</string>
+    <string name="help_checking">確認中…</string>
+    <string name="help_none_published">まだリリースは公開されていません。</string>
+    <string name="help_newer">バージョン %1$s が公開されています（このページの上部をご覧ください）。</string>
+    <string name="help_latest">最新バージョンです（最新のリリースは %1$s）。</string>
+    <string name="help_check_failed">確認できませんでした: %1$s</string>
+    <string name="help_bug">不具合を見つけたら、ログを保存して（共有するまで端末の外には出ません）GitHub の Issue に添付してください。</string>
+    <string name="help_save_log">不具合報告用のログを保存</string>
+    <string name="help_report">GitHub で問題を報告</string>
+    <string name="help_log_saved">ログを保存しました。不具合報告に添付してください。</string>
+    <string name="help_log_failed">ログを保存できませんでした: %1$s</string>
+    <string name="err_cannot_write">そこには書き込めません</string>
+    <string name="err_cannot_read">そのファイルを読み込めません</string>
+    <string name="list_separator">、</string>
+
+    <string name="footer">お手持ちの『東方妖々夢 ～ Perfect Cherry Blossom』（上海アリス幻樂団）で遊ぶための、ファンによる移植版です。ゲームのファイルは含まれていません。</string>
+
+    <string-array name="stages">
+        <item>ステージ1</item>
+        <item>ステージ2</item>
+        <item>ステージ3</item>
+        <item>ステージ4</item>
+        <item>ステージ5</item>
+        <item>ステージ6</item>
+    </string-array>
+    <string-array name="lives">
+        <item>0</item>
+        <item>1</item>
+        <item>2（ゲームの初期値）</item>
+        <item>3</item>
+        <item>4</item>
+    </string-array>
+    <string-array name="move_modes">
+        <item>どこでもドラッグ（タッチパッド式）</item>
+        <item>十字キー</item>
+    </string-array>
+    <string-array name="button_sizes">
+        <item>小</item>
+        <item>標準</item>
+        <item>大</item>
+        <item>特大</item>
+    </string-array>
+    <string-array name="opacities">
+        <item>かなり薄い</item>
+        <item>薄い</item>
+        <item>標準</item>
+        <item>不透明</item>
+    </string-array>
+    <string-array name="layouts">
+        <item>横画面</item>
+        <item>縦画面（プレイ画面を横幅いっぱいに）</item>
+    </string-array>
+    <string-array name="scalings">
+        <item>なめらか</item>
+        <item>くっきりしたドット</item>
+        <item>ドット等倍（整数倍）</item>
+    </string-array>
+    <string-array name="speeds">
+        <item>通常の速度</item>
+        <item formatted="false">75%（スローモーション）</item>
+        <item formatted="false">50%（スローモーション）</item>
+    </string-array>
+    <string-array name="mischief">
+        <item>残機無限</item>
+        <item>ボム無限</item>
+        <item>無敵（何にも当たらない）</item>
+        <item>パワー常に MAX</item>
+        <item>コンティニュー無制限</item>
+    </string-array>
+    <string-array name="track_titles">
+        <item>妖々夢　～ Snow or Cherry Petal</item>
+        <item>無何有の郷　～ Deep Mountain</item>
+        <item>クリスタライズシルバー</item>
+        <item>遠野幻想物語</item>
+        <item>ティアオイエツォン(withered leaf)</item>
+        <item>ブクレシュティの人形師</item>
+        <item>人形裁判　～ 人の形弄びし少女</item>
+        <item>天空の花の都</item>
+        <item>幽霊楽団　～ Phantom Ensemble</item>
+        <item>東方妖々夢　～ Ancient Temple</item>
+        <item>広有射怪鳥事　～ Till When?</item>
+        <item>アルティメットトゥルース</item>
+        <item>幽雅に咲かせ、墨染の桜　～ Border of Life</item>
+        <item>ボーダーオブライフ</item>
+        <item>妖々跋扈</item>
+        <item>少女幻葬　～ Necro-Fantasy</item>
+        <item>妖々跋扈　～ Who done it!</item>
+        <item>ネクロファンタジア</item>
+        <item>春風の夢</item>
+        <item>さくらさくら　～ Japanize Dream...</item>
+    </string-array>
+    <string-array name="track_places">
+        <item>タイトル画面</item>
+        <item>ステージ1</item>
+        <item>ステージ1 ボス（レティ）</item>
+        <item>ステージ2</item>
+        <item>ステージ2 ボス（橙）</item>
+        <item>ステージ3</item>
+        <item>ステージ3 ボス（アリス）</item>
+        <item>ステージ4</item>
+        <item>ステージ4 ボス（プリズムリバー三姉妹）</item>
+        <item>ステージ5</item>
+        <item>ステージ5 ボス（妖夢）</item>
+        <item>ステージ6</item>
+        <item>ステージ6 ボス（幽々子）</item>
+        <item>幽々子のラストスペル</item>
+        <item>Extra ステージ</item>
+        <item>Extra ボス（藍）</item>
+        <item>Phantasm ステージ</item>
+        <item>Phantasm ボス（紫）</item>
+        <item>エンディング</item>
+        <item>スタッフロール</item>
+    </string-array>
+    <plurals name="backup_part_replays">
+        <item quantity="other">リプレイ %d 件</item>
+    </plurals>
+    <plurals name="backup_part_songs">
+        <item quantity="other">差し替えた曲 %d 曲</item>
+    </plurals>
+</resources>

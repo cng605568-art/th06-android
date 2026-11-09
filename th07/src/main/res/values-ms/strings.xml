@@ -1,0 +1,305 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher text in Malay: the same keys and placeholders as values/strings.xml. -->
+<resources>
+    <string name="header_tag">Port Android  ·  main dengan salinan permainan anda sendiri (versi 1.00b)</string>
+    <string name="play">Main</string>
+    <string name="hint_import">Import th07.dat dan th07.exe dahulu (Fail permainan, di bawah). Tanpanya permainan hanya menunjukkan fail yang tiada.</string>
+    <string name="hint_importing">Mengimport fail anda…</string>
+    <string name="hint_gametext_downloading">Memuat turun teks permainan…</string>
+    <string name="hint_backup">Menyandar atau memulihkan…</string>
+    <string name="hint_title">Membuka skrin tajuk</string>
+    <string name="hint_stage">Bermula di peringkat %1$d  ·  %2$s  ·  %3$s</string>
+    <string name="hint_extra">Bermula di peringkat Extra  ·  %1$s</string>
+    <string name="hint_phantasm">Bermula di peringkat Phantasm  ·  %1$s</string>
+    <string name="hint_gametext">"  ·  teks: %1$s"</string>
+
+    <string name="lang_title">Bahasa</string>
+    <string name="lang_body">Untuk pelancar ini dan teks dalam permainan (dialog, kad mantera, pengakhiran, tajuk dan ulasan muzik).</string>
+    <string name="lang_system">Ikut tetapan telefon</string>
+    <string name="gametext_caption">Teks permainan (dialog, kad mantera, pengakhiran, muzik)</string>
+    <string name="gametext_same">Sama seperti aplikasi</string>
+    <string name="gametext_original">Teks asal permainan dalam bahasa Jepun.</string>
+    <string name="gametext_not_installed">Muat turun terjemahan daripada Touhou Patch Center (thpatch.net). Hanya teks TH07 dan gambar teksnya yang diterjemah diambil (beberapa MB).</string>
+    <string name="gametext_not_installed_en">Muat turun terjemahan daripada Touhou Patch Center (thpatch.net): hanya teks TH07 dan gambar teksnya yang diterjemah diambil (beberapa MB). Atau, jika anda bermain dengan tampalan bahasa Inggeris di PC, simpan folder thcrap dalam folder permainan anda dan import folder itu semula (Fail permainan, di bawah).</string>
+    <string name="gametext_installed">Dipasang: %1$d fail, dialog untuk %2$d daripada 8 peringkat, dikemas kini %3$s.</string>
+    <string name="gametext_imported">Daripada folder thcrap yang anda import: %1$d fail, dialog untuk %2$d daripada 8 peringkat.</string>
+    <string name="gametext_download">Muat turun terjemahan</string>
+    <string name="gametext_update">Semak terjemahan lebih baharu</string>
+    <string name="gametext_remove">Buang terjemahan yang dimuat turun</string>
+    <string name="gametext_connecting">Menyambung ke thpatch.net…</string>
+    <string name="gametext_downloading">Memuat turun %1$s: fail %2$d daripada %3$d…</string>
+    <string name="gametext_done">Selesai (%1$d fail baharu). Permainan menggunakan terjemahan mulai permulaan seterusnya.</string>
+    <string name="gametext_failed">Tidak dapat dimuat turun: %1$s</string>
+    <string name="gametext_unavailable">Touhou Patch Center belum ada terjemahan teks permainan ini dalam bahasa ini, jadi ia kekal dalam bahasa Jepun.</string>
+    <string name="gametext_removed">Terjemahan yang dimuat turun telah dibuang.</string>
+    <string name="gametext_busy">Tunggu import, muat turun atau sandaran yang sedang berjalan selesai.</string>
+    <string name="gametext_credit">Terjemahan teks permainan: penyumbang Touhou Patch Center (thpatch.net), CC BY-SA 3.0, digunakan seperti yang dilakukan oleh penampal thcrap.</string>
+
+    <string name="files_title">Fail permainan</string>
+    <string name="files_body">Salin Perfect Cherry Blossom (versi 1.00b) anda sendiri ke telefon ini, kemudian pilih foldernya di sini, atau pilih fail itu sendiri. th07.dat dan th07.exe diperlukan; thbgm.dat menambah muzik. score.dat PC anda (markah dan buka kunci) dan main semula (folder replay) turut diimport, begitu juga tampalan bahasa Inggeris jika anda bermain dengannya di PC (folder thcrap dalam folder permainan). Fail disalin ke storan aplikasi sendiri, jadi anda boleh memadam folder itu selepas itu.</string>
+    <string name="files_choose_folder">Pilih folder permainan</string>
+    <string name="files_choose_files">Pilih fail</string>
+    <string name="files_remove">Buang fail yang diimport</string>
+    <string name="files_remove_title">Buang fail permainan yang diimport?</string>
+    <string name="files_remove_body">th07.dat, th07.exe, thbgm.dat dan tampalan bahasa Inggeris yang diimport dipadam daripada storan aplikasi (teks permainan yang dimuat turun di bawah Bahasa kekal). Salinan anda sendiri tidak disentuh; import semula untuk bermain.</string>
+    <string name="files_remove_ok">Buang</string>
+    <string name="files_removed">Fail yang diimport telah dibuang.</string>
+    <string name="files_no_picker">Telefon ini tiada pemilih fail untuk itu.</string>
+    <string name="cancel">Batal</string>
+
+    <string name="status_ok_size">%1$.1f MB</string>
+    <string name="status_ok_exe">versi 1.00b</string>
+    <string name="status_missing_needed">tiada (diperlukan)</string>
+    <string name="status_missing_optional">tiada (pilihan: muzik)</string>
+    <string name="status_bad_dat">rosak (bukan arkib PBG4)</string>
+    <string name="status_bad_exe">bukan versi 1.00b</string>
+    <string name="status_bad_bgm">bukan fail muzik permainan</string>
+    <string name="status_english_ok">Tampalan bahasa Inggeris (%1$d fail)</string>
+    <string name="status_english_missing">tiada tampalan bahasa Inggeris (pilihan)</string>
+    <string name="status_music_replaced">%1$d lagu diganti (Ganti muzik, di bawah)</string>
+    <string name="status_ready">Sedia untuk bermain, dengan muzik.</string>
+    <string name="status_ready_no_music">Sedia untuk bermain (tanpa muzik: thbgm.dat adalah pilihan).</string>
+    <string name="status_not_ready">th07.dat dan th07.exe diperlukan untuk bermain.</string>
+
+    <string name="import_starting">Membaca fail anda…</string>
+    <string name="import_scanning_path">Mencari dalam %1$s</string>
+    <string name="import_checking">Menyemak %1$s…</string>
+    <string name="import_copying">Menyalin %1$s…  %2$d daripada %3$d MB</string>
+    <string name="import_copying_unknown">Menyalin %1$s…  %2$d MB</string>
+    <string name="import_done_file">%1$s: diimport (%2$.1f MB).</string>
+    <string name="import_done_exe">%1$s: diimport (versi 1.00b).</string>
+    <string name="import_exe_wrong">%1$s bukan th07.exe versi 1.00b, jadi ia tidak diimport (port ini membaca program 1.00b).</string>
+    <string name="import_not_found">%1$s: tidak ditemui (diperlukan untuk bermain).</string>
+    <string name="import_bgm_not_found">thbgm.dat: tidak ditemui (pilihan: ia menambah muzik).</string>
+    <string name="import_kept">%1$s: tidak ditemui; salinan yang diimport sebelum ini dikekalkan.</string>
+    <string name="import_nothing">Tiada satu pun fail permainan (th07.dat, th07.exe, thbgm.dat, score.dat, main semula) ditemui di situ.</string>
+    <string name="import_done_score">score.dat: markah, buka kunci dan sejarah kad mantera PC anda diimport.</string>
+    <string name="import_done_score_kept">score.dat: markah, buka kunci dan sejarah kad mantera PC anda diimport (score.dat port yang terdahulu disimpan sebagai score.dat.bak).</string>
+    <string name="import_done_replays">Main semula: %1$d diimport, %2$d sudah ada.</string>
+    <string name="import_replays_full">Main semula: tiada lagi nama main semula yang kosong; selebihnya tidak diimport.</string>
+    <string name="import_done_english">Tampalan bahasa Inggeris: %1$d fail diimport (%2$s).</string>
+    <string name="import_english_none">thcrap: tiada tampalan bahasa Inggeris (lang_en) dalam folder repos.</string>
+    <string name="import_copying_english">Menyalin tampalan bahasa Inggeris…  %1$d fail</string>
+    <string name="import_skipped">Dilangkau (bukan fail permainan): %1$s</string>
+    <string name="import_failed">Import terhenti: %1$s</string>
+    <string name="import_no_space">Ruang kosong tidak mencukupi untuk %1$s: %2$d MB diperlukan, %3$d MB kosong.</string>
+    <string name="import_cannot_read">tidak dapat membaca %1$s</string>
+    <string name="import_cannot_store">tidak dapat mencipta folder permainan aplikasi</string>
+    <string name="import_busy">Import masih berjalan.</string>
+
+    <string name="start_title">Mula</string>
+    <string name="start_body">Main membuka skrin tajuk permainan: pilih tahap kesukaran, watak dan tembakan di situ; markah dan data permainan disimpan (main semula belum di-port). Untuk ujian, sesuatu peringkat boleh dimulakan terus.</string>
+    <string name="start_skip_title">Langkau skrin tajuk (mula terus di peringkat yang dipilih)</string>
+    <string name="start_shot">Watak dan jenis tembakan</string>
+    <string name="start_difficulty">Tahap kesukaran (Extra dan Phantasm ada peringkat sendiri)</string>
+    <string name="start_stage">Peringkat</string>
+    <string name="start_lives">Nyawa simpanan</string>
+    <string name="start_practice">Mula latihan (kuasa penuh dari peringkat 2; latihan bermula dengan 8 nyawa simpanan)</string>
+
+    <string name="controls_title">Kawalan</string>
+    <string name="controls_body">Kawalan sentuh untuk permainan (alat kawalan permainan Bluetooth atau USB juga boleh).</string>
+    <string name="controls_movement">Pergerakan</string>
+    <string name="controls_drag_speed">Kelajuan seret (sejauh mana watak anda bergerak mengikut gerakan jari anda)</string>
+    <string name="controls_button_size">Saiz butang</string>
+    <string name="controls_opacity">Kelegapan butang</string>
+    <string name="controls_autofire">Tembak automatik (Tembak sentiasa ditekan semasa bermain)</string>
+    <string name="controls_focus_toggle">Butang Fokus bertogol (ketik untuk hidup, ketik untuk mati)</string>
+    <string name="controls_left">Kidal (butang di sebelah kiri)</string>
+    <string name="controls_vibrate">Bergetar apabila terkena dan apabila guna bom</string>
+
+    <string name="display_title">Paparan</string>
+    <string name="display_body">Main secara tegak meletakkan kawasan permainan merentasi seluruh lebar dengan markah di bawahnya dan kawalan di bawah lagi.</string>
+    <string name="display_screen">Skrin</string>
+    <string name="display_scaling">Penskalaan</string>
+    <string name="display_scanlines">Garis imbasan CRT</string>
+
+    <string name="practice_title">Alat latihan</string>
+    <string name="practice_body">Tiada dalam permainan asal. Gerak perlahan, atau memuatkan simpanan keadaan, bermakna markah permainan itu tidak disimpan; penanda kotak kena tidak mengubah apa-apa.</string>
+    <string name="practice_speed">Kelajuan permainan</string>
+    <string name="practice_hitbox">Tunjukkan kotak kena watak anda</string>
+    <string name="practice_states">Simpan keadaan (butang SAVE / LOAD; F5 / F9 pada papan kekunci, L3 / R3 pada alat kawalan permainan)</string>
+
+    <string name="mischief_title">Nakal</string>
+    <string name="mischief_body">Tiada dalam permainan asal. Selagi mana-mana satu dihidupkan, markah, tamat peringkat, kad mantera dan rekod permainan tidak disimpan.</string>
+
+    <string name="music_title">Ganti muzik</string>
+    <string name="music_body">Mainkan fail audio anda sendiri (MP3, AAC, OGG, FLAC, WAV …) menggantikan salah satu lagu permainan. Ia ditukar kepada WAV (44,100 Hz, stereo) dan berulang seperti muzik permainan; thbgm.dat tidak diubah.</string>
+    <string name="music_song">Lagu</string>
+    <string name="music_replaced_mark">(diganti)</string>
+    <string name="music_loop">Ulang dari (saat dalam lagu anda; kosong atau 0 = seluruh lagu)</string>
+    <string name="music_choose">Pilih fail audio</string>
+    <string name="music_restore">Pulihkan lagu permainan</string>
+    <string name="music_restored">Dipulihkan: lagu asal permainan dimainkan semula.</string>
+    <string name="music_now_yours">Kini: muzik anda (%1$s)</string>
+    <string name="music_now_game">Kini: lagu asal permainan</string>
+    <string name="music_loop_nan">Titik ulangan mestilah bilangan saat.</string>
+    <string name="music_reading">Membaca fail anda…</string>
+    <string name="music_done">Selesai: %1$s kini memainkan muzik anda (%2$s).</string>
+    <string name="music_failed">Fail itu tidak dapat digunakan: %1$s</string>
+    <string name="music_busy">Tunggu penukaran atau sandaran yang sedang berjalan selesai.</string>
+    <string name="music_converting">Menukar kepada WAV (44,100 Hz, stereo)…</string>
+    <string name="music_converting_pct">Menukar… %1$d%%</string>
+    <string name="music_decoding_pct">Menyahkod… %1$d%%</string>
+    <string name="music_describe">%1$s, berulang dari %2$s, %3$.1f MB</string>
+    <string name="music_err_no_audio">Fail itu tiada trek audio</string>
+    <string name="music_err_nothing">Tiada apa yang dapat dinyahkod daripada fail itu</string>
+    <string name="music_err_cannot">Fail ini tidak dapat dinyahkod: %1$s</string>
+
+    <string name="backup_title">Sandaran</string>
+    <string name="backup_body">Simpan markah tertinggi dan rekod permainan, tetapan permainan, main semula, tetapan pelancar dan, jika mahu, muzik yang anda ganti dalam satu fail (dalam Muat Turun, storan awan …), dan pulihkannya selepas memasang semula atau pada telefon baharu. Fail permainan dan teks permainan yang dimuat turun tiada di dalamnya: import atau muat turun semula.</string>
+    <string name="backup_music">Sertakan muzik yang diganti (fail lebih besar)</string>
+    <string name="backup_save">Sandarkan ke fail</string>
+    <string name="backup_restore">Pulihkan daripada sandaran</string>
+    <string name="backup_busy">Tunggu import, penukaran atau sandaran yang sedang berjalan selesai.</string>
+    <string name="backup_saving">Menyimpan…</string>
+    <string name="backup_saved">Disimpan: %1$s.</string>
+    <string name="backup_save_failed">Sandaran tidak dapat disimpan: %1$s</string>
+    <string name="backup_confirm_title">Pulihkan sandaran ini?</string>
+    <string name="backup_confirm_body">Markah tertinggi, tetapan permainan dan tetapan pelancar semasa anda akan diganti dengan yang dalam sandaran (begitu juga muzik yang diganti, jika sandaran ada muzik). Main semula dengan nama yang sama diganti; main semula anda yang lain dikekalkan.</string>
+    <string name="backup_confirm_ok">Pulihkan</string>
+    <string name="backup_restoring">Memulihkan…</string>
+    <string name="backup_reading">Membaca %1$s…</string>
+    <string name="backup_saving_music">Menyimpan muzik: %1$s…</string>
+    <string name="backup_reading_music">Membaca muzik: %1$s…</string>
+    <string name="backup_restored">Dipulihkan: %1$s.</string>
+    <string name="backup_restore_failed">Tidak dapat dipulihkan: %1$s</string>
+    <string name="backup_part_scores">markah tertinggi dan rekod</string>
+    <string name="backup_part_options">tetapan permainan</string>
+    <string name="backup_part_settings">tetapan pelancar</string>
+    <string name="backup_empty">tiada (sandaran kosong)</string>
+    <string name="backup_err_not_backup">ini bukan sandaran port TH07</string>
+    <string name="backup_err_newer">sandaran ini daripada versi aplikasi yang lebih baharu; kemas kini aplikasi dahulu</string>
+    <string name="backup_err_damaged">sandaran rosak</string>
+
+    <string name="crash_title">Permainan tertutup tanpa diduga</string>
+    <string name="crash_body">Maaf tentang itu. Log tentang apa yang berlaku disimpan dalam telefon ini; anda boleh menyimpannya dan melampirkannya pada laporan pepijat di GitHub. Tiada apa dihantar secara automatik.</string>
+    <string name="crash_save">Simpan log</string>
+    <string name="crash_dismiss">Tutup</string>
+    <string name="update_title">Versi %1$s tersedia</string>
+    <string name="update_body">Anda mempunyai %1$s. Muat turun APK baharu dari halaman keluarannya dan pasang di atas yang ini (markah dan tetapan anda kekal).</string>
+    <string name="update_open">Buka halaman keluaran</string>
+    <string name="no_browser">Tiada pelayar ditemui untuk membuka %1$s</string>
+
+    <string name="help_title">Bantuan &amp; kemas kini</string>
+    <string name="help_version">Versi %1$s (binaan %2$d).</string>
+    <string name="help_auto">Semak versi baharu sekali sehari</string>
+    <string name="help_check">Semak kemas kini sekarang</string>
+    <string name="help_checking">Menyemak…</string>
+    <string name="help_none_published">Belum ada keluaran diterbitkan.</string>
+    <string name="help_newer">Versi %1$s tersedia (lihat bahagian atas halaman ini).</string>
+    <string name="help_latest">Anda mempunyai versi terbaharu (%1$s ialah keluaran terkini).</string>
+    <string name="help_check_failed">Tidak dapat menyemak: %1$s</string>
+    <string name="help_bug">Jumpa pepijat? Simpan log (ia kekal dalam telefon anda sehingga anda berkongsi) dan lampirkan pada isu di GitHub.</string>
+    <string name="help_save_log">Simpan log untuk laporan pepijat</string>
+    <string name="help_report">Laporkan isu di GitHub</string>
+    <string name="help_log_saved">Log disimpan. Lampirkannya pada laporan pepijat anda.</string>
+    <string name="help_log_failed">Log tidak dapat disimpan: %1$s</string>
+    <string name="err_cannot_write">tidak dapat menulis di situ</string>
+    <string name="err_cannot_read">tidak dapat membaca fail itu</string>
+    <string name="list_separator">", "</string>
+
+    <string name="footer">Port buatan peminat untuk salinan 東方妖々夢 ～ Perfect Cherry Blossom (Team Shanghai Alice) anda sendiri. Tiada fail permainan disertakan.</string>
+
+    <string-array name="stages">
+        <item>Peringkat 1</item>
+        <item>Peringkat 2</item>
+        <item>Peringkat 3</item>
+        <item>Peringkat 4</item>
+        <item>Peringkat 5</item>
+        <item>Peringkat 6</item>
+    </string-array>
+    <string-array name="lives">
+        <item>0</item>
+        <item>1</item>
+        <item>2 (lalai permainan)</item>
+        <item>3</item>
+        <item>4</item>
+    </string-array>
+    <string-array name="move_modes">
+        <item>Seret di mana-mana (pad sentuh)</item>
+        <item>Pad arah</item>
+    </string-array>
+    <string-array name="button_sizes">
+        <item>Kecil</item>
+        <item>Biasa</item>
+        <item>Besar</item>
+        <item>Sangat besar</item>
+    </string-array>
+    <string-array name="opacities">
+        <item>Samar</item>
+        <item>Ringan</item>
+        <item>Biasa</item>
+        <item>Pekat</item>
+    </string-array>
+    <string-array name="layouts">
+        <item>Landskap (mengiring)</item>
+        <item>Potret (tegak; kawasan permainan memenuhi lebar)</item>
+    </string-array>
+    <string-array name="scalings">
+        <item>Licin</item>
+        <item>Piksel tajam</item>
+        <item>Piksel sempurna (gandaan penuh)</item>
+    </string-array>
+    <string-array name="speeds">
+        <item>Kelajuan biasa</item>
+        <item formatted="false">75% (gerak perlahan)</item>
+        <item formatted="false">50% (gerak perlahan)</item>
+    </string-array>
+    <string-array name="mischief">
+        <item>Nyawa tanpa had</item>
+        <item>Bom tanpa had</item>
+        <item>Kebal (tiada apa yang mengenai anda)</item>
+        <item>Kuasa sentiasa MAX</item>
+        <item>Sambung tanpa had</item>
+    </string-array>
+    <string-array name="track_titles">
+        <item>Mystic Dream ~ Snow or Cherry Petal</item>
+        <item>Paradise ~ Deep Mountain</item>
+        <item>Crystallized Silver</item>
+        <item>The Fantastic Legend of Tohno</item>
+        <item>Diao Ye Zong (withered leaf)</item>
+        <item>The Doll Maker of Bucuresti</item>
+        <item>Doll Judgment ~ The Girl Who Played with People\'s Shapes</item>
+        <item>The Capital City of Flowers in the Sky</item>
+        <item>Ghostly Band ~ Phantom Ensemble</item>
+        <item>Eastern Mystic Dream ~ Ancient Temple</item>
+        <item>Hiroari Shoots a Strange Bird ~ Till When?</item>
+        <item>Ultimate Truth</item>
+        <item>Bloom Nobly, Ink-black Cherry Blossom ~ Border of Life</item>
+        <item>Border of Life</item>
+        <item>Charming Domination</item>
+        <item>A Maiden\'s Illusionary Funeral ~ Necro-Fantasy</item>
+        <item>Charming Domination ~ Who done it!</item>
+        <item>Necrofantasia</item>
+        <item>Dream of a Spring Breeze</item>
+        <item>Sakura Sakura ~ Japanize Dream...</item>
+    </string-array>
+    <string-array name="track_places">
+        <item>Skrin tajuk</item>
+        <item>Peringkat 1</item>
+        <item>Bos peringkat 1 (Letty)</item>
+        <item>Peringkat 2</item>
+        <item>Bos peringkat 2 (Chen)</item>
+        <item>Peringkat 3</item>
+        <item>Bos peringkat 3 (Alice)</item>
+        <item>Peringkat 4</item>
+        <item>Bos peringkat 4 (adik-beradik Prismriver)</item>
+        <item>Peringkat 5</item>
+        <item>Bos peringkat 5 (Youmu)</item>
+        <item>Peringkat 6</item>
+        <item>Bos peringkat 6 (Yuyuko)</item>
+        <item>Kad mantera terakhir Yuyuko</item>
+        <item>Peringkat Extra</item>
+        <item>Bos Extra (Ran)</item>
+        <item>Peringkat Phantasm</item>
+        <item>Bos Phantasm (Yukari)</item>
+        <item>Pengakhiran</item>
+        <item>Senarai kru</item>
+    </string-array>
+    <plurals name="backup_part_replays">
+        <item quantity="other">%d main semula</item>
+    </plurals>
+    <plurals name="backup_part_songs">
+        <item quantity="other">%d lagu diganti</item>
+    </plurals>
+</resources>
