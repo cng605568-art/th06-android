@@ -234,7 +234,7 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
         gr.textures = res_.textures;
         gr.text = res_.text;
         gr.ui = res_.ui;
-        if (!gui_->stageStart(w, gr, fresh, error)) return false;
+        if (!gui_->stageStart(w, gr, fresh, error, fresh && setup_.restart)) return false;
     }
     player_->stageStart(w);
     // Step 15: live play records into a block of the recording (the first stage creates it).

@@ -57,7 +57,7 @@ void Gui::startVm(AnmVm& vm, int script) {
     vm.startFresh(*world_->anm, *world_->rng, script);
 }
 
-bool Gui::stageStart(const World& w, const Resources& res, bool firstStage, std::string* error) {
+bool Gui::stageStart(const World& w, const Resources& res, bool firstStage, std::string* error, bool restart) {
     world_ = &w;
     res_ = res;
     AnmLibrary& lib = *w.anm;
@@ -89,10 +89,13 @@ bool Gui::stageStart(const World& w, const Resources& res, bool firstStage, std:
     showLoading_ = false;
     tilesActive_ = false;
     tileLive_.fill(false);
-    if (!firstStage && snapshotLive_) {
-        // A new stage: capture the old stage's last frame and break it into tiles that turn
-        // away over the new one.
+    if (!firstStage || restart) {
+        // Next stage or restart: capture the last frame shown (the old stage's, or the pause
+        // menu's) and break it into tiles that turn away over the new one. The snapshot VM is
+        // restarted on its script and given interrupt 1.
+        startVm(snapshotVm_, kCapture + 1);
         snapshotVm_.interrupt(1);
+        snapshotLive_ = true;
         captureRequest_ = true;
         captureReady_ = false;
         for (int i = 0; i < 14; ++i) {

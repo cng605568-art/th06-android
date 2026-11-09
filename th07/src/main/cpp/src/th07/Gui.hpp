@@ -33,8 +33,9 @@ class Gui final : public StageGui, public PopupSink {
         const UiArt* ui = nullptr;
     };
 
-    // Stage start: first stage of a game (front, faces, loading) or a stage change.
-    bool stageStart(const World& w, const Resources& res, bool firstStage, std::string* error);
+    // Stage start: first stage of a game (front, faces, loading) or a stage change. A
+    // restart (pause menu) is a first stage that still starts the transition (spec 3.16).
+    bool stageStart(const World& w, const Resources& res, bool firstStage, std::string* error, bool restart = false);
     void stageEnd(const World& w);
     void gameEnd(const World& w);
 
