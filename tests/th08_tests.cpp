@@ -564,6 +564,34 @@ void testMusicComments() {
     CHECK(th08::parseMusicComments(std::span(reinterpret_cast<const std::uint8_t*>(many.data()), many.size())).size() == 32);
 }
 
+// Screen effects (spec_bombs_familiars 1.4): a type-1 shake of d frames draws two u32 per
+// frame for d - 1 frames, from the frame after the request; a ramped shake lasts up + hold +
+// down - 1 frames; both wait while the spell-card freeze is set; flashes draw nothing.
+void testScreenEffects() {
+    th08::ScreenEffects fx;
+    th08::World w;
+    ZunRng rng(3);
+    w.rng = &rng;
+    w.stageFrame = 100;
+    fx.shake(16, 8.0f, 0.0f);
+    fx.flash(8, 1, 0x8FFFFFFFu);
+    std::uint32_t before = rng.generations();
+    for (int i = 0; i < 30; ++i) fx.update(w);
+    CHECK(rng.generations() - before == 15 * 4 && fx.jobs() == 0);
+    fx.rampedShake(16.0f, 120, 60, 120);
+    w.mode = th08::ModeSpellFreeze;
+    before = rng.generations();
+    for (int i = 0; i < 10; ++i) fx.update(w);
+    CHECK(rng.generations() == before && fx.jobs() == 1);
+    w.mode = 0;
+    for (int i = 0; i < 400; ++i) fx.update(w);
+    CHECK(rng.generations() - before == 299 * 4 && fx.jobs() == 0);
+    // The offset goes from `from` to `to` and is one of 0, +offset, -offset per axis.
+    fx.shake(10, 8.0f, 0.0f);
+    fx.update(w);
+    CHECK(fx.offsetX() == 0.0f || std::fabs(fx.offsetX()) == 7.2f);
+}
+
 void testExeCheck() {
     std::string why;
     CHECK(!th08::isExe100d(Bytes(100, 0), &why));
@@ -1418,6 +1446,7 @@ int main() {
         {"block cipher: vectors, limits, round trips", testCipher},
         {"PBGZ archive (th08.dat)", testPbgz},
         {"th08.exe 1.00d check", testExeCheck},
+        {"screen effects: shake RNG, ramps, freeze", testScreenEffects},
         {"menu input: pressed, auto-repeat, select and cancel", testMenuInput},
         {"th08.cfg: layout, validation, re-initialisation", testGameConfig},
         {"score.dat: cipher, rolling XOR, checksum, records, unlocks, Music Room flags, saving", testScoreFile},

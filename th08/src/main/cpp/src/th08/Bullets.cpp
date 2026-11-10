@@ -587,9 +587,11 @@ void BulletManager::updateLasers(const World& w) {
         }
         if (l.start >= 640.0f) l.inUse = false;
         l.timer.tick();
-        l.beam.scale.y = (l.end - l.start) / 16.0f;
+        // The beam VM's scale and rotation as TH07 (visual): the length over the sprite height.
+        l.beam.scale.y = (l.end - l.start) / (l.beam.sprite ? l.beam.sprite->pixelHeight : 16.0f);
         l.beam.set(AnmVm::ScaleDirty, true);
-        l.beam.rotation.z = l.angle - kZunPi / 2.0f;
+        l.beam.rotation.z = addNormalizeAngle(kZunPi / 2.0f, l.angle);
+        l.beam.set(AnmVm::RotationDirty, true);
         if (w.rng) l.beam.tick(*w.rng);
     }
 }
