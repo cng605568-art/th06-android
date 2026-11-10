@@ -20,6 +20,9 @@
 #include "gfx/SpriteSink.hpp"
 #include "gfx/TextureLibrary.hpp"
 #include "th08/Anm.hpp"
+#include "th08/ExeTables.hpp"
+#include "th08/Flow.hpp"
+#include "th08/MainMenu.hpp"
 #include "th08/GameConfig.hpp"
 #include "th08/GameFiles.hpp"
 #include "th08/Version.hpp"
@@ -414,6 +417,25 @@ void testAnm() {
     CHECK(!lib.load(vfs2, textures, "old.anm", 6, &err) && !lib.loaded(6));
 }
 
+void testMenuInput() {
+    th08::MenuInput in;
+    in.sample(th08::BtnDown);
+    CHECK(in.pressed(th08::BtnDown) && in.pressedOrRepeat(th08::BtnDown));
+    int repeats = 0, first = -1;
+    for (int pass = 1; pass <= 60; ++pass) {
+        in.sample(th08::BtnDown);
+        CHECK(!in.pressed(th08::BtnDown));
+        if (in.pressedOrRepeat(th08::BtnDown)) {
+            ++repeats;
+            if (first < 0) first = pass;
+        }
+    }
+    CHECK(first == 33 && repeats == 4);  // the first repeat 33 passes after the press, then every 8
+    in.sample(0);
+    in.sample(th08::BtnShoot | th08::BtnDown);
+    CHECK(in.pressed(th08::kSelect) && !in.pressed(th08::kCancel));
+}
+
 void testExeCheck() {
     std::string why;
     CHECK(!th08::isExe100d(Bytes(100, 0), &why));
@@ -550,6 +572,64 @@ void testRealArchive() {
         CHECK(files == 113 && failed == 0);
         std::printf("  (%zu .anm files, %zu scripts run)\n", files, scripts);
     }
+    // The title menu on the real files: the cursor skips the locked rows; Quit exits.
+    {
+        Vfs vfs;
+        auto again = MappedFile::open(path, &err);
+        CHECK(again && vfs.mount(openArchive("th08.dat", std::move(again), &err)));
+        TextureLibrary textures;
+        th08::AnmLibrary lib;
+        CHECK(lib.load(vfs, textures, "text.anm", th08::kSlotText, &err, true));
+        CHECK(lib.load(vfs, textures, "ascii.anm", th08::kSlotAscii, &err));
+        ZunRng rng(3);
+        th08::FlowContext ctx;
+        ctx.vfs = &vfs;
+        ctx.textures = &textures;
+        ctx.anm = &lib;
+        ctx.rng = &rng;
+        bool exited = false;
+        ctx.request = [&](th08::Scene s) { exited = exited || s == th08::Scene::Exit; };
+        th08::MainMenu menu(ctx);
+        CHECK(menu.create(&err));
+        th08::MenuInput in;
+        auto pass = [&](std::uint16_t buttons) {
+            in.sample(buttons);
+            menu.update(in);
+        };
+        for (int i = 0; i < 20; ++i) pass(0);
+        CHECK(menu.subState() == 1 && menu.cursor() == th08::MainMenu::GameStart);
+        pass(th08::BtnDown);
+        pass(0);
+        CHECK(menu.cursor() == th08::MainMenu::PracticeStart);  // Extra and Spell Practice locked
+        pass(th08::BtnUp);
+        pass(0);
+        CHECK(menu.cursor() == th08::MainMenu::GameStart);
+        pass(th08::BtnUp);
+        pass(0);
+        CHECK(menu.cursor() == th08::MainMenu::Quit);  // wraps
+        pass(th08::BtnShoot);
+        for (int i = 0; i < 70 && !exited; ++i) pass(0);
+        CHECK(exited && menu.removed());
+        RecordingSink sink;
+        menu.draw(sink);
+        CHECK(sink.items.empty());
+        // Unlocked rows are reachable.
+        ctx.extraUnlocked = ctx.spellPracticeUnlocked = true;
+        th08::MainMenu menu2(ctx);
+        CHECK(menu2.create(&err));
+        th08::MenuInput in2;
+        for (int i = 0; i < 20; ++i) {
+            in2.sample(0);
+            menu2.update(in2);
+        }
+        in2.sample(th08::BtnDown);
+        menu2.update(in2);
+        CHECK(menu2.cursor() == th08::MainMenu::ExtraStart);
+        RecordingSink sink2;
+        menu2.draw(sink2);
+        CHECK(sink2.items.size() > 8);  // the background, the logo and the rows
+        std::printf("  (title: %zu sprites drawn after 21 passes)\n", sink2.items.size());
+    }
     // The version file has the 1.00d line (and its exe checksum, when TH08_REAL_EXE names it).
     for (std::size_t i = 0; i < archive->entries().size(); ++i) {
         if (archive->entries()[i].name != th08::kVersionFile) continue;
@@ -560,6 +640,26 @@ void testRealArchive() {
             auto exe = MappedFile::open(exePath, &err);
             CHECK(exe && th08::exeChecksum(exe->bytes()) == static_cast<std::int32_t>(2724749753u));
             CHECK(exe && th08::isExe100d(exe->bytes()));
+            th08::ExeTables tables;
+            const bool ok = exe && th08::loadExeTables(exe->bytes(), tables, &err);
+            CHECK(ok);
+            if (!ok) std::fprintf(stderr, "  %s\n", err.c_str());
+            // Every sample is in the archive; the menu texts are there.
+            Vfs v;
+            auto again = MappedFile::open(path, &err);
+            CHECK(again && v.mount(openArchive("th08.dat", std::move(again), &err)));
+            int found = 0;
+            for (const std::string& s : tables.sampleFiles) found += v.exists(s) ? 1 : 0;
+            CHECK(found == th08::ExeTables::kSamples);
+            CHECK(tables.sampleFiles[0].find("se_plst00") != std::string::npos);
+            bool texts = true;
+            for (const auto& m : tables.titleText) texts = texts && !m.sjis.empty();
+            for (const auto& m : tables.optionText) texts = texts && !m.sjis.empty();
+            for (const auto& m : tables.keyConfigText) texts = texts && !m.sjis.empty();
+            CHECK(texts);
+            CHECK(tables.sounds[10].sample >= 0 && tables.sampleFiles[static_cast<std::size_t>(tables.sounds[10].sample)].find("se_ok00") != std::string::npos);
+            std::printf("  (sample 0 %s; sound 10 -> %s volume %d)\n", tables.sampleFiles[0].c_str(),
+                        tables.sampleFiles[static_cast<std::size_t>(tables.sounds[10].sample)].c_str(), tables.sounds[10].volume);
         }
     }
 }
@@ -575,6 +675,7 @@ int main() {
         {"block cipher: vectors, limits, round trips", testCipher},
         {"PBGZ archive (th08.dat)", testPbgz},
         {"th08.exe 1.00d check", testExeCheck},
+        {"menu input: pressed, auto-repeat, select and cancel", testMenuInput},
         {"th08.cfg: layout, validation, re-initialisation", testGameConfig},
         {"ANM v3: files, sprites by position, opcodes 9/33/82-89, interrupt return, freeze", testAnm},
         {"version file: every matching line, exe checksum", testVersionFile},

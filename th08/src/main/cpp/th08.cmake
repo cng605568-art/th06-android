@@ -10,8 +10,13 @@ set(TH08_SRC "${CMAKE_CURRENT_LIST_DIR}/src")
 
 add_library(th08_game STATIC
   ${TH08_SRC}/th08/Anm.cpp
+  ${TH08_SRC}/th08/Bgm.cpp
+  ${TH08_SRC}/th08/ExeTables.cpp
+  ${TH08_SRC}/th08/FlowCommon.cpp
   ${TH08_SRC}/th08/GameConfig.cpp
   ${TH08_SRC}/th08/GameFiles.cpp
+  ${TH08_SRC}/th08/MainMenu.cpp
+  ${TH08_SRC}/th08/SoundPlayer.cpp
   ${TH08_SRC}/th08/Version.cpp)
 target_include_directories(th08_game PUBLIC "${TH08_SRC}")
 target_link_libraries(th08_game PUBLIC thengine_core)
