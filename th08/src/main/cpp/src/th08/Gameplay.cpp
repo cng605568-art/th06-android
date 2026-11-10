@@ -116,6 +116,7 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
         if (!effects_->isSink(e)) e.layer = 4;
     };
     background_.drawEffectsB = [this](SpriteSink& sink, AnmDrawState& st) { effects_->drawListB(sink, st, background_); };
+    background_.onWeatherShift = [this](const Vec3f& delta) { effects_->shiftWeather(delta); };
     if (!gui_.stageStart(ctx_, state_, fresh, error)) return false;
     // Step 11: the stage's songs into slots 0-2 (blank names skipped); step 13: start them
     // when play begins.

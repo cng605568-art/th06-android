@@ -1237,11 +1237,21 @@ EnemyManager::Exec EnemyManager::execute(Enemy& e, std::uint32_t& ip) {
                     bosses_[e.bossId] = nullptr;
                 }
                 e.boss = false;
+                releaseCircles(e);
             }
             break;
         }
         case 128: {
-            if (wd.effects) wd.effects->spawn(wd, 13, e.pos, 1, 0xFF6060D0u);
+            if (e.circleCount >= static_cast<std::int32_t>(e.circles.size())) {
+                log::warn("ECL op 128: more than 24 spell circles; ignored");
+                break;
+            }
+            if (!wd.effects) break;
+            Effect& c = wd.effects->spawn(wd, 13, e.pos, 1, 0xFF6060D0u);
+            e.circles[static_cast<std::size_t>(e.circleCount)] = &c;
+            c.direction = {o.F(1), o.F(2), o.F(3)};
+            e.circleRadius = o.F(4);
+            ++e.circleCount;
             break;
         }
         case 158: case 148: break;  // the GUI's bar segments and life markers (boss HUD to come)
@@ -1304,10 +1314,10 @@ EnemyManager::Exec EnemyManager::execute(Enemy& e, std::uint32_t& ip) {
             break;
         }
         case 140: {
-            (void)o.F(3), (void)o.F(4), (void)o.F(5);
+            const Vec3f custom{o.F(3), o.F(4), o.F(5)};
             const std::int32_t count = o.I(1), type = o.I(0);
             const auto color = static_cast<std::uint32_t>(o.getIW(2));
-            if (wd.effects) wd.effects->spawn(wd, type, e.pos, count, color);
+            if (wd.effects) wd.effects->spawnWithVector(wd, type, e.pos, custom, count, color);
             break;
         }
         case 141:
@@ -1839,6 +1849,7 @@ void EnemyManager::updateEnemy(Enemy& e) {
     }
     // Damage tint (visual), boss bar.
     if (e.boss && e.bossId == 0 && !wd.dialogue && e.maxLife > 0) bossBar_ = static_cast<float>(e.life) / static_cast<float>(e.maxLife);
+    updateCircles(e);
     if (!wd.timeStop) e.timer.tick();
     if (e.invincible.current > 0) e.invincible.decrement(1);
     if (!e.noCollision && e.active) drawLists_[std::min<std::size_t>(e.drawLayer, 3)].insert(drawLists_[std::min<std::size_t>(e.drawLayer, 3)].begin(), &e);
@@ -1982,6 +1993,27 @@ bool EnemyManager::timerCallback(Enemy& e) {
     return true;
 }
 
+// Spell circles (spec_effects 5.2): the enemy drives its circles' centre, radius and angle,
+// and a release fades them out over 16 effect passes.
+void EnemyManager::releaseCircles(Enemy& e) {
+    for (int k = 0; k < e.circleCount; ++k) {
+        if (Effect* c = e.circles[static_cast<std::size_t>(k)]) c->fade = 1;
+        e.circles[static_cast<std::size_t>(k)] = nullptr;
+    }
+    e.circleCount = 0;
+}
+
+void EnemyManager::updateCircles(Enemy& e) {
+    for (int k = 0; k < e.circleCount; ++k) {
+        Effect* c = e.circles[static_cast<std::size_t>(k)];
+        if (!c) continue;
+        c->vm.set(AnmVm::Active, !e.noCollision);
+        c->centre = e.pos;
+        c->radius = c->radius < e.circleRadius ? c->radius + 0.3f : e.circleRadius;
+        c->angle = addNormalizeAngle(c->angle, kZunPi / 100.0f);
+    }
+}
+
 void EnemyManager::despawn(Enemy& e) {
     dismissFamiliars(e, false);
     if (e.deathType == 0) e.active = false;
@@ -1990,6 +2022,7 @@ void EnemyManager::despawn(Enemy& e) {
         bosses_[e.bossId] = nullptr;
         e.boss = false;
     }
+    releaseCircles(e);
     e.lifeThresholds.fill(-1);
     e.timerThreshold = -1;
     freeThreads(e);
@@ -2058,7 +2091,10 @@ void EnemyManager::death(Enemy& e) {
             if (e.deathType != 2) g.score += static_cast<std::uint32_t>(e.score) / 10;
             if (e.deathType == 0) e.active = false;
             if (e.deathType == 1) e.contact = e.damageable = e.hittable = false;
-            if (e.deathType != 2) bossPresent_ = e.boss ? false : bossPresent_;
+            if (e.deathType != 2 && e.boss) {  // boss clean-up
+                bossPresent_ = false;
+                releaseCircles(e);
+            }
             drops(e, bombing);
             if (e.boss && !wd.spellCardActive && wd.bullets) {
                 std::uint32_t s = wd.bullets->bonusClear(wd, 8000);

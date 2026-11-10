@@ -83,9 +83,13 @@ class Background {
     std::function<void(const Vec3f&)> onWeatherShift;
 
     // A camera-facing sprite at a 3D position (the VM's position), hand-fogged, as the
-    // background's facing quads are drawn.
+    // background's facing quads are drawn. The facing-quad path rewrites the VM's scale (the
+    // stage's quads set it again every frame); a persistent VM keeps its own.
     void drawBillboard(SpriteSink& sink, AnmVm& vm, const AnmDrawState& state) {
-        if (vm.sprite) drawFacingQuad(sink, vm, state, vm.sprite->pixelWidth);
+        if (!vm.sprite) return;
+        const Vec2f scale = vm.scale;
+        drawFacingQuad(sink, vm, state, vm.sprite->pixelWidth);
+        vm.scale = scale;
     }
     // The playfield camera's screen-space paths (ANM spec 4.6): "projected" and "billboard".
     void drawProjected(SpriteSink& sink, AnmVm& vm, const AnmDrawState& state);

@@ -4,8 +4,8 @@
 // (a ring of 512, 128 for other allocators, 13 special slots), each an etama.anm VM plus the
 // motion routine its type selects (from the effect table in th08.exe). Effects matter to the
 // simulation: their scripts (run one tick at spawn) and init routines draw from the gameplay
-// RNG, and a full ring spawns fewer of them. Ported so far: allocation, the script start, the
-// update loop and the draw lists; the per-type init and update routines follow their spec.
+// RNG, and a full ring spawns fewer of them (claude/th08-specs/spec_effects.md has the allocator,
+// the per-type init and update routines, the draw lists and the ring drawer).
 
 #include <array>
 #include <cstdint>
@@ -25,8 +25,16 @@ struct World;
 struct Effect {
     AnmVm vm;
     Vec3f pos;
+    Vec3f custom, velocity, accel, world, centre, direction;
+    float radius = 0, angle = 0, width = 0;
+    // Rings: segment count, second radius, tilt or wave phase, wave count.
+    std::int32_t segments = 0;
+    float radius2 = 0, phase = 0, waves = 0;
+    std::uint8_t fade = 0, fadeCounter = 0;
+    bool ring = false;         // a strip ring (drawn by the ring drawer instead of the VM)
     Timer timer;
     std::uint32_t update = 0;  // the routine's address (0: none)
+    std::uint32_t init = 0;
     bool inUse = false;
     std::uint8_t type = 0;
     std::uint8_t layer = 0;    // 0 playfield (lists A/E, or D), 1 and >= 3 stage (B), 2 billboard (C)
@@ -44,6 +52,10 @@ class Effects {
     // SpawnEffect (spec 4.2): fills `count` free ring slots and returns the last one filled,
     // or the sink when the ring ran out (fewer scripts and inits run: fewer RNG draws).
     Effect& spawn(const World& w, int type, const Vec3f& pos, int count, std::uint32_t color);
+    // SpawnEffect2 (spec_effects 2.2): with a custom vector, without the z-write flag.
+    Effect& spawnWithVector(const World& w, int type, const Vec3f& pos, const Vec3f& custom, int count, std::uint32_t color);
+    // The teleport shift (spec_effects 5.8): every ring slot of type 51, in use or not.
+    void shiftWeather(const Vec3f& delta);
     // The special allocator: overwrites slot 640 + k.
     Effect& spawnSpecial(const World& w, int type, const Vec3f& pos, int k, int count, std::uint32_t color);
     Effect& special(int k) { return slots_[static_cast<std::size_t>(kRing + kOther + k)]; }
@@ -62,9 +74,12 @@ class Effects {
     void setQuality(int quality) { quality_ = quality; }
 
   private:
-    void start(const World& w, Effect& e, int type, const Vec3f& pos, std::uint32_t color);
+    void start(const World& w, Effect& e, int type, const Vec3f& pos, std::uint32_t color, const Vec3f* custom = nullptr,
+               bool zwriteOff = true);
+    Effect& fill(const World& w, int type, const Vec3f& pos, const Vec3f* custom, int count, std::uint32_t color, bool zwriteOff);
     bool runInit(const World& w, Effect& e);    // false: the init refused (slot freed)
     bool runUpdate(const World& w, Effect& e);  // false: free it
+    static void drawRing(SpriteSink& sink, const Effect& e, const AnmDrawState& state);
 
     std::array<Effect, kSlots> slots_{};
     Effect sink_;

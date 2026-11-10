@@ -116,6 +116,9 @@ struct Enemy {
     Enemy* next = nullptr;
     std::int32_t familiarCount = 0;
     Effect* aura = nullptr;
+    std::array<Effect*, 24> circles{};  // spell circles (op 128), possibly the effect sink
+    std::int32_t circleCount = 0;
+    float circleRadius = 0;
 
     std::array<TrailNode, 96> trail{};
     std::uint8_t trailFlags = 0;
@@ -229,6 +232,8 @@ class EnemyManager {
     void dismissFamiliars(Enemy& e, bool bonus);
     void unlinkFromParent(Enemy& e);
     void spawnFamiliar(Enemy& parent, int op, std::int32_t sub, const Vec3f& pos, std::int32_t life, std::int32_t item, std::int32_t score);
+    void releaseCircles(Enemy& e);
+    void updateCircles(Enemy& e);
     void spellCardStart(Enemy& e, const std::uint8_t* ins);
     void spellCardEnd();
     void spellCardUpdate();

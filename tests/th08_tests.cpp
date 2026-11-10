@@ -23,6 +23,7 @@
 #include "gfx/TextureLibrary.hpp"
 #include "th08/Anm.hpp"
 #include "th08/Background.hpp"
+#include "th08/Effects.hpp"
 #include "th08/Gameplay.hpp"
 #include "th08/ShotData.hpp"
 #include "th08/ExeTables.hpp"
@@ -1150,6 +1151,71 @@ void testRealArchive() {
         CHECK(stagesWithEnemies == 9 && stagesWithBullets >= 8);
         std::printf("  (ECL: %d of 9 stages spawned enemies, %d fired bullets in 2400 frames)\n", stagesWithEnemies, stagesWithBullets);
         game->end();
+
+        // Effects (spec_effects): the RNG cost per particle (script draws, then the init's),
+        // the shared step budget and the sink, and the lifetimes the routines decide.
+        if (!lib.loaded(th08::Effects::kSlotEtama)) CHECK(lib.load(vfs, textures, "etama.anm", th08::Effects::kSlotEtama, &err));
+        auto fx = std::make_unique<th08::Effects>();
+        th08::World w;
+        ZunRng r(7);
+        w.rng = &r;
+        w.anm = &lib;
+        w.tables = &tables;
+        w.effects = fx.get();
+        const Vec3f at{192, 224, 0};
+        auto cost = [&](int type, int count, const Vec3f* custom = nullptr) {
+            fx->reset();
+            const std::uint32_t before = r.generations();
+            if (custom) fx->spawnWithVector(w, type, at, *custom, count, 0xFFFFFFFFu);
+            else fx->spawn(w, type, at, count, 0xFFFFFFFFu);
+            return r.generations() - before;
+        };
+        const Vec3f none{-999, 0, 0}, angle{1.0f, 0, 0};
+        CHECK(cost(3, 1) == 4 && cost(4, 1) == 4 && cost(11, 2) == 8);
+        CHECK(cost(17, 1) == 6 && cost(18, 1) == 6 && cost(27, 1) == 6);
+        CHECK(cost(38, 1) == 10 && cost(40, 1) == 4 && cost(47, 1) == 8);
+        CHECK(cost(51, 1) == 26 && cost(63, 16) == 416);
+        CHECK(cost(26, 1, &none) == 10 && cost(26, 1, &angle) == 8 && cost(21, 1, &none) == 8 && cost(21, 1) == 6);
+        CHECK(cost(0, 1) == 0 && cost(13, 1) == 0 && cost(60, 1, &angle) == 0 && cost(39, 1) == 0);
+        {
+            fx->reset();
+            const std::uint32_t before = r.generations();
+            fx->spawnSpecial(w, 22, at, 2, 1, 0xFFFFFFFFu);
+            CHECK(r.generations() - before == 2);  // every focus costs 2 steps
+        }
+        // A nearly full ring: of 16 sparks only 2 get slots (8 steps), and the sink comes back.
+        fx->reset();
+        fx->spawn(w, 0, at, 510, 0xFFFFFFFFu);
+        std::uint32_t before = r.generations();
+        CHECK(fx->isSink(fx->spawn(w, 4, at, 16, 0xFFFFFFFFu)) && r.generations() - before == 8);
+        before = r.generations();
+        CHECK(fx->isSink(fx->spawn(w, 4, at, 1, 0xFFFFFFFFu)) && r.generations() == before);
+        // A spark slows to a stop after 19 passes; its script ends it at 30.
+        fx->reset();
+        th08::Effect& spark = fx->spawn(w, 4, at, 1, 0xFFFFFFFFu);
+        const Vec3f v0 = spark.velocity;
+        for (int k = 0; k < 19; ++k) fx->update(w);
+        CHECK(spark.inUse && std::fabs(spark.velocity.x) < 1e-4f + std::fabs(v0.x) * 1e-3f && std::fabs(spark.velocity.y) < 1e-4f + std::fabs(v0.y) * 1e-3f);
+        for (int k = 0; k < 16; ++k) fx->update(w);
+        CHECK(!spark.inUse);
+        // A released spell circle holds its slot for 16 more passes; the Dissolve ring lives
+        // until its timer reaches 120.
+        fx->reset();
+        th08::Effect& circle = fx->spawn(w, 13, at, 1, 0xFF6060D0u);
+        CHECK(circle.layer == 2);
+        for (int k = 0; k < 50; ++k) fx->update(w);
+        CHECK(circle.inUse);
+        circle.fade = 1;
+        for (int k = 0; k < 15; ++k) fx->update(w);
+        CHECK(circle.inUse);
+        fx->update(w);
+        CHECK(!circle.inUse);
+        th08::Effect& dissolve = fx->spawnSpecial(w, 50, at, 4, 1, 0xFFFFFFFFu);
+        CHECK(dissolve.ring && dissolve.segments == 24);
+        for (int k = 0; k < 120; ++k) fx->update(w);
+        CHECK(dissolve.inUse && dissolve.segments == 32);
+        fx->update(w);
+        CHECK(!dissolve.inUse);
     }
     // The player's score.dat backup (a fresh file) decodes, with this exe's VRSM; the port's
     // fresh image is the same size, and saving it again changes only the flags it sets.
