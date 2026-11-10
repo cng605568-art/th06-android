@@ -162,6 +162,7 @@ class Gui {
     void setCaptureReady(bool ready) { captureReady_ = ready; }
     void captureRect(int& x, int& y, int& w, int& h) const;
     bool transitionActive() const { return tilesActive_; }
+    void startTransition(ZunRng& rng);  // (stage start after the first, and retries)
     void setBackground(Background* bg) { background_ = bg; }
 
     // ---- the boss name label (spec_stage_gui 3.6): the stage's name image into sprite 10 ----
@@ -175,6 +176,10 @@ class Gui {
     void clearBossSegments();
     void setLifeMarkers(int n) { lifeMarkers_ = n; }
     void setBossSeconds(int s) { bossSeconds_ = s; }
+    // The "+a(b)" readout under the bar (spec 8.3 step 6): familiars chained after boss 0, and
+    // its familiar counter.
+    void setFamiliarReadout(int a, int b) { famA_ = a, famB_ = b; }
+    void drawFamiliarReadout(SpriteSink& sink, const Vec3f& playerPos, bool paused, bool hitStop);
     bool bossPresent() const { return bossPresent_; }
     int bossHudState() const { return bossState_; }
     float bossFill() const { return bossFill_; }
@@ -222,6 +227,7 @@ class Gui {
     std::array<std::uint32_t, 8> segColor_{};
     int lifeMarkers_ = 0, bossSeconds_ = 0, lastSeconds_ = 0;
     int bossState_ = 0;
+    int famA_ = 0, famB_ = 0;
     std::uint32_t bossAlpha_ = 0;
     bool msgRunning_ = false, nullity_ = false;
     struct Message {

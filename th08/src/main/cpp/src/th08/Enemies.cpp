@@ -1972,6 +1972,7 @@ void EnemyManager::updateEnemy(Enemy& e) {
         const int state = e.lowLife == 0 ? (e.vm.has(AnmVm::UseAltColor) ? 1 : 0) : e.lowLife + 1;
         wd.gui->setBossMarker(e.bossId, e.noCollision ? -999.0f : e.abs.x + 32.0f, state);
     }
+    if (e.boss && e.bossId == 0 && wd.gui) wd.gui->setFamiliarReadout(familiarCountOf(e), e.familiarCount);
     if (e.boss && e.bossId == 0 && !wd.dialogue && e.maxLife > 0) {
         bossBar_ = static_cast<float>(e.life) / static_cast<float>(e.maxLife);
         if (wd.gui) wd.gui->setBossFraction(bossBar_);

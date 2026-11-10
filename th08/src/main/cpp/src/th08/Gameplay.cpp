@@ -335,9 +335,10 @@ void Gameplay::menuDone(InGameMenu::Request request) {
             if (!start(s, &err)) outcome_ = Outcome::Title;
             break;
         }
-        case R::Retry: {  // the same stage again
+        case R::Retry: {  // the same stage again, under the old frame's tiles
             std::string err;
             if (!start(setup_, &err)) outcome_ = Outcome::Title;
+            else if (ctx_.rng) gui_.startTransition(*ctx_.rng);
             break;
         }
         case R::Continue: {
@@ -534,6 +535,7 @@ void Gameplay::draw(SpriteSink& sink) {
     if (ctx_.anm) {
         ascii_.draw(sink, *ctx_.anm);  // 20
         gui_.drawBossMarkers(sink, player_->position());
+        gui_.drawFamiliarReadout(sink, player_->position(), menu_.active(), (world_.mode & ModeSpellFreeze) != 0);
         gui_.drawMessages(sink, *ctx_.anm);
     }
     menu_.draw(sink);                          // (the AsciiManager's menus)

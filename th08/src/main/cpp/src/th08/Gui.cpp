@@ -101,32 +101,38 @@ bool Gui::stageStart(const FlowContext& ctx, const GameState& g, bool firstStage
     tilesActive_ = false;
     tileLive_.fill(false);
     if (!firstStage) {
-        // The next stage (or a retry): the last frame shown, captured, turns away in 14 x 12
-        // tiles over the new stage. The snapshot restarts with interrupt 1.
-        snapshot_ = AnmVm{};
-        snapshot_.start(lib, rng, kSlotCapture, 1);
-        snapshot_.interrupt(1);
-        snapshotLive_ = true;
-        captureRequest_ = true;
-        captureReady_ = false;
-        for (int i = 0; i < 14; ++i) {
-            for (int j = 0; j < 12; ++j) {
-                const auto n = static_cast<std::size_t>(i * 12 + j);
-                AnmVm& t = tiles_[n];
-                t = AnmVm{};
-                t.start(lib, rng, kSlotCapture, 3 + ((i + j) & 1));
-                t.intRegs2[0] = i + 2 * j;  // J0: the stagger the script waits on at t = 1
-                t.position = {32.0f * static_cast<float>(j) - 0.5f + 16.0f, 32.0f * static_cast<float>(i) - 0.5f + 16.0f, 0.0f};
-                t.uvScroll = {32.0f * static_cast<float>(j) / 512.0f, 32.0f * static_cast<float>(i) / 512.0f};
-                tileLive_[n] = true;
-            }
-        }
-        tilesActive_ = true;
+        startTransition(rng);
     } else {
         snapshotLive_ = false;
         captureReady_ = false;
     }
     return true;
+}
+
+// The next stage (or a retry): the last frame shown, captured, turns away in 14 x 12 tiles
+// over the new stage. The snapshot restarts with interrupt 1.
+void Gui::startTransition(ZunRng& rng) {
+    if (!anm_) return;
+    AnmLibrary& lib = *anm_;
+    snapshot_ = AnmVm{};
+    snapshot_.start(lib, rng, kSlotCapture, 1);
+    snapshot_.interrupt(1);
+    snapshotLive_ = true;
+    captureRequest_ = true;
+    captureReady_ = false;
+    for (int i = 0; i < 14; ++i) {
+        for (int j = 0; j < 12; ++j) {
+            const auto n = static_cast<std::size_t>(i * 12 + j);
+            AnmVm& t = tiles_[n];
+            t = AnmVm{};
+            t.start(lib, rng, kSlotCapture, 3 + ((i + j) & 1));
+            t.intRegs2[0] = i + 2 * j;  // J0: the stagger the script waits on at t = 1
+            t.position = {32.0f * static_cast<float>(j) - 0.5f + 16.0f, 32.0f * static_cast<float>(i) - 0.5f + 16.0f, 0.0f};
+            t.uvScroll = {32.0f * static_cast<float>(j) / 512.0f, 32.0f * static_cast<float>(i) / 512.0f};
+            tileLive_[n] = true;
+        }
+    }
+    tilesActive_ = true;
 }
 
 void Gui::captureRect(int& x, int& y, int& w, int& h) const {
@@ -645,6 +651,31 @@ void Gui::drawBossHud(SpriteSink& sink, AsciiText& ascii) {
     const int v = std::min(bossSeconds_, 99);
     const std::uint32_t c = bossSeconds_ >= 20 ? kTimer[0] : bossSeconds_ >= 10 ? kTimer[1] : bossSeconds_ >= 5 ? kTimer[2] : kTimer[3];
     ascii.add(384.0f, 16.0f, std::format("{:02d}", std::max(v, 0)), a | c);
+}
+
+void Gui::drawFamiliarReadout(SpriteSink& sink, const Vec3f& player, bool paused, bool hitStop) {
+    if (!hudLoaded_ || paused || hitStop || !bossPresent_) return;
+    // Alpha by the distance to the player, whose field position is compared with the popup's
+    // screen position [QUIRK].
+    const float px = 34.0f, py = 45.0f;
+    const auto d2 = static_cast<std::int32_t>((player.x - px) * (player.x - px) + (player.y - py) * (player.y - py));
+    const std::uint32_t alpha = d2 > 4096 ? 0xD0u : d2 > 1024 ? static_cast<std::uint32_t>((d2 - 1024) * 128 / 3072 + 80) : 0x50u;
+    AnmVm g = stamp_;
+    g.color = (alpha << 24) | 0xF0F00Fu;
+    g.position = {px, py, 0.0f};
+    const AnmDrawState none;
+    auto glyph = [&](int k) {
+        g.selectSprite(136 + k);
+        drawVm(sink, g, none);
+        g.position.x += 7.0f;
+    };
+    glyph(13);  // '+'
+    for (char c : std::to_string(std::max(famA_, 0))) glyph(c - '0');
+    if (famB_ > 0) {
+        glyph(14);  // '('
+        for (char c : std::to_string(famB_)) glyph(c - '0');
+        glyph(15);  // ')'
+    }
 }
 
 void Gui::drawMessages(SpriteSink& sink, AnmLibrary& anm) {
