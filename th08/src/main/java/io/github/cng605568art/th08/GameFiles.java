@@ -37,7 +37,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * The same import also brings over the player's PC progress: score.dat (scores, unlocks,
  * spell history, play statistics; recognised by its decoded header) goes where the port
  * keeps its own (the app's files folder; an earlier one is kept as score.dat.bak), and
- * replays (th7_NN.rpy, th7_udXXXX.rpy; "T7RP" header) go into its replay folder.
+ * replays (th8_NN.rpy, th8_udXXXX.rpy; "T8RP" header) go into its replay folder.
  *
  * And the English patch, when the game folder has thcrap in it (as on the PC, where the
  * community English patch runs through the thcrap patcher): thcrap/repos/thpatch/lang_en
@@ -110,7 +110,7 @@ final class GameFiles {
         if (EXE.equals(name)) {
             valid = exeChecked(ctx, f);
         } else {
-            byte[] head = new byte[16];
+            byte[] head = new byte[256];
             int n = readHead(f, head);
             valid = name.equals(classify(head, n, size));
         }
@@ -187,28 +187,49 @@ final class GameFiles {
             return BGM;
         }
         if (n >= 2 && head[0] == 'M' && head[1] == 'Z' && (size < 0 || (size >= EXE_MIN && size <= EXE_MAX))) return EXE;
-        // A replay: "T8RP". (TH08's score.dat is not recognised yet: the port has no reader for
-        // it, so the import leaves it alone.)
+        // A replay: "T8RP".
         if (n >= 4 && head[0] == 'T' && head[1] == '8' && head[2] == 'R' && head[3] == 'P') {
             return REPLAY;
         }
+        if (n >= 0x1C && (size < 0 || (size >= 0x1C && size <= SCORE_MAX)) && scoreHeader(head, n, size)) return SCORE;
         return null;
     }
 
     /**
-     * score.dat (format 11): from byte 2 on it is obfuscated with a running key that starts
-     * at byte 1 (rotate left by 3, XOR, then add the plain byte). Decoded, the version at
-     * offset 4 is 11 and the first record starts at 0x1C.
+     * TH08's score.dat (the engine's th08/ScoreFile): the whole file is encrypted with a block
+     * cipher (key 0x59, step 0x79, 256-byte blocks), under that TH07's rolling XOR from byte 2
+     * on. Decoded, the version at offset 4 is 1 and the first record starts at 0x1C. Only the
+     * first block is decoded here (its handling depends on the whole file's size).
      */
-    private static boolean scoreHeader(byte[] head) {
-        byte[] plain = new byte[12];
-        int k = head[1] & 0xff;
-        for (int p = 2; p < 12; ++p) {
-            k = ((k << 3) | (k >>> 5)) & 0xff;
-            plain[p] = (byte) ((head[p] & 0xff) ^ k);
-            k = (k + (plain[p] & 0xff)) & 0xff;
+    private static boolean scoreHeader(byte[] head, int n, long size) {
+        long total = size >= 0 ? size : n;
+        int block;
+        if (total >= 256) {
+            if (n < 256) return false;
+            block = 256;
+        } else {
+            int tail = (int) total;
+            if (tail < 64) return false;  // a short tail is left alone: never a valid file
+            block = (total % 2 == 1) ? tail - 1 : tail;
+            if (n < block) return false;
         }
-        return le16(plain, 4) == 11 && le32(plain, 8) == 0x1C;
+        byte[] plain = new byte[block];
+        int half = (block + 1) / 2;
+        int k = 0x59;
+        int j = block - 1;
+        for (int i = 0; i < block; ++i) {
+            if (i == half) j = block - 2;
+            plain[j] = (byte) ((head[i] & 0xff) ^ k);
+            k = (k + 0x79) & 0xff;
+            j -= 2;
+        }
+        int x = plain[1] & 0xff;
+        for (int p = 2; p < 12; ++p) {
+            x = ((x << 3) | (x >>> 5)) & 0xff;
+            plain[p] = (byte) ((plain[p] & 0xff) ^ x);
+            x = (x + (plain[p] & 0xff)) & 0xff;
+        }
+        return le16(plain, 4) == 1 && le32(plain, 8) == 0x1C;
     }
 
     /** Where the port keeps its own score.dat (SDL's preferences path on Android). */
@@ -513,7 +534,7 @@ final class GameFiles {
                 continue;
             }
             progress.report(ctx.getString(R.string.import_checking, s.name));
-            byte[] head = new byte[16];
+            byte[] head = new byte[256];
             int n;
             try (InputStream in = cr.openInputStream(s.uri)) {
                 n = in == null ? 0 : readFully(in, head);
@@ -834,16 +855,16 @@ final class GameFiles {
 
     /**
      * The name the port lists a replay under: the PC's own name when it is one of the port's
-     * (th7_01 to th7_15, or th7_ud plus 4 characters) and free; otherwise the next free
-     * th7_udNNNN. Null when no name is free.
+     * (th8_01 to th8_15, or th8_ud plus 4 characters) and free; otherwise the next free
+     * th8_udNNNN. Null when no name is free.
      */
     static String replayName(File dir, String original) {
         String lower = original.toLowerCase(Locale.ROOT);
-        boolean slot = lower.matches("th7_(0[1-9]|1[0-5])\\.rpy");
-        boolean user = lower.matches("th7_ud.{4}\\.rpy");
+        boolean slot = lower.matches("th8_(0[1-9]|1[0-5])\\.rpy");
+        boolean user = lower.matches("th8_ud.{4}\\.rpy");
         if ((slot || user) && !new File(dir, lower).exists()) return lower;
         for (int i = 0; i < 10000; ++i) {
-            String name = String.format(Locale.ROOT, "th7_ud%04d.rpy", i);
+            String name = String.format(Locale.ROOT, "th8_ud%04d.rpy", i);
             if (!new File(dir, name).exists()) return name;
         }
         return null;

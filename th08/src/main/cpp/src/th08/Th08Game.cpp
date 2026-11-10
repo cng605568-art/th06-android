@@ -75,6 +75,23 @@ bool Th08Game::start(const GameContext& ctx) {
     } else {
         config_.load({}, folder_.thbgm);
     }
+    // score.dat: the port's own copy, else the one in the game folder (desktop). A missing or
+    // invalid file counts as empty.
+    {
+        std::vector<std::uint8_t> raw = storage_.empty() ? std::vector<std::uint8_t>{} : readFile(storage_ + "score.dat");
+        if (raw.empty()) {
+            const auto loose = ctx.vfs->looseFile("score.dat");
+            raw.assign(loose.begin(), loose.end());
+        }
+        if (!raw.empty()) {
+            const auto image = decodeScoreFile(raw);
+            const std::pair<std::int32_t, std::int32_t> exeVersion{840704, static_cast<std::int32_t>(2724749753u)};
+            if (!image || !parseScoreImage(*image, scores_, exeVersion)) log::warn("score.dat is not valid: starting from no records");
+            else log::info("score.dat: {} plays, Extra {}, Spell Practice {}, solo characters {}", scores_.totalPlays,
+                           scores_.extraUnlocked() ? "unlocked" : "locked", scores_.spellPracticeUnlocked() ? "unlocked" : "locked",
+                           scores_.solosUnlocked() ? "unlocked" : "locked");
+        }
+    }
     if (folder_.exe) {
         std::string why;
         tablesLoaded_ = loadExeTables(folder_.exeBytes, tables_, &why);
@@ -129,6 +146,10 @@ bool Th08Game::start(const GameContext& ctx) {
         if (s == Scene::Exit) quit_ = true;
     };
     flow_.saveConfig = [this]() { saveConfig(); };
+    flow_.extraUnlocked = scores_.extraUnlocked();
+    flow_.spellPracticeUnlocked = scores_.spellPracticeUnlocked();
+    flow_.solosUnlocked = scores_.solosUnlocked();
+    flow_.totalPlays = static_cast<int>(scores_.totalPlays);
     menu_ = std::make_unique<MainMenu>(flow_);
     if (!menu_->create(&err)) {
         log::warn("The title could not be built: {}", err);

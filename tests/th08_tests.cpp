@@ -23,6 +23,7 @@
 #include "th08/ExeTables.hpp"
 #include "th08/Flow.hpp"
 #include "th08/MainMenu.hpp"
+#include "th08/ScoreFile.hpp"
 #include "th08/GameConfig.hpp"
 #include "th08/GameFiles.hpp"
 #include "th08/Version.hpp"
@@ -436,6 +437,61 @@ void testMenuInput() {
     CHECK(in.pressed(th08::kSelect) && !in.pressed(th08::kCancel));
 }
 
+// A score image: header, TH8K, then the given records.
+Bytes scoreRecord(const char* tag, std::uint16_t len, std::uint8_t version) {
+    Bytes r(len, 0);
+    std::memcpy(r.data(), tag, 4);
+    r[4] = static_cast<std::uint8_t>(len), r[5] = static_cast<std::uint8_t>(len >> 8);
+    r[6] = r[4], r[7] = r[5];
+    r[8] = version;
+    return r;
+}
+
+void testScoreFile() {
+    Bytes image(0x1C, 0);
+    auto add = [&](const Bytes& r) { image.insert(image.end(), r.begin(), r.end()); };
+    add(scoreRecord("TH8K", 0x0C, 1));
+    for (int i = 0; i < 13; ++i) {
+        Bytes c = scoreRecord("CLRD", 0x24, 4);
+        for (int d = 0; d < 5; ++d) c[0x0C + 2 * d] = c[0x16 + 2 * d] = 1;
+        c[0x21] = static_cast<std::uint8_t>(i);
+        if (i == 1) c[0x0C + 2 * 2 + 1] = 0x40;  // team 1: Final B on Hard without a continue
+        if (i == 2) c[0x16 + 2 * 0 + 1] = 0x80;  // team 2: Final A on Easy (with continues)
+        add(c);
+    }
+    Bytes plst = scoreRecord("PLST", 0x228, 2);
+    plst[0x2C + 6 * 0x44] = 42;
+    add(plst);
+    Bytes flsp = scoreRecord("FLSP", 0x20, 1);
+    flsp[0x0C + 3] = 208;
+    add(flsp);
+    const Bytes file = th08::encodeScoreFile(image, 0x53, 0x41);
+    const auto decoded = th08::decodeScoreFile(file);
+    CHECK(decoded.has_value());
+    th08::ScoreData sd;
+    CHECK(decoded && th08::parseScoreImage(*decoded, sd));
+    CHECK(sd.totalPlays == 42 && sd.lastWords[3] == 208);
+    CHECK(sd.extraUnlocked() && sd.spellPracticeUnlocked() && !sd.solosUnlocked());
+    CHECK(sd.teamHasNoContinueFinalB(1) && !sd.teamHasNoContinueFinalB(0) && sd.teamHasFinalA(2));
+    // Damage is caught: one flipped byte breaks the checksum.
+    Bytes bad = file;
+    bad[0x30] ^= 0x10;
+    CHECK(!th08::decodeScoreFile(bad).has_value());
+    // No TH8K: not a score file. A VRSM of another program voids it.
+    Bytes noKey(0x1C, 0);
+    const Bytes c0 = scoreRecord("CLRD", 0x24, 4);
+    noKey.insert(noKey.end(), c0.begin(), c0.end());
+    th08::ScoreData sd2;
+    CHECK(!th08::parseScoreImage(noKey, sd2) && !sd2.extraUnlocked());
+    Bytes withVrsm = image;
+    Bytes v = scoreRecord("VRSM", 0x1C, 1);
+    std::memcpy(v.data() + 0x0C, "0100d", 5);
+    v[0x14] = 1;  // size 1
+    withVrsm.insert(withVrsm.end(), v.begin(), v.end());
+    CHECK(th08::parseScoreImage(withVrsm, sd2));  // no exe to check against
+    CHECK(!th08::parseScoreImage(withVrsm, sd2, std::make_pair(840704, 1)));
+}
+
 void testExeCheck() {
     std::string why;
     CHECK(!th08::isExe100d(Bytes(100, 0), &why));
@@ -695,6 +751,19 @@ void testRealArchive() {
         CHECK(menu3.state() == th08::MainMenu::State::Difficulty && ctx.character == 3);
 
     }
+    // The player's score.dat backup (a fresh file) decodes, with this exe's VRSM.
+    {
+        std::string dir(path);
+        dir = dir.substr(0, dir.find_last_of('/') + 1);
+        auto bak = MappedFile::open(dir + "backup/score_1.240313.bak", &err);
+        if (bak) {
+            const auto image = th08::decodeScoreFile(bak->bytes());
+            CHECK(image.has_value() && image->size() == 1144);
+            th08::ScoreData sd;
+            CHECK(image && th08::parseScoreImage(*image, sd, std::make_pair(840704, static_cast<std::int32_t>(2724749753u))));
+            CHECK(sd.totalPlays == 0 && !sd.extraUnlocked() && sd.clears[12].reached[0] == 1);
+        }
+    }
     // The version file has the 1.00d line (and its exe checksum, when TH08_REAL_EXE names it).
     for (std::size_t i = 0; i < archive->entries().size(); ++i) {
         if (archive->entries()[i].name != th08::kVersionFile) continue;
@@ -742,6 +811,7 @@ int main() {
         {"th08.exe 1.00d check", testExeCheck},
         {"menu input: pressed, auto-repeat, select and cancel", testMenuInput},
         {"th08.cfg: layout, validation, re-initialisation", testGameConfig},
+        {"score.dat: cipher, rolling XOR, checksum, records, unlocks", testScoreFile},
         {"ANM v3: files, sprites by position, opcodes 9/33/82-89, interrupt return, freeze", testAnm},
         {"version file: every matching line, exe checksum", testVersionFile},
         {"the player's th08.dat (TH08_REAL_DAT)", testRealArchive},

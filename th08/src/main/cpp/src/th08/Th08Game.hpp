@@ -17,6 +17,7 @@
 #include "th08/GameConfig.hpp"
 #include "th08/GameFiles.hpp"
 #include "th08/MainMenu.hpp"
+#include "th08/ScoreFile.hpp"
 #include "th08/SoundPlayer.hpp"
 
 namespace touhou::th08 {
@@ -52,6 +53,7 @@ class Th08Game final : public Game {
     FolderReport folder_;
     std::string storage_;
     GameConfig config_;
+    ScoreData scores_;
     ExeTables tables_;
     bool tablesLoaded_ = false;
     std::unique_ptr<SoundPlayer> sound_;
