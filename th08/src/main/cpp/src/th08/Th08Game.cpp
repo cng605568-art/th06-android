@@ -84,6 +84,8 @@ void Th08Game::saveScores(bool gameRng) {
         seed = static_cast<std::uint8_t>(bytesRng() & 0xFF);
         filler = static_cast<std::uint8_t>(bytesRng() & 0xFF);
     }
+    if (config_.slowMode != 0) scores_.cards = savedCards_;
+    savedCards_ = scores_.cards;
     if (storage_.empty()) return;
     std::vector<std::uint8_t> image = scores_.imageToSave();
     const auto bytes = encodeScoreFile(image, seed, filler);
@@ -234,6 +236,7 @@ bool Th08Game::start(const GameContext& ctx) {
             else log::info("score.dat: {} plays, Extra {}, Spell Practice {}, solo characters {}", scores_.totalPlays,
                            scores_.extraUnlocked() ? "unlocked" : "locked", scores_.spellPracticeUnlocked() ? "unlocked" : "locked",
                            scores_.solosUnlocked() ? "unlocked" : "locked");
+            savedCards_ = scores_.cards;
         }
     }
     if (folder_.exe) {
@@ -334,7 +337,8 @@ void Th08Game::tick(const InputState& input) {
     }
     if (music_) music_->fadeStep();
     if (anyScene()) {
-        input_.sample(buttonWord(input));
+        input_.sample(static_cast<std::uint16_t>(buttonWord(input) | injected_));
+        injected_ = 0;
         if (requested_ != active_) {
             applyScene();
             input_.clear();  // the transition zeroes the raw input and the repeat flag
@@ -428,7 +432,7 @@ void Th08Game::render(SpriteSink& sink, float, const FrameInfo&) {
     drawText(sink, *ui_, 136, 416, std::format("{} FILES IN THE GAME FOLDER", folder_.files), 2.0f, grey);
 }
 
-// Android Back: in a game, what Menu does (the pause menu).
+// Android Back: in a game, what Menu does (the pause menu); elsewhere Menu (cancel).
 // The Gui's playfield captures (the results' snapshot, the next stage's tiles), into
 // capture.anm's texture at the snapshot sprite's rectangle.
 bool Th08Game::takeCaptureRequest() { return gameplay_ && gameplay_->takeCaptureRequest(); }
@@ -455,8 +459,14 @@ Game::CaptureRect Th08Game::captureRect() const {
 bool Th08Game::keepsPreviousFrame() const { return gameplay_ && gameplay_->stageEndState() == 1; }
 
 bool Th08Game::back() {
-    if (!gameplay_) return false;
-    gameplay_->requestPause();
+    if (gameplay_) {
+        gameplay_->requestPause();
+        return true;
+    }
+    // Elsewhere Back is Menu (cancel) for one pass; on the title with the cursor on Quit it
+    // leaves the app.
+    if (!anyScene() || (menu_ && menu_->state() == MainMenu::State::Title && menu_->cursor() == MainMenu::Quit)) return false;
+    injected_ |= BtnMenu;
     return true;
 }
 

@@ -73,6 +73,8 @@ bool MainMenu::create(std::string* error) {
         default: titleCursor_ = GameStart; break;
     }
     cursor_ = titleCursor_;
+    // After a practice game the menus walk back to the stage list (spec 4.7).
+    autoReturn_ = ctx_.previous == Scene::ResultAfterGame && ctx_.practice && !ctx_.spellPractice;
     if (ctx_.music && ctx_.previous != Scene::ResultViewer) ctx_.music->load(8, "bgm/th08_01.mid");
     fade_ = kFadeFrames;  // the white fade-in (screen effect type 0, 70 frames)
     state_ = prevState_ = State::Title;
@@ -169,6 +171,11 @@ void MainMenu::enterTitle() {
 void MainMenu::title(const MenuInput& in) {
     if (sub_ == 0) {
         if (inputTimer_ == 0) enterTitle();
+        if (autoReturn_) {  // state 8 next (difficulty, one pass)
+            titleCursor_ = PracticeStart;
+            setState(State::PracticeDifficulty);
+            return;
+        }
         // One description per pass, rows 0..8 (TH07 rendered them all at once).
         const int k = inputTimer_;
         if (k < kTitleRows) {
@@ -466,6 +473,11 @@ void MainMenu::difficulty(const MenuInput& in) {
             highlightDifficulty();
         }
         sub_ = 1;
+        if (autoReturn_) {  // then the character page (one pass)
+            setState(State::PracticeCharacter);
+            cursor_ = 0;
+            return;
+        }
     }
     if (sub_ == 3) {  // backing out to the title
         if (stateTimer_ >= 20) {
@@ -532,6 +544,12 @@ void MainMenu::character(const MenuInput& in) {
         if (has_[static_cast<std::size_t>(card)]) vm_[static_cast<std::size_t>(card)].interrupt(9);
         showCards(false);
         sub_ = 1;
+        if (autoReturn_) {  // then the stage list, on the stage just played
+            autoReturn_ = false;
+            setState(State::PracticeStage);
+            cursor_ = ctx_.stage <= 7 ? ctx_.stage : 0;
+            return;
+        }
     }
     if (inputTimer_ < 8) return;
     const int lr = in.pressedOrRepeat(BtnLeft) ? -1 : in.pressedOrRepeat(BtnRight) ? 1 : 0;

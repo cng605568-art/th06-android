@@ -815,6 +815,31 @@ void testRealArchive() {
         menu2.draw(sink2);
         CHECK(sink2.items.size() > 8);  // the background, the logo and the rows
         std::printf("  (title: %zu sprites drawn after 21 passes)\n", sink2.items.size());
+        // Back from a practice game: the menus walk straight to the stage list (spec 4.7).
+        {
+            th08::GameConfig pc;
+            th08::ScoreData sd;
+            sd.clears[1].reached.fill(0x7);
+            ctx.config = &pc;
+            ctx.scores = &sd;
+            ctx.previous = th08::Scene::ResultAfterGame;
+            ctx.practice = true;
+            ctx.character = 1;
+            ctx.stage = 2;
+            th08::MainMenu back(ctx);
+            CHECK(back.create(&err));
+            th08::MenuInput ib;
+            for (int i = 0; i < 4; ++i) {
+                ib.sample(0);
+                back.update(ib);
+            }
+            CHECK(back.state() == th08::MainMenu::State::PracticeStage && back.cursor() == 2);
+            ctx.config = nullptr;
+            ctx.scores = nullptr;
+            ctx.previous = th08::Scene::Init;
+            ctx.practice = false;
+            ctx.character = ctx.stage = 0;
+        }
         // Option: the lives wrap within 0-4, a volume press moves 5, Exit goes back.
         th08::GameConfig cfg;
         ctx.config = &cfg;

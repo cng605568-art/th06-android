@@ -78,6 +78,7 @@ class MainMenu {
     AsciiText ascii_;
 
     State state_ = State::Title;
+    bool autoReturn_ = false;  // back from a practice game: straight to the stage list
     State prevState_ = State::Title;  // MM+0x68
     int sub_ = 0;          // MM+0xC
     int stateTimer_ = 0;   // MM+0x10

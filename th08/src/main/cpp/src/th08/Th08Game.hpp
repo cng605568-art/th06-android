@@ -68,6 +68,9 @@ class Th08Game final : public Game {
     std::string storage_;
     GameConfig config_;
     ScoreData scores_;
+    // The spell card history as last read or written: in slow mode a run's card history is
+    // dropped before every write (spec_result_ending 1.3 steps 7-8, 1.5, 3.1).
+    std::array<CardRecord, kCardCount> savedCards_{};
     ExeTables tables_;
     bool tablesLoaded_ = false;
     std::unique_ptr<SoundPlayer> sound_;
@@ -87,6 +90,7 @@ class Th08Game final : public Game {
     std::vector<MusicTrack> musicTracks_;  // musiccmt.txt: a played song's Music Room index
     Scene active_ = Scene::MainMenu, requested_ = Scene::MainMenu;
     bool quit_ = false;
+    std::uint16_t injected_ = 0;  // Android Back as Menu for one pass
     std::uint64_t ticks_ = 0;
 };
 
