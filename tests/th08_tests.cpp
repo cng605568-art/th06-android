@@ -474,12 +474,20 @@ void testScoreFile() {
     Bytes flsp = scoreRecord("FLSP", 0x20, 1);
     flsp[0x0C + 3] = 208;
     add(flsp);
+    Bytes pscr = scoreRecord("PSCR", 0x178, 2);  // character 5, Stage 2 Hard: 3 plays, best 12345
+    pscr[0x0C + 4 * (1 * 5 + 2)] = 3;
+    pscr[0xC0 + 4 * (1 * 5 + 2)] = 0x39;
+    pscr[0xC0 + 4 * (1 * 5 + 2) + 1] = 0x30;
+    pscr[0x174] = 5;
+    pscr[0x175] = 1;
+    add(pscr);
     const Bytes file = th08::encodeScoreFile(image, 0x53, 0x41);
     const auto decoded = th08::decodeScoreFile(file);
     CHECK(decoded.has_value());
     th08::ScoreData sd;
     CHECK(decoded && th08::parseScoreImage(*decoded, sd));
     CHECK(sd.totalPlays == 42 && sd.lastWords[3] == 208);
+    CHECK(sd.practice[5].plays[7] == 3 && sd.practice[5].best[7] == 12345 && sd.practice[4].plays[7] == 0);
     CHECK(sd.extraUnlocked() && sd.spellPracticeUnlocked() && !sd.solosUnlocked());
     CHECK(sd.teamHasNoContinueFinalB(1) && !sd.teamHasNoContinueFinalB(0) && sd.teamHasFinalA(2));
     // Damage is caught: one flipped byte breaks the checksum.

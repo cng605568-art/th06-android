@@ -28,8 +28,15 @@ struct ClearRecord {
     std::uint8_t pending = 0;
 };
 
+// A PSCR record: per stage slot (0-8) and difficulty (0-4) the practice play count and the
+// best practice score (internal units, shown with a trailing 0), index slot x 5 + difficulty.
+struct PracticeRecord {
+    std::array<std::uint32_t, 45> plays{}, best{};
+};
+
 struct ScoreData {
     std::array<ClearRecord, kClearRecords> clears{};
+    std::array<PracticeRecord, kCharacters> practice{};
     std::uint32_t totalPlays = 0;            // PLST's total row
     std::array<std::uint8_t, 32> musicHeard{};  // PLST +0x208: Music Room track i has been heard
     std::array<std::uint8_t, 17> lastWords{};  // FLSP: byte k = 205 + k when Last Word 205 + k is unlocked

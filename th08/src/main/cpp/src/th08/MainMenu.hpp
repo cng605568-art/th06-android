@@ -54,6 +54,9 @@ class MainMenu {
     void highlightDifficulty();
     void character(const MenuInput& in);
     void showCards(bool afterMove);
+    void practiceStage(const MenuInput& in);
+    bool stageSelectable(int stage) const;
+    void drawStageList();
     void highlightRows(int first, int count, int selected);
     void showDescription(int row);
     void hideDescription();

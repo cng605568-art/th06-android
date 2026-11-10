@@ -25,6 +25,8 @@ struct UiArt;
 
 namespace touhou::th08 {
 
+struct ScoreData;
+
 class BgmPlayer;
 class SoundPlayer;
 struct ExeTables;
@@ -94,6 +96,7 @@ struct FlowContext {
     // track heard (spec §4.9). Not called for the Music Room's own playback.
     std::function<void(std::string_view path)> musicPlayed;
     const std::array<std::uint8_t, 32>* musicHeard = nullptr;  // score.dat's PLST flags
+    const ScoreData* scores = nullptr;   // score.dat as read at boot
     Scene previous = Scene::Init;        // the Supervisor's previous scene
 
     // Unlocks (spec 5.1), from score.dat once it is ported.

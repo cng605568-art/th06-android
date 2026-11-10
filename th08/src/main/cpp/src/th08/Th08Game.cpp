@@ -229,6 +229,7 @@ bool Th08Game::start(const GameContext& ctx) {
     flow_.saveConfig = [this]() { saveConfig(); };
     if (const auto txt = ctx.vfs->read("musiccmt.txt")) musicTracks_ = parseMusicComments(*txt);
     flow_.musicHeard = &scores_.musicHeard;
+    flow_.scores = &scores_;
     flow_.musicPlayed = [this](std::string_view path) {
         if (scores_.setMusicHeard(musicTrackIndex(musicTracks_, path))) saveScores();
     };

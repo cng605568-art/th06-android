@@ -112,6 +112,15 @@ bool parseScoreImage(std::span<const std::uint8_t> image, ScoreData& out,
             parsed.totalPlays = rd32(rec, 0x2C + 6 * 0x44);  // the last valid PLST wins
             std::memcpy(parsed.musicHeard.data(), rec.data() + kPlstHeard, parsed.musicHeard.size());
             parsed.plstOffset = at;
+        } else if (tag("PSCR") && version == 2 && len >= 0x178) {
+            const std::uint8_t shot = rec[0x174];
+            if (shot < kCharacters && rec[0x175] != 0) {
+                PracticeRecord& r = parsed.practice[shot];
+                for (std::size_t i = 0; i < 45; ++i) {
+                    r.plays[i] = rd32(rec, 0x0C + 4 * i);
+                    r.best[i] = rd32(rec, 0xC0 + 4 * i);
+                }
+            }
         } else if (tag("FLSP") && version == 1 && len >= 0x0C + 17) {
             std::memcpy(parsed.lastWords.data(), rec.data() + 0x0C, parsed.lastWords.size());
         } else if (tag("VRSM") && version == 1 && len >= 0x1C && exeVersion) {

@@ -1,12 +1,14 @@
 #include "th08/MainMenu.hpp"
 
 #include <algorithm>
+#include <format>
 
 #include "core/Log.hpp"
 #include "gfx/SpriteSink.hpp"
 #include "th08/Bgm.hpp"
 #include "th08/ExeTables.hpp"
 #include "th08/GameConfig.hpp"
+#include "th08/ScoreFile.hpp"
 #include "th08/SoundPlayer.hpp"
 
 namespace touhou::th08 {
@@ -536,8 +538,12 @@ void MainMenu::character(const MenuInput& in) {
     if (in.pressed(kSelect)) {
         ctx_.character = cursor_;
         ctx_.playSound(kSndSelect);
-        // (Practice goes to the stage list, state 11, which is not ported yet: Stage 1, the
-        // only stage a player without clears can practise.)
+        if (state_ == State::PracticeCharacter) {  // on to the stage list, at once
+            setState(State::PracticeStage);
+            cursor_ = ctx_.stage <= 7 ? ctx_.stage : 0;
+            practiceStage(in);
+            return;
+        }
         ctx_.stage = state_ == State::ExtraCharacter ? 8 : 0;
         ctx_.practice = state_ == State::PracticeCharacter;
         ctx_.spellPractice = false;
@@ -557,6 +563,92 @@ void MainMenu::character(const MenuInput& in) {
     }
 }
 
+// ---- practice stage select (state 11) ---------------------------------------------------------
+
+// A stage can be practised once it was cleared on this difficulty with this character (the
+// CLRD reached word; Stage 1 always); a 6B clear opens both Stage 4 variants (spec 4.5).
+bool MainMenu::stageSelectable(int stage) const {
+    std::uint16_t mask = 1;
+    if (ctx_.scores && ctx_.config) {
+        const int c = std::clamp(ctx_.character, 0, kCharacters - 1);
+        mask = ctx_.scores->clears[static_cast<std::size_t>(c)].reached[std::clamp<std::size_t>(ctx_.config->difficulty, 0, 4)];
+        if (mask == 0) mask = 1;
+        if (mask & 0x80) mask |= 0x18;
+    }
+    return ((mask >> stage) & 1) != 0;
+}
+
+void MainMenu::practiceStage(const MenuInput& in) {
+    if (sub_ == 0) {
+        sendAll(18);
+        cursor_ = std::clamp(cursor_, 0, 7);
+        showCards(false);
+        ctx_.practice = true;
+        sub_ = 1;
+    }
+    if (!stageSelectable(cursor_)) cursor_ = 0;
+    if (inputTimer_ < 8) return;
+    int d = 0;
+    if (in.pressedOrRepeat(BtnUp)) d = -1;
+    else if (in.pressedOrRepeat(BtnDown)) d = 1;
+    if (d != 0) {
+        int c = cursor_;
+        for (int i = 0; i < 8; ++i) {
+            c = wrap(c + d, 8);
+            if (stageSelectable(c)) break;
+        }
+        if (c != cursor_) {
+            cursor_ = c;
+            ctx_.playSound(kSndMove);
+        }
+    }
+    if (in.pressed(kSelect)) {
+        ctx_.playSound(kSndSelect);
+        ctx_.stage = cursor_;
+        ctx_.practice = true;
+        ctx_.spellPractice = false;
+        if (ctx_.music) ctx_.music->stop();
+        removed_ = true;
+        if (ctx_.request) ctx_.request(Scene::Game);
+        return;
+    }
+    if (in.pressed(kCancel)) {
+        ctx_.playSound(kSndBack);
+        setState(State::PracticeCharacter);
+        cursor_ = ctx_.character;
+        character(in);
+    }
+}
+
+// The list (spec 4.5 drawing): "Stage    HI-Score", then each stage's best practice score and
+// play count; the cursor row white, selectable rows grey, locked rows dark.
+void MainMenu::drawStageList() {
+    static constexpr const char* kLabels[8] = {"Stage1 ", "Stage2 ", "Stage3 ", "Stage4A", "Stage4B", "Stage5 ", "Stage6A", "Stage6B"};
+    // (The spec anchors the list to VM 139, whose script stays at the top of the screen; VM
+    // 141, the same sprite, slides in to (256, 320) on interrupt 18. Until the anchor is
+    // settled the list sits left of the character's card, 96 px above that point.)
+    float x = 256.0f, y = 320.0f;
+    if (has_[141]) {
+        x = vm_[141].position.x;
+        y = vm_[141].position.y;
+    }
+    x -= 208.0f;
+    y -= 96.0f;
+    ascii_.add(x, y, "Stage    HI-Score", 0xFFFFFFFFu);
+    const int c = std::clamp(ctx_.character, 0, kCharacters - 1);
+    const std::size_t d = ctx_.config ? std::clamp<std::size_t>(ctx_.config->difficulty, 0, 4) : 1;
+    for (int k = 0; k < 8; ++k) {
+        std::uint32_t best = 0, plays = 0;
+        if (ctx_.scores) {
+            const PracticeRecord& r = ctx_.scores->practice[static_cast<std::size_t>(c)];
+            best = r.best[static_cast<std::size_t>(k) * 5 + d];
+            plays = r.plays[static_cast<std::size_t>(k) * 5 + d];
+        }
+        const std::uint32_t color = k == cursor_ ? 0xFFFFFFFFu : stageSelectable(k) ? 0xFFA0A0A0u : 0xFF404040u;
+        ascii_.add(x, y + 16.0f * static_cast<float>(k + 1), std::format("{} {:9d}0 ({:3d})", kLabels[k], best, plays), color);
+    }
+}
+
 // ---- the pass and the picture ----------------------------------------------------------------
 
 void MainMenu::update(const MenuInput& in) {
@@ -570,6 +662,7 @@ void MainMenu::update(const MenuInput& in) {
         case State::Character:
         case State::PracticeCharacter:
         case State::ExtraCharacter: character(in); break;
+        case State::PracticeStage: practiceStage(in); break;
         default: setState(State::Title); break;
     }
     // After the state handler: all 142 VMs and the current description advance.
@@ -594,6 +687,7 @@ void MainMenu::draw(SpriteSink& sink) {
         }
     }
     if (descShown_) drawVm(sink, desc_[static_cast<std::size_t>(currentDesc_)], none);
+    if (state_ == State::PracticeStage) drawStageList();
     if (notice_ > 0) {
         const std::uint32_t a = static_cast<std::uint32_t>(std::min(255, notice_ * 8)) << 24;
         ascii_.add(160, 448, "NOT PORTED YET", a | 0x00FFE0A0u);
