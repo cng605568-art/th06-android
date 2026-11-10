@@ -22,15 +22,25 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * "Replace music": the player's own audio file (MP3, or anything else Android can decode)
  * becomes one of the game's songs. It is decoded with the platform's decoders, converted to
- * WAV (16-bit PCM, 44,100 Hz, stereo) and kept in the app's storage as music/th08_NN.wav,
- * with a th08_NN.pos loop file (loop start and loop end in frames, little-endian int32), the
- * same format the th06 app writes: the engine plays it in place of the song thbgm.dat has
+ * WAV (16-bit PCM, 44,100 Hz, stereo) and kept in the app's storage as music/{@code name}.wav
+ * (the song's thbgm.fmt name, see baseName), with a {@code name}.pos loop file (loop start
+ * and loop end in frames, little-endian int32), the same format the th06 app writes: the
+ * engine plays it in place of the song thbgm.dat has
  * under that name and loops it (the whole song, or from a chosen loop point to the end).
  * thbgm.dat itself is not changed.
  */
 final class MusicReplacer {
-    /** The game's 21 songs (th08_01 .. th08_21 in thbgm.fmt, the Music Room's order). */
-    static final int TRACK_COUNT = 21;
+    /**
+     * The game's 21 songs in the Music Room's order (musiccmt.txt), as thbgm.fmt names them:
+     * the numbers in the names do not follow the Music Room's (No.2 is th08_00, No.16 is
+     * th08_13b, and there is no th08_02 or th08_21).
+     */
+    private static final String[] FMT_NAMES = {
+        "th08_01", "th08_00", "th08_03", "th08_04", "th08_05", "th08_06", "th08_07",
+        "th08_08", "th08_09", "th08_10", "th08_11", "th08_12", "th08_13", "th08_14",
+        "th08_15", "th08_13b", "th08_18", "th08_19", "th08_16", "th08_17", "th08_20",
+    };
+    static final int TRACK_COUNT = FMT_NAMES.length;
 
     // AudioFormat.ENCODING_PCM_24BIT_PACKED / ENCODING_PCM_32BIT (API 31; decoders on older
     // systems never report them).
@@ -73,9 +83,9 @@ final class MusicReplacer {
         return new File(ctx.getFilesDir(), "music");
     }
 
-    /** "th08_01" for the first song. */
+    /** The song's name in thbgm.fmt: "th08_01" for No.1, "th08_00" for No.2. */
     static String baseName(int track) {
-        return String.format(Locale.ROOT, "th08_%02d", track + 1);
+        return FMT_NAMES[track];
     }
 
     static File wav(Context ctx, int track) {

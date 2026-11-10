@@ -32,7 +32,8 @@ import java.util.zip.ZipOutputStream;
  * Backup and restore of everything the port keeps for the player, as one ZIP file they keep
  * wherever they like: the high scores and play records (score.dat), the game's options
  * (th08.cfg), replays, the launcher's settings and, optionally, their replaced music
- * (music/th08_NN.wav and .pos). The game's own files (th08.dat, th08.exe, thbgm.dat, the
+ * (music/{@code song}.wav and .pos, by the song's thbgm.fmt name). The game's own files
+ * (th08.dat, th08.exe, thbgm.dat, the
  * imported English patch) and downloaded game text are left out: the player imports or
  * downloads those again.
  */
@@ -47,7 +48,9 @@ final class Backup {
     private static final int MAX_REPLAYS = 2000;
     // Only these paths are ever written by a restore (no "..", no other folders).
     private static final Pattern REPLAY = Pattern.compile("[A-Za-z0-9_\\-]{1,40}\\.rpy");
-    private static final Pattern MUSIC = Pattern.compile("th08_(0[1-9]|1[0-9]|20)\\.(wav|pos)");
+    // The songs' thbgm.fmt names (MusicReplacer.baseName): th08_00, th08_01, th08_03 .. th08_20
+    // and th08_13b.
+    private static final Pattern MUSIC = Pattern.compile("th08_(0[013-9]|1[0-9]|20|13b)\\.(wav|pos)");
 
     // A backup or restore runs on its own thread; the launcher keeps imports out meanwhile.
     private static final AtomicBoolean BUSY = new AtomicBoolean();
