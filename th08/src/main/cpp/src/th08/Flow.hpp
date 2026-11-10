@@ -6,6 +6,7 @@
 // ("surfaces"), ASCII strings from ascii.anm, Shift-JIS text rendered into text.anm sprites
 // and full-screen fades.
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -89,6 +90,10 @@ struct FlowContext {
 
     std::function<void(Scene)> request;  // acted on at the start of the next pass
     std::function<void()> saveConfig;    // writes th08.cfg
+    // Called whenever the game plays a song (the music-play wrappers): marks its Music Room
+    // track heard (spec §4.9). Not called for the Music Room's own playback.
+    std::function<void(std::string_view path)> musicPlayed;
+    const std::array<std::uint8_t, 32>* musicHeard = nullptr;  // score.dat's PLST flags
     Scene previous = Scene::Init;        // the Supervisor's previous scene
 
     // Unlocks (spec 5.1), from score.dat once it is ported.
@@ -101,6 +106,9 @@ struct FlowContext {
     bool practice = false, spellPractice = false;
 
     void playSound(int id) const;
+    void notePlayed(std::string_view path) const {
+        if (musicPlayed) musicPlayed(path);
+    }
 };
 
 // A picture from the archive (JPEG or PNG) as an opaque background, drawn 1:1 at integer

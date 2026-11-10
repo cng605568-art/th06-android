@@ -3,6 +3,7 @@
 #include <format>
 #include <fstream>
 #include <iterator>
+#include <random>
 
 #include "core/Log.hpp"
 #include "gfx/ProceduralArt.hpp"
@@ -23,7 +24,8 @@ const GameInfo& Th08Game::info() const {
 }
 
 Th08Game::~Th08Game() {
-    if (menu_) saveConfig();
+    if (menu_ || musicRoom_) saveConfig();
+    musicRoom_.reset();
     if (music_) music_->shutdown();
 }
 
@@ -57,6 +59,63 @@ void Th08Game::saveConfig() const {
     const auto bytes = config_.save();
     std::ofstream f(storage_ + "th08.cfg", std::ios::binary | std::ios::trunc);
     if (f) f.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+}
+
+// score.dat as the port keeps it (the app's own copy): written whenever a record the port
+// tracks changes, as a whole new file (spec_files §5.2).
+void Th08Game::saveScores() {
+    if (storage_.empty()) return;
+    std::vector<std::uint8_t> image = scores_.imageToSave();
+    // The two random header bytes; not from the game's RNG, so saving draws nothing from it.
+    std::minstd_rand bytesRng(static_cast<std::uint32_t>(ticks_ * 2654435761u + scores_.totalPlays + 1));
+    const auto seed = static_cast<std::uint8_t>(bytesRng() & 0xFF), filler = static_cast<std::uint8_t>(bytesRng() & 0xFF);
+    const auto bytes = encodeScoreFile(image, seed, filler);
+    std::ofstream f(storage_ + "score.dat", std::ios::binary | std::ios::trunc);
+    if (!f) {
+        log::warn("score.dat could not be written");
+        return;
+    }
+    f.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    // Later saves patch the image just written (a fresh one when there was no file).
+    if (const auto decoded = decodeScoreFile(bytes)) {
+        ScoreData reread;
+        if (parseScoreImage(*decoded, reread)) {
+            scores_.image = std::move(reread.image);
+            scores_.plstOffset = reread.plstOffset;
+        }
+    }
+}
+
+// The Supervisor's scene change (spec §1.2), at the start of the pass after the request.
+void Th08Game::applyScene() {
+    const Scene from = active_, to = requested_;
+    active_ = to;
+    flow_.previous = from;
+    std::string err;
+    if (to == Scene::Exit) {
+        quit_ = true;
+        return;
+    }
+    if (to == Scene::MusicRoom) {
+        menu_.reset();
+        musicRoom_ = std::make_unique<MusicRoom>(flow_);
+        if (musicRoom_->create(&err)) return;
+        log::warn("The Music Room could not be built: {}", err);
+        musicRoom_.reset();
+        active_ = requested_ = Scene::MainMenu;  // as Init
+    }
+    if (active_ == Scene::MainMenu) {
+        musicRoom_.reset();
+        menu_ = std::make_unique<MainMenu>(flow_);
+        if (!menu_->create(&err)) {
+            log::warn("The title could not be built: {}", err);
+            menu_.reset();
+        }
+        return;
+    }
+    log::warn("Scene {} is not ported yet: back to the title", static_cast<int>(to));
+    requested_ = Scene::MainMenu;
+    applyScene();
 }
 
 bool Th08Game::start(const GameContext& ctx) {
@@ -142,10 +201,13 @@ bool Th08Game::start(const GameContext& ctx) {
     flow_.music = music_.get();
     flow_.tables = tablesLoaded_ ? &tables_ : nullptr;
     flow_.config = &config_;
-    flow_.request = [this](Scene s) {
-        if (s == Scene::Exit) quit_ = true;
-    };
+    flow_.request = [this](Scene s) { requested_ = s; };
     flow_.saveConfig = [this]() { saveConfig(); };
+    if (const auto txt = ctx.vfs->read("musiccmt.txt")) musicTracks_ = parseMusicComments(*txt);
+    flow_.musicHeard = &scores_.musicHeard;
+    flow_.musicPlayed = [this](std::string_view path) {
+        if (scores_.setMusicHeard(musicTrackIndex(musicTracks_, path))) saveScores();
+    };
     flow_.extraUnlocked = scores_.extraUnlocked();
     flow_.spellPracticeUnlocked = scores_.spellPracticeUnlocked();
     flow_.solosUnlocked = scores_.solosUnlocked();
@@ -161,9 +223,14 @@ bool Th08Game::start(const GameContext& ctx) {
 void Th08Game::tick(const InputState& input) {
     ++ticks_;
     if (music_) music_->fadeStep();
-    if (menu_) {
+    if (menu_ || musicRoom_) {
         input_.sample(buttonWord(input));
-        menu_->update(input_);
+        if (requested_ != active_) {
+            applyScene();
+            input_.clear();  // the transition zeroes the raw input and the repeat flag
+        }
+        if (musicRoom_) musicRoom_->update(input_);
+        else if (menu_) menu_->update(input_);
     } else if (input.quit) {
         quit_ = true;
     }
@@ -172,6 +239,10 @@ void Th08Game::tick(const InputState& input) {
 }
 
 void Th08Game::render(SpriteSink& sink, float, const FrameInfo&) {
+    if (musicRoom_) {
+        musicRoom_->draw(sink);
+        return;
+    }
     if (menu_) {
         menu_->draw(sink);
         return;
@@ -191,7 +262,7 @@ void Th08Game::render(SpriteSink& sink, float, const FrameInfo&) {
 }
 
 void Th08Game::logStatus(const FrameInfo& frame) const {
-    log::info("fps {:.1f} | ticks {} | {}", frame.fps, frame.ticks, menu_ ? "title" : "status screen");
+    log::info("fps {:.1f} | ticks {} | {}", frame.fps, frame.ticks, musicRoom_ ? "Music Room" : menu_ ? "title" : "status screen");
 }
 
 }  // namespace touhou::th08

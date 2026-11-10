@@ -3,6 +3,7 @@
 // data only; with TH08_REAL_DAT=<path to th08.dat> the player's own archive is also opened
 // and a few members are checked against the spec's SHA-256 values (never in CI).
 
+#include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -23,6 +24,7 @@
 #include "th08/ExeTables.hpp"
 #include "th08/Flow.hpp"
 #include "th08/MainMenu.hpp"
+#include "th08/MusicRoom.hpp"
 #include "th08/ScoreFile.hpp"
 #include "th08/GameConfig.hpp"
 #include "th08/GameFiles.hpp"
@@ -490,6 +492,61 @@ void testScoreFile() {
     withVrsm.insert(withVrsm.end(), v.begin(), v.end());
     CHECK(th08::parseScoreImage(withVrsm, sd2));  // no exe to check against
     CHECK(!th08::parseScoreImage(withVrsm, sd2, std::make_pair(840704, 1)));
+
+    // Music Room flags (PLST +0x208): read, set, and patched into the saved image, every other
+    // byte carried over.
+    Bytes heard = image;
+    const std::size_t plstAt = 0x1C + 0x0C + 13 * 0x24;
+    CHECK(std::memcmp(heard.data() + plstAt, "PLST", 4) == 0);
+    heard[plstAt + 0x208 + 0] = 1;
+    th08::ScoreData sd3;
+    CHECK(th08::parseScoreImage(heard, sd3) && sd3.plstOffset == plstAt);
+    CHECK(sd3.musicHeard[0] == 1 && sd3.musicHeard[1] == 0);
+    CHECK(!sd3.setMusicHeard(0) && sd3.setMusicHeard(5) && !sd3.setMusicHeard(32) && !sd3.setMusicHeard(-1));
+    const Bytes saved = sd3.imageToSave();
+    CHECK(saved.size() == heard.size());
+    std::size_t changed = 0;
+    for (std::size_t i = 0; i < saved.size(); ++i) changed += saved[i] != heard[i] ? 1 : 0;
+    CHECK(changed == 1 && saved[plstAt + 0x208 + 5] == 1);
+    // No file: a fresh image (TH8K, 13 CLRD, LSNM, FLSP, PLST, VRSM) that reads back as one.
+    th08::ScoreData none;
+    CHECK(none.setMusicHeard(0));
+    const auto fresh = th08::decodeScoreFile(th08::encodeScoreFile(none.imageToSave(), 7, 9));
+    CHECK(fresh.has_value());
+    th08::ScoreData sd4;
+    CHECK(fresh && th08::parseScoreImage(*fresh, sd4, std::make_pair(840704, static_cast<std::int32_t>(2724749753u))));
+    CHECK(sd4.musicHeard[0] == 1 && sd4.musicHeard[1] == 0 && sd4.totalPlays == 0 && !sd4.extraUnlocked());
+    CHECK(fresh && fresh->size() == 1144);  // the size of a fresh PC file's image
+    CHECK(sd4.clears[12].noContinue[4] == 1 && sd4.clears[0].reached[0] == 1);
+    // A valid file without a PLST record gets one appended.
+    Bytes noPlst(0x1C, 0);
+    const Bytes key = scoreRecord("TH8K", 0x0C, 1);
+    noPlst.insert(noPlst.end(), key.begin(), key.end());
+    th08::ScoreData sd5;
+    CHECK(th08::parseScoreImage(noPlst, sd5) && sd5.plstOffset == 0);
+    sd5.setMusicHeard(2);
+    th08::ScoreData sd6;
+    CHECK(th08::parseScoreImage(sd5.imageToSave(), sd6) && sd6.musicHeard[2] == 1 && sd6.image.size() == 0x1C + 0x0C + 0x228);
+}
+
+// musiccmt.txt: path, title, comment lines (line 0 always empty), blank lines dropped, a
+// line starting with '@' ends a track, at most 32 tracks.
+void testMusicComments() {
+    const std::string text =
+        "a header line before the first track\r\n"
+        "@bgm/a.mid\r\nTitle A\r\nNo.1 A\r\n\r\ncomment\r\n\r\n"
+        "@bgm/B.mid\nTitle B\nonly line\n";
+    const auto tracks = th08::parseMusicComments(std::span(reinterpret_cast<const std::uint8_t*>(text.data()), text.size()));
+    CHECK(tracks.size() == 2);
+    if (tracks.size() == 2) {
+        CHECK(tracks[0].path == "bgm/a.mid" && tracks[0].title == "Title A");
+        CHECK(tracks[0].lines[0].empty() && tracks[0].lines[1] == "No.1 A" && tracks[0].lines[2] == "comment" && tracks[0].lines[3].empty());
+        CHECK(tracks[1].path == "bgm/B.mid" && tracks[1].lines[1] == "only line");
+        CHECK(th08::musicTrackIndex(tracks, "BGM\\b.mid") == 1 && th08::musicTrackIndex(tracks, "bgm/c.mid") == -1);
+    }
+    std::string many;
+    for (int i = 0; i < 40; ++i) many += "@bgm/x.mid\nT\nL\n";
+    CHECK(th08::parseMusicComments(std::span(reinterpret_cast<const std::uint8_t*>(many.data()), many.size())).size() == 32);
 }
 
 void testExeCheck() {
@@ -750,8 +807,82 @@ void testRealArchive() {
         pass3(0);
         CHECK(menu3.state() == th08::MainMenu::State::Difficulty && ctx.character == 3);
 
+        // The Music Room: the title's row 6 requests scene 8; locked tracks show "？？？？"
+        // and cannot be played; Cancel requests the title, which comes back on row 6.
+        th08::Scene requested = th08::Scene::MainMenu;
+        ctx.request = [&](th08::Scene sc) { requested = sc; };
+        std::vector<std::string> played;
+        ctx.musicPlayed = [&](std::string_view p) { played.emplace_back(p); };
+        std::array<std::uint8_t, 32> heardFlags{};
+        heardFlags[0] = heardFlags[2] = 1;
+        ctx.musicHeard = &heardFlags;
+        th08::MainMenu menu4(ctx);
+        CHECK(menu4.create(&err));
+        th08::MenuInput in4;
+        auto pass4 = [&](std::uint16_t buttons) {
+            in4.sample(buttons);
+            menu4.update(in4);
+        };
+        for (int i = 0; i < 20; ++i) pass4(0);
+        CHECK(!played.empty() && played[0] == "bgm/th08_01.mid");  // the title theme is heard
+        while (menu4.cursor() != th08::MainMenu::MusicRoom) {
+            pass4(th08::BtnDown);
+            pass4(0);
+        }
+        pass4(th08::BtnShoot);
+        CHECK(requested == th08::Scene::MusicRoom && menu4.removed());
+        ctx.previous = th08::Scene::MainMenu;
+        th08::MusicRoom room(ctx);
+        CHECK(room.create(&err));
+        CHECK(room.tracks().size() == 21);
+        if (room.tracks().size() == 21) {
+            CHECK(room.tracks()[0].path == "bgm/th08_01.mid" && room.tracks()[1].path == "bgm/th08_00.mid");
+            CHECK(room.tracks()[15].path == "bgm/th08_13b.mid" && room.tracks()[18].path == "bgm/th08_16.mid");
+            CHECK(room.tracks()[0].lines[0].empty() && room.tracks()[0].lines[1].rfind("No.1 ", 0) == 0);
+            CHECK(th08::musicTrackIndex(room.tracks(), "bgm/th08_17.mid") == 19);
+        }
+        CHECK(room.unlocked(0) && !room.unlocked(1) && room.unlocked(2));
+        th08::MenuInput in5;
+        auto pass5 = [&](std::uint16_t buttons) {
+            in5.sample(buttons);
+            room.update(in5);
+        };
+        for (int i = 0; i < 8; ++i) pass5(0);
+        pass5(th08::BtnUp);
+        pass5(0);
+        CHECK(room.cursor() == 20 && room.top() == 11);  // wraps to the last track
+        pass5(th08::BtnDown);
+        pass5(0);
+        CHECK(room.cursor() == 0 && room.top() == 0);
+        pass5(th08::BtnDown);
+        pass5(0);
+        pass5(th08::BtnShoot);  // track 2 (No.2) is locked
+        pass5(0);
+        CHECK(room.cursor() == 1 && room.selected() == -1);
+        pass5(th08::BtnDown);
+        pass5(0);
+        pass5(th08::BtnShoot);
+        pass5(0);
+        CHECK(room.selected() == 2);
+        for (int i = 0; i < 9; ++i) {
+            pass5(th08::BtnDown);
+            pass5(0);
+        }
+        CHECK(room.cursor() == 11 && room.top() == 2);
+        RecordingSink sink5;
+        room.draw(sink5);
+        CHECK(sink5.items.size() >= 12);  // background, deco, ten titles and the comment
+        std::printf("  (Music Room: %zu tracks, %zu sprites drawn)\n", room.tracks().size(), sink5.items.size());
+        pass5(th08::BtnBomb);
+        CHECK(requested == th08::Scene::MainMenu && room.done());
+        room.release();
+        CHECK(!lib.loaded(th08::MusicRoom::kSlotMusic));
+        ctx.previous = th08::Scene::MusicRoom;
+        th08::MainMenu menu5(ctx);
+        CHECK(menu5.create(&err) && menu5.cursor() == th08::MainMenu::MusicRoom);
     }
-    // The player's score.dat backup (a fresh file) decodes, with this exe's VRSM.
+    // The player's score.dat backup (a fresh file) decodes, with this exe's VRSM; the port's
+    // fresh image is the same size, and saving it again changes only the flags it sets.
     {
         std::string dir(path);
         dir = dir.substr(0, dir.find_last_of('/') + 1);
@@ -762,6 +893,13 @@ void testRealArchive() {
             th08::ScoreData sd;
             CHECK(image && th08::parseScoreImage(*image, sd, std::make_pair(840704, static_cast<std::int32_t>(2724749753u))));
             CHECK(sd.totalPlays == 0 && !sd.extraUnlocked() && sd.clears[12].reached[0] == 1);
+            CHECK(sd.musicHeard[0] == 1 && sd.musicHeard[1] == 0);  // the title theme
+            CHECK(image && th08::freshScoreImage().size() == image->size());
+            CHECK(sd.setMusicHeard(18) && sd.setMusicHeard(19));  // the ending themes
+            const Bytes again = sd.imageToSave();
+            std::size_t changed = 0;
+            for (std::size_t i = 0; image && i < again.size() && i < image->size(); ++i) changed += again[i] != (*image)[i] ? 1 : 0;
+            CHECK(image && again.size() == image->size() && changed == 2);
         }
     }
     // The version file has the 1.00d line (and its exe checksum, when TH08_REAL_EXE names it).
@@ -811,7 +949,8 @@ int main() {
         {"th08.exe 1.00d check", testExeCheck},
         {"menu input: pressed, auto-repeat, select and cancel", testMenuInput},
         {"th08.cfg: layout, validation, re-initialisation", testGameConfig},
-        {"score.dat: cipher, rolling XOR, checksum, records, unlocks", testScoreFile},
+        {"score.dat: cipher, rolling XOR, checksum, records, unlocks, Music Room flags, saving", testScoreFile},
+        {"musiccmt.txt: tracks, comment lines, track lookup", testMusicComments},
         {"ANM v3: files, sprites by position, opcodes 9/33/82-89, interrupt return, freeze", testAnm},
         {"version file: every matching line, exe checksum", testVersionFile},
         {"the player's th08.dat (TH08_REAL_DAT)", testRealArchive},

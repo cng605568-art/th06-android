@@ -1,7 +1,7 @@
 #pragma once
 
-// Imperishable Night as the host runs it: the title screen and, as they are ported from the
-// clean-room specs, the game's other screens. A status screen says what is missing when the
+// Imperishable Night as the host runs it: the Supervisor's scenes as they are ported from the
+// clean-room specs (so far the main menu and the Music Room). A status screen says what is missing when the
 // player's files are not there (th08.dat 1.00d, th08.exe 1.00d, thbgm.dat).
 
 #include <cstdint>
@@ -17,6 +17,7 @@
 #include "th08/GameConfig.hpp"
 #include "th08/GameFiles.hpp"
 #include "th08/MainMenu.hpp"
+#include "th08/MusicRoom.hpp"
 #include "th08/ScoreFile.hpp"
 #include "th08/SoundPlayer.hpp"
 
@@ -46,8 +47,12 @@ class Th08Game final : public Game {
     void logSummary() const override {}
     void devCommand(DevCommand) override {}
 
+    Scene scene() const { return active_; }
+
   private:
     void saveConfig() const;
+    void saveScores();
+    void applyScene();
 
     const UiArt* ui_ = nullptr;
     FolderReport folder_;
@@ -65,6 +70,9 @@ class Th08Game final : public Game {
     FlowContext flow_;
     MenuInput input_;
     std::unique_ptr<MainMenu> menu_;
+    std::unique_ptr<MusicRoom> musicRoom_;
+    std::vector<MusicTrack> musicTracks_;  // musiccmt.txt: a played song's Music Room index
+    Scene active_ = Scene::MainMenu, requested_ = Scene::MainMenu;
     bool quit_ = false;
     std::uint64_t ticks_ = 0;
 };

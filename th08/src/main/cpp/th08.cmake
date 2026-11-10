@@ -16,6 +16,7 @@ add_library(th08_game STATIC
   ${TH08_SRC}/th08/GameConfig.cpp
   ${TH08_SRC}/th08/GameFiles.cpp
   ${TH08_SRC}/th08/MainMenu.cpp
+  ${TH08_SRC}/th08/MusicRoom.cpp
   ${TH08_SRC}/th08/ScoreFile.cpp
   ${TH08_SRC}/th08/SoundPlayer.cpp
   ${TH08_SRC}/th08/Version.cpp)

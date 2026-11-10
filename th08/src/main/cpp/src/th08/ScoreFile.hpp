@@ -4,8 +4,9 @@
 // on disk the block cipher (key 0x59, step 0x79, block 0x100, limit 0xC00) over TH07's
 // rolling XOR over a 0x1C-byte header and an LZSS body of tagged records (TH8K, HSCR, CLRD,
 // CATK, PSCR, LSNM, FLSP, PLST, VRSM). This reads what the menus need so far: the clear
-// records (the unlocks), the play statistics' total play count and the Last Word flags; the
-// whole decoded image is kept so a later writer can carry every record over.
+// records (the unlocks), the play statistics' total play count and Music Room flags, and the
+// Last Word flags. The whole decoded image is kept, and a save writes it back with the fields
+// the port changes patched in, so every record the port does not read yet is carried over.
 
 #include <array>
 #include <cstdint>
@@ -30,8 +31,10 @@ struct ClearRecord {
 struct ScoreData {
     std::array<ClearRecord, kClearRecords> clears{};
     std::uint32_t totalPlays = 0;            // PLST's total row
+    std::array<std::uint8_t, 32> musicHeard{};  // PLST +0x208: Music Room track i has been heard
     std::array<std::uint8_t, 17> lastWords{};  // FLSP: byte k = 205 + k when Last Word 205 + k is unlocked
     std::vector<std::uint8_t> image;         // the decoded header + body (empty: no file)
+    std::size_t plstOffset = 0;              // the PLST record the image's flags come from (0: none)
 
     // The unlocks (spec_flow_menus §5.1): teams only, Easy-Lunatic.
     bool extraUnlocked() const;         // any team: a no-continue Final B clear
@@ -39,7 +42,17 @@ struct ScoreData {
     bool solosUnlocked() const;         // all four teams: a no-continue Final B clear
     bool teamHasNoContinueFinalB(int team) const;
     bool teamHasFinalA(int team) const;
+
+    // Marks Music Room track `index` (musiccmt.txt order) as heard; true when it was not yet.
+    bool setMusicHeard(int index);
+    // The image to save: the loaded one (or a fresh one, spec_files §5.4, when there was no
+    // valid file) with the port's fields patched into its last PLST record.
+    std::vector<std::uint8_t> imageToSave() const;
 };
+
+// A score.dat image with the records a fresh PC install writes (spec_files §5.4-5.5): TH8K,
+// the 13 default CLRD records, LSNM (eight spaces), FLSP, PLST and VRSM for th08.exe 1.00d.
+std::vector<std::uint8_t> freshScoreImage();
 
 // Decodes a score.dat file into its header + body image; nullopt when it is not a valid
 // file (too short, checksum, version, header offset, LZSS).

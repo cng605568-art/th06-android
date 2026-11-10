@@ -127,13 +127,17 @@ void MainMenu::restartTitleSong() {
     ctx_.music->setMode(ctx_.config ? static_cast<int>(ctx_.config->music) : static_cast<int>(BgmPlayer::Wav));
     ctx_.music->load(8, "bgm/th08_01.mid");
     ctx_.music->playLoaded(8);
+    ctx_.notePlayed("bgm/th08_01.mid");
 }
 
 // ---- title (state 0) ------------------------------------------------------------------------
 
 void MainMenu::enterTitle() {
     AnmLibrary& lib = *ctx_.anm;
-    if (firstEntry_ && ctx_.music && ctx_.previous != Scene::ResultViewer) ctx_.music->playLoaded(8);
+    if (firstEntry_ && ctx_.previous != Scene::ResultViewer) {
+        if (ctx_.music) ctx_.music->playLoaded(8);
+        ctx_.notePlayed("bgm/th08_01.mid");
+    }
     // A screen that changed the background (or the first entry) brings title00.png back.
     if (prevState_ == State::Title || isDifficultyState(prevState_) || prevState_ == State::Replays) {
         loadBackground("title/title00.png");
@@ -251,8 +255,13 @@ void MainMenu::title(const MenuInput& in) {
                 stateTimer_ = 0;
                 sendAll(1);
                 break;
+            case MusicRoom:
+                hideDescription();
+                removed_ = true;
+                if (ctx_.request) ctx_.request(Scene::MusicRoom);
+                break;
             default:
-                notPorted();  // Spell Card Practice, Replay, Player Data, Music Room
+                notPorted();  // Spell Card Practice, Replay, Player Data
                 break;
         }
         return;
