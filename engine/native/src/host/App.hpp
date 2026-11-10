@@ -79,6 +79,7 @@ class App {
     int devSeed_ = -1;
     bool devLockstep_ = false;
     std::string devScreenshot_;
+    std::vector<std::uint64_t> devShots_;
     bool devTouch_ = false;
     int devBombFrame_ = -1;
     int devPauseFrame_ = -1;

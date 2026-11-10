@@ -41,8 +41,40 @@ void World::addTimePoints(std::int32_t n) const {
 
 Gameplay::~Gameplay() { end(); }
 
+// The face files (spec_msg_stage_end 2.2): the decor and the two player faces once a game,
+// the stage's boss faces every stage (none in spell practice yet).
+bool Gameplay::loadFaces(bool fresh, std::string* error) {
+    AnmLibrary& lib = *ctx_.anm;
+    if (fresh || !facesLoaded_) {
+        static const char* const kHuman[4] = {"face_rm00.anm", "face_mr00.anm", "face_sk00.anm", "face_ym00.anm"};
+        static const char* const kYoukai[4] = {"face_yk00.anm", "face_al00.anm", "face_rs00.anm", "face_yy00.anm"};
+        const int team = state_.character < 4 ? state_.character : (state_.character - 4) / 2;
+        if (!lib.load(*ctx_.vfs, *ctx_.textures, "face_cdbg.anm", Dialogue::kSlotDecor, error)) return false;
+        if (!state_.spellPractice) {
+            if (!lib.load(*ctx_.vfs, *ctx_.textures, kHuman[team], Dialogue::kSlotFaceHuman, error)) return false;
+            if (!lib.load(*ctx_.vfs, *ctx_.textures, kYoukai[team], Dialogue::kSlotFaceYoukai, error)) return false;
+        }
+        facesLoaded_ = true;
+    }
+    if (!state_.spellPractice) {
+        static const char* const kBoss[9] = {"face_st01.anm", "face_st02.anm", "face_st03.anm", "face_st04a.anm", "face_st04b.anm",
+                                             "face_st05.anm", "face_st06.anm", "face_st06.anm", "face_st08m.anm"};
+        if (!lib.load(*ctx_.vfs, *ctx_.textures, kBoss[state_.stage], Dialogue::kSlotFaceBoss, error)) return false;
+        const char* second = state_.stage == 5 ? "face_st05b.anm" : state_.stage == 7 ? "face_st07.anm" : state_.stage == 8 ? "face_st08.anm" : nullptr;
+        if (second && !lib.load(*ctx_.vfs, *ctx_.textures, second, Dialogue::kSlotFaceBoss2, error)) return false;
+        bossFacesLoaded_ = true;
+    }
+    return true;
+}
+
 void Gameplay::releaseStageFiles() {
     if (!ctx_.anm) return;
+    if (bossFacesLoaded_) {
+        ctx_.anm->release(Dialogue::kSlotFaceBoss);
+        ctx_.anm->release(Dialogue::kSlotFaceBoss2);
+        bossFacesLoaded_ = false;
+    }
+    dialogue_.release();
     background_.release(*ctx_.anm);
     if (effectsLoaded_) ctx_.anm->release(kSlotEffects);
     if (etamaLoaded_) ctx_.anm->release(kSlotEtama);
@@ -56,6 +88,10 @@ void Gameplay::end() {
     if (ctx_.anm) {
         gui_.release(*ctx_.anm);
         player_->releaseAnm(*ctx_.anm);
+        if (facesLoaded_) {
+            for (int slot : {Dialogue::kSlotDecor, Dialogue::kSlotFaceHuman, Dialogue::kSlotFaceYoukai}) ctx_.anm->release(slot);
+            facesLoaded_ = false;
+        }
     }
     if (ctx_.music) ctx_.music->stop();
     running_ = false;
@@ -135,6 +171,8 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
     world_.bullets = bullets_.get();
     world_.enemies = enemies_.get();
     world_.screen = &screen_;
+    world_.msg = &dialogue_;
+    world_.gui = &gui_;
     world_.mode = (state_.practice ? ModePractice : 0u) | (state_.spellPractice ? ModeSpellPractice : 0u);
     // The player (registered before the stage: its shot files every stage, its ANM once).
     if (!player_->load(*ctx_.vfs, *ctx_.textures, lib, state_.character, fresh, error)) return false;
@@ -185,6 +223,46 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
         if (moon_ && moon_->inUse) Effects::drawRing(sink, *moon_, st);
     };
     if (!gui_.stageStart(ctx_, state_, fresh, error)) return false;
+    // The dialogue (not in spell practice) and the faces (spec_msg_stage_end 2).
+    if (!loadFaces(fresh, error)) return false;
+    if (!state_.spellPractice) {
+        Dialogue::Context dc;
+        dc.anm = &lib;
+        dc.textures = ctx_.textures;
+        dc.text = ctx_.text;
+        dc.tables = ctx_.tables;
+        dc.scores = ctx_.scores;
+        // Without th08.exe's table there is no dialogue: the timeline's op 6 does nothing and its
+        // op 7 does not wait.
+        std::string why;
+        if (!dialogue_.load(dc, *ctx_.vfs, state_.stage, state_.character, &why)) {
+            if (ctx_.tables) {
+                if (error) *error = why;
+                return false;
+            }
+            log::warn("th08: {}", why);
+        }
+    }
+    dialogue_.onScriptZero = [this](int) {
+        if (state_.stage >= 6) background_.setSpellBackgrounds(2, 2);
+    };
+    dialogue_.onMusic = [this](int track) {
+        if (!ctx_.music) return;
+        if (track < 0) {
+            ctx_.music->stop();
+            return;
+        }
+        if (ctx_.rng) gui_.musicCaption(*ctx_.rng, track);
+        ctx_.music->playLoaded(track);
+        if (!state_.practice) ctx_.notePlayed(background_.songPath(track));
+    };
+    dialogue_.onResults = [this]() { gui_.stageResults(world_, state_); };
+    dialogue_.onStageEnd = [this]() { stageCleared(); };
+    dialogue_.onMusicFade = [this]() {
+        if (ctx_.music) ctx_.music->fadeOut(4.0f, g_timing.speed);
+    };
+    dialogue_.onWhiteFade = [this]() { screen_.fadeTo(442, 0x00FFFFFFu); };
+    dialogue_.onSound = [this](int id) { world_.playSound(id); };
     // Step 11: the stage's songs into slots 0-2 (blank names skipped); step 13: start them
     // when play begins.
     if (ctx_.music) {
@@ -228,6 +306,7 @@ void Gameplay::menuDone(InGameMenu::Request request) {
             ++state_.continues;
             state_.score = static_cast<std::uint32_t>(state_.continues);
             state_.guiScore = state_.score;
+            state_.rollSpeed = 0;
             state_.lives = static_cast<float>(setup_.lives);
             state_.bombs = static_cast<float>(static_cast<int>(player_->header().bombsPerLife));
             state_.power = 0.0f;
@@ -260,7 +339,7 @@ bool Gameplay::nextStage(std::string* error) {
     state_.stage = next;
     // Next-stage set-up (spec 6.2 step 4): the GUI score catches up; the stage's misses and
     // bombs-used counters are cleared (two anti-tamper regenerations, 8 steps).
-    state_.guiScore = state_.score * 10;
+    state_.guiScore = state_.score;
     if (ctx_.rng) {
         antiTamper(*ctx_.rng);
         antiTamper(*ctx_.rng);
@@ -276,7 +355,7 @@ bool Gameplay::stageEndStep(const MenuInput& in) {
     if (stageEnd_ == 2) {
         stageEnd_ = 3;
         pending_ = Pending::None;
-        state_.guiScore = state_.score * 10;
+        state_.guiScore = state_.score;
         if (state_.practice) {
             pending_ = Pending::Results;
             return true;
@@ -337,8 +416,10 @@ void Gameplay::tick(const MenuInput& in) {
         }
         musicStart_ = 0;
     }
+    state_.rollScore();  // (step 9)
     ZunRng& rng = *ctx_.rng;
-    gameInput_ = in.current() & (BtnShoot | BtnBomb | BtnFocus | BtnUp | BtnDown | BtnLeft | BtnRight);
+    prevGameInput_ = gameInput_;
+    gameInput_ = in.current() & (BtnShoot | BtnBomb | BtnFocus | BtnUp | BtnDown | BtnLeft | BtnRight | BtnSkip);
     world_.stageFrame = static_cast<std::int32_t>(stageFrame_);
     // Screen effects (3), Stage (8), Player (9), enemies (11, with the spell card 12),
     // effects (13), bullets (14), Gui (15).
@@ -351,8 +432,14 @@ void Gameplay::tick(const MenuInput& in) {
     world_.spellCardActive = enemies_->spellCard().active;
     effects_->update(world_);
     bullets_->update(world_);
+    // Gui (15): the HUD update with the results' bonus, stage end and clock count-up, then the
+    // dialogue (nothing while time is stopped).
     gui_.update(rng, state_, player_->position(), world_.timeStop);
-    state_.guiScore = std::max(state_.guiScore, state_.score * 10);
+    if (!world_.timeStop) {
+        const int lives = state_.practice ? 8 : state_.difficulty >= 4 ? 2 : setup_.lives;
+        if (gui_.resultsStep(state_, gameInput_, lives, stageEnd_ == 0)) stageCleared();
+        dialogue_.run(world_, gameInput_, prevGameInput_);
+    }
     // Out of lives: the continue menu (spec_flow 7.3).
     if (player_->continueRequested() && !menu_.active()) {
         if (ctx_.music) ctx_.music->pause();
@@ -373,7 +460,7 @@ void Gameplay::draw(SpriteSink& sink) {
     // The shake moves everything up to the popups; the HUD stays put (spec_anm_text 4.2).
     drawState_.offsetX = screen_.offsetX();
     drawState_.offsetY = screen_.offsetY();
-    background_.stageFinished = false;
+    background_.stageFinished = gui_.stagePictureFinished();
     background_.drawHigh(sink, drawState_);  // 6
     background_.drawLow(sink, drawState_);   // 7 (with effect list B)
     sink.setClip(kPlayfieldX, kPlayfieldY, kPlayfieldW, kPlayfieldH);
@@ -386,6 +473,7 @@ void Gameplay::draw(SpriteSink& sink) {
     effects_->drawListD(sink, drawState_);     // (inside the bullet draw)
     drawState_.offsetX = drawState_.offsetY = 0.0f;
     sink.clearClip();
+    dialogue_.draw(sink, ctx_.ui);            // (the Gui draws the MSG layer before the HUD)
     gui_.draw(sink, state_, ascii_);          // 17
     if (ctx_.anm) ascii_.draw(sink, *ctx_.anm);  // 20
     menu_.draw(sink);                          // (the AsciiManager's menus)

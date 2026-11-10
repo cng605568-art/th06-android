@@ -112,6 +112,8 @@ void Th08Game::applyScene() {
         setup.lives = config_.lives;
         // Developer aid: TH08_DEV_STAGE=<stage index 0-8> starts that stage instead.
         if (const char* dev = std::getenv("TH08_DEV_STAGE"); dev && *dev) setup.stage = std::clamp(std::atoi(dev), 0, kStageCount - 1);
+        // TH08_DEV_PRACTICE=1 makes it a practice game (eight lives).
+        if (const char* dev = std::getenv("TH08_DEV_PRACTICE"); dev && *dev == '1') setup.practice = true;
         // TH08_DEV_CHARACTER=<0-11> plays that character (0-3 teams, 4-11 solos).
         if (const char* dev = std::getenv("TH08_DEV_CHARACTER"); dev && *dev) setup.character = std::clamp(std::atoi(dev), 0, 11);
         if (gameplay_->start(setup, &err)) return;
@@ -262,7 +264,7 @@ void Th08Game::tick(const InputState& input) {
                     const std::string v(h);
                     const std::pair<const char*, std::uint16_t> names[] = {{"shoot", BtnShoot}, {"bomb", BtnBomb}, {"focus", BtnFocus},
                                                                            {"up", BtnUp},       {"down", BtnDown}, {"left", BtnLeft},
-                                                                           {"right", BtnRight}};
+                                                                           {"right", BtnRight}, {"skip", BtnSkip}};
                     for (const auto& [n, b] : names) m |= v.find(n) != std::string::npos ? b : 0;
                 }
                 return m;
@@ -271,6 +273,12 @@ void Th08Game::tick(const InputState& input) {
                 input_.clear();
                 input_.sample(static_cast<std::uint16_t>(buttonWord(input) | devHold));
             }
+            // Developer aid: TH08_DEV_LIVES=1 keeps the lives at 8 (to reach late scenes).
+            static const bool devLives = [] {
+                const char* v = std::getenv("TH08_DEV_LIVES");
+                return v && *v == '1';
+            }();
+            if (devLives && gameplay_->world().state) gameplay_->world().state->lives = 8.0f;
             gameplay_->tick(input_);
             if (gameplay_->outcome() == Gameplay::Outcome::Title) requested_ = Scene::MainMenu;
         } else if (musicRoom_) {

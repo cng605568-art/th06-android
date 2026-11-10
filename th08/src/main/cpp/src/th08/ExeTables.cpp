@@ -86,6 +86,12 @@ bool loadExeTables(std::span<const std::uint8_t> exe, ExeTables& t, std::string*
         words(ExeTables::kExtendExtra, t.extendExtra.size(), [&](std::size_t i, std::uint32_t v) { t.extendExtra[i] = static_cast<std::int32_t>(v); }) &&
         words(ExeTables::kBurstColors, t.burstColors.size(), [&](std::size_t i, std::uint32_t v) { t.burstColors[i] = v; });
     if (!scoring) return fail("scoring tables not in the file");
+    const bool dialogue =
+        words(ExeTables::kMsgFiles, 9 * 12,
+              [&](std::size_t i, std::uint32_t va) { t.msgFiles[i / 12][i % 12] = pe.cString(va, 64); }) &&
+        words(ExeTables::kMsgColors, 12 * 4, [&](std::size_t i, std::uint32_t v) { t.msgColors[i / 4][i % 4] = v; }) &&
+        words(ExeTables::kClearBase, 9, [&](std::size_t i, std::uint32_t v) { t.clearBase[i] = static_cast<std::int32_t>(v); });
+    if (!dialogue) return fail("dialogue tables not in the file");
     return true;
 }
 

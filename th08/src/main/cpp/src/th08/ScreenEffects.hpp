@@ -31,6 +31,8 @@ class ScreenEffects {
     void rampedShake(float amplitude, std::int32_t up, std::int32_t hold, std::int32_t down);
     // Type 3: a playfield flash fading over `frames` frames, `repeats` times.
     void flash(std::int32_t frames, std::int32_t repeats, std::uint32_t color);
+    // Type 4: a full-screen fade to `color` over `frames` frames (MSG op 14), held at the end.
+    void fadeTo(std::int32_t frames, std::uint32_t color);
 
     void update(const World& w);  // calc priority 3
     void draw(SpriteSink& sink, const SpriteRegion* white) const;  // draw priority 21

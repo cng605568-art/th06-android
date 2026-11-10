@@ -65,6 +65,13 @@ struct ExeTables {
     std::array<std::int32_t, 6> extendMain{};
     std::array<std::int32_t, 3> extendExtra{};
     std::array<std::uint32_t, 7> burstColors{};
+    // The dialogue (spec_msg_stage_end §2-§3, §10-§11): the MSG file per stage x character,
+    // the text colours per character x speaker (GDI 0x00BBGGRR), and the stage-clear base per
+    // stage.
+    std::array<std::array<std::string, 12>, 9> msgFiles;
+    std::array<std::array<std::uint32_t, 4>, 12> msgColors{};
+    std::array<std::int32_t, 9> clearBase{};
+    static constexpr std::uint32_t kMsgFiles = 0x004C74C0, kMsgColors = 0x004C7180, kClearBase = 0x004C7158;
     static constexpr std::uint32_t kTimeQuota = 0x004C77F0, kRankTable = 0x004C7880, kExtendMain = 0x004C7A84,
                                    kExtendExtra = 0x004C7A9C, kBurstColors = 0x004C6100;
     static constexpr std::uint32_t kSoundTable = 0x004C8040, kSampleNames = 0x004C81B0;

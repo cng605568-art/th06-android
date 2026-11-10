@@ -31,6 +31,7 @@
 #include "th08/ExeTables.hpp"
 #include "th08/Flow.hpp"
 #include "th08/MainMenu.hpp"
+#include "th08/Msg.hpp"
 #include "th08/MusicRoom.hpp"
 #include "th08/ScoreFile.hpp"
 #include "th08/GameConfig.hpp"
@@ -1241,6 +1242,50 @@ void testRealArchive() {
             CHECK(game->outcome() == th08::Gameplay::Outcome::None && game->stageEndState() == 3);
             run(th08::BtnShoot, 1);
             CHECK(game->outcome() == th08::Gameplay::Outcome::Title);
+        }
+        // The dialogue (spec_msg_stage_end): Stage 1's opening dialogue cancels the bullets, holds
+        // the timeline's op 7 and runs to its end on Skip; the post-boss dialogue shows the results,
+        // whose count-up ends the stage.
+        if (haveTables) {
+            th08::Gameplay::Setup main;
+            main.character = 0;
+            main.difficulty = 1;
+            main.lives = 2;
+            main.stage = 0;
+            CHECK(game->start(main, &err));
+            run(0, 10);
+            th08::Dialogue* d = game->world().msg;
+            CHECK(d && d->loaded());
+            if (d && d->loaded()) {
+                d->start(game->world(), 0);
+                CHECK(d->running() && game->world().dialogue && d->mustWait());
+                int frames = 0;
+                bool released = false;
+                while (d->running() && frames < 6000) {
+                    run(th08::BtnSkip, 1);
+                    released = released || !d->mustWait();
+                    ++frames;
+                }
+                CHECK(!d->running() && !game->world().dialogue && released);
+                std::printf("  (Stage 1's opening dialogue: %d frames on Skip)\n", frames);
+                const std::int64_t before = game->state().score;
+                d->start(game->world(), 1);
+                frames = 0;
+                bool tally = false;
+                while (game->stageEndState() == 0 && frames < 20000) {
+                    run(th08::BtnSkip, 1);
+                    tally = tally || game->gui().resultsState() != 0;
+                    ++frames;
+                }
+                std::printf("  (Stage 1's closing dialogue and results: %d frames on Skip)\n", frames);
+                run(0, 1);
+                CHECK(tally && game->stageEndState() == 1 && game->state().stage == 1);
+                // No time points: the quota is missed and the night moves on an hour.
+                CHECK(game->state().score > before && game->state().nightSteps == 2);
+                run(th08::BtnShoot, 1);
+                run(0, 5);
+                CHECK(game->stageEndState() == 0 && game->state().stage == 1 && game->stageFrame() == 5);
+            }
         }
         // The pause menu stops the game; Shoot on "resume" closes it after 20 passes.
         {

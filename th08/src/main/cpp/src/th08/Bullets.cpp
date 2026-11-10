@@ -911,7 +911,6 @@ void BulletManager::collect(const World& w, Item& it) {
         }
         default: break;
     }
-    g.guiScore = g.score * 10 > g.guiScore ? g.score * 10 : g.guiScore;
 }
 
 // ---- drawing -------------------------------------------------------------------------------

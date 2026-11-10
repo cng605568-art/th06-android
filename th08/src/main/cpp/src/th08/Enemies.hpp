@@ -173,6 +173,9 @@ class EnemyManager {
     void bombUsed();       // bomb start: capture fails, "bombed during this card" (0x44CBA0)
     void dissolveStart();  // the bosses can no longer be hit by shots
     void dissolveEnd();    // the bosses are finished (familiars dismissed, life 0)
+    // Kill all non-boss enemies (spec 8.10): popups from 2000 in steps of 30 up to `max`, the
+    // returned sum starting at `start` (a dialogue start passes 0, 0 and discards it).
+    std::uint32_t killAllScoring(std::uint32_t max, std::uint32_t start);
 
     // ---- spawning ----
     Enemy& spawn(int sub, const Vec3f& pos, std::int32_t life, std::int32_t item, std::int32_t score, bool mirror);
@@ -236,7 +239,6 @@ class EnemyManager {
     void drops(Enemy& e, bool autoCollect);
     void despawn(Enemy& e);
     void killAllSimple(Enemy* except);
-    std::uint32_t killAllScoring(std::uint32_t max, std::uint32_t start);
     void familiarPreUpdate(Enemy& e);
     void dismissFamiliars(Enemy& e, bool bonus);
     void unlinkFromParent(Enemy& e);

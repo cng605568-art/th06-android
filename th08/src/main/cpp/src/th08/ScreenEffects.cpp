@@ -43,6 +43,15 @@ void ScreenEffects::flash(std::int32_t frames, std::int32_t repeats, std::uint32
     jobs_.push_back(j);
 }
 
+void ScreenEffects::fadeTo(std::int32_t frames, std::uint32_t color) {
+    Job j;
+    j.type = 4;
+    j.frames = frames;
+    j.color = color;
+    j.timer.assign(0);
+    jobs_.push_back(j);
+}
+
 // Each shake frame draws two u32 mod 3 (x, then y): 0 none, 1 +offset, 2 -offset.
 static Vec2f shakeOffset(ZunRng& rng, float offset) {
     Vec2f o;
@@ -88,6 +97,9 @@ void ScreenEffects::update(const World& w) {
                 if (w.rng) offset_ = shakeOffset(*w.rng, j.amplitude * f);
                 break;
             }
+            case 4:
+                if (j.timer.current < j.frames) j.timer.tick();
+                break;
             case 3:
                 j.timer.tick();
                 if (j.timer.current >= j.frames) {
@@ -105,6 +117,13 @@ void ScreenEffects::update(const World& w) {
 void ScreenEffects::draw(SpriteSink& sink, const SpriteRegion* white) const {
     if (!white) return;
     for (const Job& j : jobs_) {
+        if (j.type == 4 && j.frames > 0) {
+            const std::uint32_t c = j.color;
+            const auto alpha = static_cast<std::uint8_t>(std::min(255, j.timer.current * 255 / j.frames));
+            sink.fillRect(*white, 0.0f, 0.0f, 640.0f, 480.0f,
+                          rgba(static_cast<std::uint8_t>(c >> 16), static_cast<std::uint8_t>(c >> 8), static_cast<std::uint8_t>(c), alpha));
+            continue;
+        }
         if (j.type != 3 || j.frames <= 0) continue;
         const std::int32_t a = static_cast<std::int32_t>(j.color >> 24);
         const std::int32_t alpha = std::max(0, a - j.timer.current * a / j.frames);

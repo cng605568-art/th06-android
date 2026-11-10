@@ -9,6 +9,7 @@
 #include "io/Vfs.hpp"
 #include "th08/Background.hpp"
 #include "th08/Effects.hpp"
+#include "th08/Msg.hpp"
 #include "th08/ScreenEffects.hpp"
 #include "th08/ShotData.hpp"
 #include "th08/ExeTables.hpp"
@@ -1366,11 +1367,17 @@ EnemyManager::Exec EnemyManager::execute(Enemy& e, std::uint32_t& ip) {
             for (int k = 0; k < 4; ++k) e.rankAmounts[static_cast<std::size_t>(k)] = static_cast<std::int16_t>(o.I(2 + k));
             break;
         case 174: break;  // the familiar aura (visual)
-        case 179: case 180: break;  // the night clock (GUI)
+        case 179:  // the in-stage night clock: shown, hidden, one step on
+            if (wd.gui && wd.rng) wd.gui->showClock(*wd.rng, g.nightSteps);
+            break;
+        case 180:
+            if (wd.gui) wd.gui->hideClock();
+            break;
         case 181:
             if (g.nightSteps < 12) {
                 wd.playSound(45);
                 ++g.nightSteps;
+                if (wd.gui) wd.gui->clockStep(g.nightSteps);
             }
             break;
         case 112:
@@ -1528,8 +1535,15 @@ void EnemyManager::runTimelines() {
                         if (!gated) timelineSpawn(rec, op);
                         break;
                     case 15: timelineSpawn(rec, 0); break;
-                    case 6: break;  // dialogue (to come)
-                    case 7: break;  // waits for the dialogue (none yet)
+                    case 6:  // start dialogue n
+                        if (w().msg) w().msg->start(w(), eclI32(rec + 8));
+                        break;
+                    case 7:  // wait while the dialogue says so (each MSG op 6 lets one frame through)
+                        if (w().msg && w().msg->mustWait()) {
+                            t.clock.decrement(1);
+                            stopped = true;
+                        }
+                        break;
                     case 8: {
                         Enemy* b = bossAt(eclI32(rec + 8));
                         if (b) b->pendingInterrupt = eclI16(rec + 12);
@@ -2240,14 +2254,32 @@ void EnemyManager::killAllSimple(Enemy* except) {
     }
 }
 
+// Kill all non-boss enemies (spec 8.10, TH07 §8.13; spec_msg_stage_end §4 step 6.2): life 0
+// (they die in the next pass), point bullets (homing, no RNG) at projectiles and every 6th
+// trail node, popups from 2000 in steps of 30 up to `max`, familiars unlinked, a death-callback
+// sub started at once.
 std::uint32_t EnemyManager::killAllScoring(std::uint32_t max, std::uint32_t start) {
+    const World& wd = w();
     std::uint32_t b = 2000, total = start;
+    auto bonusAt = [&](const Vec3f& at) {
+        if (wd.bullets) wd.bullets->spawnItem(wd, at, BulletManager::PointBullet, BulletManager::Homing);
+        total += b;
+        b = std::min(b + 30, max);
+    };
     for (Enemy& e : enemies_) {
         if (!e.active || e.boss || e.cannotDie) continue;
         e.life = 0;
-        total += b;
-        b = std::min(b + 30, max);
+        if (e.projectile) {
+            bonusAt(e.abs);
+            if (e.trailFlags != 0) {
+                for (int j = 0; j < e.trailCount && j < 96; j += 6) bonusAt(e.trail[static_cast<std::size_t>(j)].pos);
+            }
+        }
         if (e.familiar) unlinkFromParent(e);
+        if (e.deathSub >= 0) {
+            startSub(e.ctx, e.deathSub);
+            e.deathSub = -1;
+        }
     }
     return total;
 }

@@ -7,6 +7,8 @@
 #include "gfx/SpriteSink.hpp"
 #include "gfx/ProceduralArt.hpp"
 #include "io/Vfs.hpp"
+#include "th08/ExeTables.hpp"
+#include "th08/World.hpp"
 
 namespace touhou::th08 {
 
@@ -78,7 +80,199 @@ bool Gui::stageStart(const FlowContext& ctx, const GameState& g, bool firstStage
     nightCaption_.start(lib, rng, kSlotAscii, 3);
     refresh_.fill(2);
     fullRedraw_ = 16;
+    // The results of the previous stage go (the total is kept: frame F shows it [QUIRK]).
+    resultsState_ = 0;
+    displayed_ = 0;
+    stage_ = g.stage;
+    practice_ = g.practice;
+    picture_ = AnmVm{};
+    hasPicture_ = false;
+    clockShown_ = false;
     return true;
+}
+
+// ---- the night clock and the music caption ---------------------------------------------------
+
+void Gui::showClock(ZunRng& rng, int steps) {
+    if (!anm_) return;
+    stageClock_ = AnmVm{};
+    stageClock_.start(*anm_, rng, kSlotTimes, 2);
+    stageClock_.selectSprite(steps);
+    clockShown_ = true;
+}
+
+void Gui::hideClock() {
+    stageClock_ = AnmVm{};
+    stageClock_.color &= 0x00FFFFFFu;
+    clockShown_ = false;
+}
+
+void Gui::clockStep(int steps) {
+    stageClock_.selectSprite(steps);
+    stageClock_.interrupt(steps >= 12 ? 2 : 1);
+}
+
+void Gui::musicCaption(ZunRng& rng, int track) {
+    if (!anm_ || !anm_->loaded(kSlotStageText)) return;
+    AnmVm& vm = stageText_[3];
+    vm = AnmVm{};
+    vm.start(*anm_, rng, kSlotStageText, 3);
+    vm.selectSprite(3 + track);
+    hasStageText_[3] = true;
+}
+
+// ---- results ---------------------------------------------------------------------------------
+
+void Gui::stageResults(const World& w, GameState& g) {
+    points_ = g.stagePointItems;
+    time_ = g.timePoints;
+    graze_ = g.stageGraze;
+    before_ = 660 + 30 * g.nightSteps;
+    // The night advance (0x43C35F): stages 1-5 one step with the quota met, else two; the
+    // finals none; Extra four. A plain add (no cap, no RNG).
+    if (g.stage <= 5) advance_ = g.timePoints >= g.timeQuota ? 1 : 2;
+    else if (g.stage <= 7) advance_ = 0;
+    else advance_ = 4;
+    g.nightSteps += advance_;
+    base_ = w.tables ? w.tables->clearBase[static_cast<std::size_t>(std::clamp(g.stage, 0, 8))] : 1000000;
+    target_ = 660 + 30 * g.nightSteps;
+    displayed_ = before_;
+    delay_ = 0;
+    resultsState_ = 1;
+    w.mode |= ModeResults;
+    if (anm_ && w.rng) {
+        if (g.stage < 6) {
+            nightCaption_ = AnmVm{};
+            nightCaption_.start(*anm_, *w.rng, kSlotAscii, 3);
+            nightCaption_.selectSprite(128 + advance_);
+            picture_ = AnmVm{};
+            picture_.start(*anm_, *w.rng, kSlotLoading, 0);
+            hasPicture_ = true;
+        } else {
+            nightCaption_.current = nullptr;
+        }
+        nightCaption_.interrupt(1);
+    }
+    if (g.stage >= 6) g.extends = -1;  // no extend after the final results
+    // The Ghost team's bomb (characters 3, 10, 11), stages 1-5 only.
+    if (g.stage < 6 && g.bombs < 3.0f && (g.character == 3 || g.character == 10 || g.character == 11)) {
+        g.bombs += 1.0f;
+        if (w.rng) antiTamper(*w.rng);
+        w.playSound(35);
+        refresh_[1] = 2;
+    }
+}
+
+bool Gui::resultsStep(GameState& g, std::uint16_t gameInput, int configuredLives, bool stageEndIdle) {
+    configuredLives_ = configuredLives;
+    if (hasPicture_ && anm_) {
+        // (ticked by the update; nothing simulation-relevant)
+    }
+    // The bonus (0x435F21), the first update after op 9.
+    if (resultsState_ == 1) {
+        std::int32_t b = base_ + graze_ * 50 + points_ * 5000 + time_ * 100;
+        if (g.stage >= 6 && !g.practice) b += g.livesI() * 2500000 + g.bombsI() * 500000;
+        if (g.stage == 7) b += (12 - g.nightSteps) * 2000000;
+        switch (g.difficulty) {
+            case 0: b /= 2; break;
+            case 2: b = b * 12 / 10; break;
+            case 3: b = b * 15 / 10; break;
+            case 4: b *= 2; break;
+            default: break;
+        }
+        switch (configuredLives) {
+            case 3: b = b * 5 / 10; break;
+            case 4: b = b * 2 / 10; break;
+            case 5: b /= 10; break;
+            case 6: b /= 20; break;
+            default: break;
+        }
+        total_ = b;
+        log::info("th08: stage {} clear bonus {} (score {})", g.stage + 1, b, g.score);
+        for (int i = 0; i < 10; ++i) g.score += static_cast<std::uint32_t>(b / 10);
+        resultsState_ = 2;
+    }
+    // Stages 1-5 end one frame after the clock reaches its target.
+    bool end = false;
+    if (g.stage < 6 && displayed_ != 0 && displayed_ >= target_ && stageEndIdle) end = true;
+    // The count-up.
+    if (displayed_ != 0 && displayed_ != target_) {
+        if (delay_ < 60) {
+            ++delay_;
+        } else if (displayed_ < target_) {
+            ++displayed_;
+            if (gameInput & (BtnShoot | BtnSkip)) displayed_ += 3;
+            if (displayed_ > target_) displayed_ = target_;
+        } else {
+            ++delay_;
+        }
+    }
+    return end;
+}
+
+bool Gui::stagePictureFinished() const { return hasPicture_ && picture_.sprite && picture_.has(AnmVm::Stopped); }
+
+namespace {
+
+std::string clockText(std::int32_t m) {
+    const int h = m / 60;
+    return std::format("{}{:2d}:{:02d}", h < 12 ? "PM" : "AM", h % 12, m % 60);
+}
+
+}  // namespace
+
+// The tally (0x43826B; spec_stage_gui 3.10), every Gui draw while the results are up.
+void Gui::drawResults(const GameState& g, AsciiText& ascii) {
+    const bool finals = g.stage >= 6;
+    float y = (g.stage == 7 || g.stage == 8) ? 80.0f : 96.0f;
+    const float x = 120.0f;
+    ascii.add(x, y, finals ? "All Clear!" : "Stage Clear", 0xFFFFFF40u);
+    y += 32.0f;
+    ascii.add(x, y, std::format("Clear = {:8d}0", base_), 0xFFFFFFFFu);
+    y += 16.0f;
+    ascii.add(x, y, std::format("Point = {:8d}0", points_ * 5000), 0xFFE0E0FFu);
+    y += 16.0f;
+    ascii.add(x, y, std::format("Graze = {:8d}0", graze_ * 50), 0xFFD0D0FFu);
+    y += 16.0f;
+    ascii.add(x, y, std::format("Time  = {:8d}0", time_ * 100), 0xFFD0D0FFu);
+    const std::int32_t frames = std::max(1, g.stageFrames);
+    const std::int32_t human = static_cast<std::int32_t>(static_cast<std::int64_t>(g.stageHuman80) * 10000 / frames);
+    const std::int32_t youkai = static_cast<std::int32_t>(static_cast<std::int64_t>(g.stageYoukai80) * 10000 / frames);
+    y += 16.0f;
+    ascii.add(x, y, std::format("over-80% = {:3d}.{:02d}%", human / 100, human % 100), 0xFFD0D0FFu);
+    y += 16.0f;
+    ascii.add(x, y, std::format("over 80% = {:3d}.{:02d}%", youkai / 100, youkai % 100), 0xFFD0D0FFu);
+    if (finals && !g.practice) {
+        y += 16.0f;
+        ascii.add(x, y, std::format("Player ={:8d}0", g.livesI() * 2500000), 0xFFFFFF80u);
+        y += 16.0f;
+        ascii.add(x, y, std::format("Bomb   = {:7d}0", g.bombsI() * 500000), 0xFFFFFF80u);
+        if (g.stage == 7) {
+            y += 16.0f;
+            ascii.add(x, y, std::format("Last Time = {:2d}:{:02d}", (target_ / 60) % 12, target_ % 60), 0xFFFFFF80u);
+            y += 16.0f;
+            ascii.add(x, y, "Night Bonus", 0xFFFFFF80u);
+            y += 16.0f;
+            ascii.add(x, y, std::format("        {:8d}0", (12 - g.nightSteps) * 2000000), 0xFFFFFF80u);
+        }
+    }
+    static constexpr const char* kRank[5] = {"Easy    Rank*0.5", "Normal  Rank*1.0", "Hard    Rank*1.2", "Lunatic Rank*1.5", "Extra   Rank*2.0"};
+    y += 32.0f;
+    ascii.add(x, y, kRank[std::clamp(g.difficulty, 0, 4)], 0xFFFF8080u);
+    // The lives setting's penalty (main game only).
+    static constexpr const char* kPenalty[4] = {"Player Penalty*0.5", "Player Penalty*0.2", "Player Penalty*0.1", "Player Penalty*0.05"};
+    if (g.difficulty < 4 && !g.practice && configuredLives_ >= 3 && configuredLives_ <= 6) {
+        y += 16.0f;
+        ascii.add(x, y, kPenalty[configuredLives_ - 3], 0xFFFF8080u);
+    }
+    y += 16.0f;
+    ascii.add(x, y, std::format("Total = {:8d}0", total_), 0xFFFFFFFFu);
+    if (!finals) {
+        y += 40.0f;
+        ascii.add(x, y, clockText(before_), 0xFFDFDFDFu);
+        ascii.add(x + 99.0f, y, ">>", 0xFFAFAFAFu);
+        ascii.add(x + 133.0f, y, clockText(displayed_), 0xFFFF8F8Fu);
+    }
 }
 
 void Gui::release(AnmLibrary& anm) {
@@ -97,6 +291,7 @@ void Gui::update(ZunRng& rng, const GameState& g, const Vec3f& playerPos, bool f
     if (!spellPractice_ && hasStageText_[0] && (stageText_[0].color >> 24) != 0) titleClock_.tick(rng);
     nightCaption_.tick(rng);
     stageClock_.tick(rng);
+    if (hasPicture_ && picture_.tick(rng)) hasPicture_ = false;
     // The in-stage clock fades to 64 while the player is under it.
     std::uint32_t a = stageClock_.color >> 24;
     if (playerPos.x >= 64.0f && playerPos.y < 128.0f) {
@@ -113,6 +308,8 @@ void Gui::update(ZunRng& rng, const GameState& g, const Vec3f& playerPos, bool f
 void Gui::draw(SpriteSink& sink, const GameState& g, AsciiText& ascii) {
     if (!loaded_) return;
     const AnmDrawState none;
+    if (hasPicture_) drawVm(sink, picture_, none);
+    if (resultsState_ != 0) drawResults(g, ascii);
     for (int i = 0; i < 4; ++i) {
         if (hasStageText_[static_cast<std::size_t>(i)]) drawVm(sink, stageText_[static_cast<std::size_t>(i)], none);
     }

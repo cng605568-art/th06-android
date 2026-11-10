@@ -17,6 +17,7 @@
 #include "th08/Flow.hpp"
 #include "th08/Gui.hpp"
 #include "th08/InGameMenu.hpp"
+#include "th08/Msg.hpp"
 #include "th08/ScreenEffects.hpp"
 #include "th08/Player.hpp"
 #include "th08/World.hpp"
@@ -68,6 +69,7 @@ class Gameplay {
     const Effects& effects() const { return *effects_; }
     const ScreenEffects& screenEffects() const { return screen_; }
     const InGameMenu& menu() const { return menu_; }
+    const Dialogue& dialogue() const { return dialogue_; }
     BulletManager& bullets() { return *bullets_; }
     EnemyManager& enemies() { return *enemies_; }
     const World& world() const { return world_; }
@@ -80,6 +82,7 @@ class Gameplay {
     void menuDone(InGameMenu::Request request);
     bool stageEndStep(const MenuInput& in);  // true: the pass stops here
     bool nextStage(std::string* error);
+    bool loadFaces(bool fresh, std::string* error);
     void releaseStageFiles();
 
     FlowContext& ctx_;
@@ -93,6 +96,9 @@ class Gameplay {
     std::unique_ptr<EnemyManager> enemies_ = std::make_unique<EnemyManager>();
     ScreenEffects screen_;
     InGameMenu menu_;
+    Dialogue dialogue_;
+    bool facesLoaded_ = false, bossFacesLoaded_ = false;
+    std::uint16_t prevGameInput_ = 0;
     Effect* moon_ = nullptr;  // the 6B moon (special effect slot 12)
     bool pauseRequested_ = false;
     // Stage end (spec 6.3): 0 playing, 2 just ended, 3 waiting for Shoot, 1 the next stage

@@ -15,6 +15,8 @@ class Background;
 class BulletManager;
 class EnemyManager;
 class Effects;
+class Dialogue;
+class Gui;
 class Player;
 class ScreenEffects;
 class SoundPlayer;
@@ -29,6 +31,7 @@ enum ModeFlag : std::uint32_t {
     ModePractice = 1u << 0,
     ModeReplay = 1u << 3,
     ModeDissolve = 3u << 7,     // bits 7-8: ECL opcode 176
+    ModeResults = 1u << 9,      // the stage results are shown (MSG op 9; read by the replay)
     ModeSpellFreeze = 1u << 10, // a hit during a spell card (everything but the stage waits)
     ModeFinalB = 3u << 11,      // bits 11-12: the Final route chosen in the Stage 5 dialogue
     ModeBit13 = 1u << 13,       // stops the doll laser (meaning not traced)
@@ -47,11 +50,13 @@ struct World {
     BulletManager* bullets = nullptr;
     EnemyManager* enemies = nullptr;
     ScreenEffects* screen = nullptr;
+    Dialogue* msg = nullptr;
+    Gui* gui = nullptr;
 
     // Game-wide flags any object may change (the objects get the world as const).
     mutable std::uint32_t mode = 0;  // ModeFlag bits
     std::int32_t stageFrame = 0;     // GM+0x3DDC0
-    bool dialogue = false;           // a dialogue script is running
+    mutable bool dialogue = false;   // a dialogue script is running (kept by the Dialogue)
     bool spellCardActive = false;    // Spellcard flag bit 0
     mutable bool timeStop = false;   // GM+0x2C (Sakuya's time stop)
 

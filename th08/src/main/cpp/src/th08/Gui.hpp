@@ -29,7 +29,8 @@ struct GameState {
     int character = 0;   // 0-3 teams, 4-11 solo characters
     int difficulty = 1;  // 0 Easy .. 3 Lunatic, 4 Extra
     bool practice = false, spellPractice = false;
-    std::uint32_t score = 0, guiScore = 0, hiScore = 100000;
+    // Scores in the internal unit (points / 10); the HUD prints them followed by the continue digit.
+    std::uint32_t score = 0, guiScore = 0, hiScore = 100000, rollSpeed = 0;
     int continues = 0, hiScoreContinues = 0;
     float lives = 2, bombs = 3, power = 0;
     std::int32_t graze = 0, stageGraze = 0;
@@ -57,6 +58,27 @@ struct GameState {
     bool y20() const { return gauge >= youkai20; }
     // AddHumanYoukaiGauge (0x43C0BB): ignored during a bomb unless forced; clamped; the
     // display copy follows.
+    // The score roll (spec_flow_menus 6.6 step 9, as TH07): the shown score climbs towards the
+    // score by (score - shown) >> 5 a frame, clamped to 1 .. 578910, never slowing down; the
+    // hi-score follows the shown score.
+    void rollScore() {
+        if (score > 999999999u) score = 999999999u;
+        if (guiScore == score) return;
+        if (score < guiScore) score = guiScore;
+        std::uint32_t step = (score - guiScore) >> 5;
+        step = step < 1u ? 1u : step > 578910u ? 578910u : step;
+        if (rollSpeed < step) rollSpeed = step;
+        if (guiScore + rollSpeed > score) rollSpeed = score - guiScore;
+        guiScore += rollSpeed;
+        if (guiScore >= score) {
+            rollSpeed = 0;
+            guiScore = score;
+        }
+        if (guiScore > hiScore) {
+            hiScore = guiScore;
+            hiScoreContinues = continues;
+        }
+    }
     void addGauge(int delta, bool force, bool bombActive) {
         if (bombActive && !force) return;
         gauge = static_cast<std::int16_t>(std::clamp(gauge + delta, static_cast<int>(gaugeMin), static_cast<int>(gaugeMax)));
@@ -83,6 +105,8 @@ struct GameState {
     int powerI() const { return static_cast<int>(power); }
 };
 
+struct World;
+
 class Gui {
   public:
     static constexpr int kSlotFront = 10, kSlotLoading = 12, kSlotStageText = 13, kSlotTimes = 14;
@@ -103,8 +127,30 @@ class Gui {
     const AnmVm& frontVm(int i) const { return front_[static_cast<std::size_t>(i)]; }
     const AnmVm& stageClock() const { return stageClock_; }
 
+    // ---- the night clock (ECL ops 179-181) and the music caption (MSG op 7) ----
+    void showClock(ZunRng& rng, int steps);  // times.anm script 2, sprite = steps
+    void hideClock();
+    void clockStep(int steps);               // interrupt 1, or 2 at dawn (12)
+    void musicCaption(ZunRng& rng, int track);
+
+    // ---- results (spec_msg_stage_end §10-§11) ----
+    // MSG op 9: the snapshots, the night advance, the stage-clear picture and caption, the
+    // finals' extend lock, the Ghost team's bomb.
+    void stageResults(const World& w, GameState& g);
+    // The HUD update's parts after op 9, in order: the bonus (the next frame), the stage end of
+    // stages 1-5 (returned true once the clock has reached its target and the stage end is
+    // idle), the clock count-up (x4 while Shoot or Skip is held, game input).
+    bool resultsStep(GameState& g, std::uint16_t gameInput, int configuredLives, bool stageEndIdle);
+    int resultsState() const { return resultsState_; }
+    std::int32_t resultsTotal() const { return total_; }
+    std::int32_t clockDisplayed() const { return displayed_; }
+    std::int32_t clockTarget() const { return target_; }
+    // The stage-clear picture has stopped: the stage layers are not drawn (spec 3.11).
+    bool stagePictureFinished() const;
+
   private:
     void drawPanel(SpriteSink& sink, const GameState& g, AsciiText& ascii);
+    void drawResults(const GameState& g, AsciiText& ascii);
 
     AnmLibrary* anm_ = nullptr;
     const UiArt* ui_ = nullptr;
@@ -116,6 +162,14 @@ class Gui {
     AnmVm titleClock_, stageClock_, nightCaption_, lastSpellMarker_, difficultyLabel_;
     int frame_ = 0;
     int fullRedraw_ = 0;
+    bool clockShown_ = false;
+    // Results (GI +0x22D84 ...): state 0 none, 1 just shown (the bonus is due), 2 counted.
+    int resultsState_ = 0, stage_ = 0, configuredLives_ = 2;
+    bool practice_ = false;
+    std::int32_t base_ = 0, points_ = 0, graze_ = 0, time_ = 0, advance_ = 0, before_ = 0, target_ = 0, displayed_ = 0,
+                 delay_ = 0, total_ = 0;
+    AnmVm picture_;
+    bool hasPicture_ = false;
     std::array<int, 6> refresh_{};  // lives, bombs, power, graze, point items, time points
 };
 
