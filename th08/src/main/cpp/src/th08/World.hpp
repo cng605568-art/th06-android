@@ -59,7 +59,7 @@ struct World {
     mutable std::uint32_t mode = 0;  // ModeFlag bits
     std::int32_t stageFrame = 0;     // GM+0x3DDC0
     mutable bool dialogue = false;   // a dialogue script is running (kept by the Dialogue)
-    bool spellCardActive = false;    // Spellcard flag bit 0
+    bool spellCardActive() const;    // Spellcard flag bit 0
     mutable bool timeStop = false;   // GM+0x2C (Sakuya's time stop)
     // The screen-effect suppression counter (0x18B8A2C; ECL ex 30): while non-zero, shakes
     // (type 1), fades and flashes are removed. Counted down once a gameplay frame.

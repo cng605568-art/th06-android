@@ -281,9 +281,47 @@ void Gui::release(AnmLibrary& anm) {
     loaded_ = false;
 }
 
-void Gui::update(ZunRng& rng, const GameState& g, const Vec3f& playerPos, bool frozen) {
+void Gui::update(ZunRng& rng, const GameState& g, const Vec3f& playerPos, bool frozen, bool dialogueRunning) {
     (void)g;
     if (!loaded_ || frozen) return;
+    msgRunning_ = dialogueRunning;
+    // 1. The boss HUD state machine (spec_spellcard_hud 8.2), only while no dialogue runs. The
+    // label (front VM 12) parks on a stop after its intro, so a boss leaving after it hides the
+    // whole HUD in that frame.
+    if (!dialogueRunning) {
+        AnmVm& label = front_[12];
+        const bool stopped = label.has(AnmVm::Stopped);
+        if (bossPresent_) {
+            if (bossState_ == 0) {
+                label.interrupt(1);
+                bossState_ = 1;
+                bossAlpha_ = 0;
+            } else {
+                if (stopped) bossState_ = 2;
+                bossAlpha_ = bossAlpha_ < 252 ? bossAlpha_ + 4 : 255;
+            }
+        } else if (bossState_ != 0) {
+            if (bossState_ <= 2) {
+                label.interrupt(2);
+                bossState_ = 3;
+            }
+            bossAlpha_ = bossAlpha_ > 0 ? bossAlpha_ - 4 : 0;  // (unsigned)
+            if (stopped) {
+                bossState_ = 0;
+                bossFill_ = 0.0f;
+                bossAlpha_ = 0;
+            }
+        }
+        if (bossState_ >= 2) {
+            if (bossFraction_ > bossFill_) {
+                bossFill_ += 0.01f;
+                if (bossFill_ > bossFraction_) bossFill_ = bossFraction_;
+            } else if (bossFraction_ < bossFill_) {
+                bossFill_ -= 0.02f;
+                if (bossFill_ < bossFraction_) bossFill_ = bossFraction_;
+            }
+        }
+    }
     for (AnmVm& vm : front_) vm.tick(rng);
     for (int i = 0; i < 4; ++i) {
         if (hasStageText_[static_cast<std::size_t>(i)]) stageText_[static_cast<std::size_t>(i)].tick(rng);
@@ -302,7 +340,105 @@ void Gui::update(ZunRng& rng, const GameState& g, const Vec3f& playerPos, bool f
     stageClock_.color = withAlpha(stageClock_.color, a);
     lastSpellMarker_.tick(rng);
     difficultyLabel_.tick(rng);
+    // 7. The timed messages (spec_spellcard_hud 9.2): A and B slide in from the right.
+    static constexpr std::int32_t kLife[3] = {250, 180, 280};
+    for (std::size_t k = 0; k < messages_.size(); ++k) {
+        Message& m = messages_[k];
+        if (!m.on) continue;
+        if (k < 2) m.x = m.timer.current < 30 ? m.timer.asFloat() * -312.0f / 30.0f + 416.0f : 104.0f;
+        if (m.timer.current >= kLife[k]) m.on = false;
+        m.timer.tick();
+    }
     ++frame_;
+}
+
+// ---- the boss HUD and the messages (spec_spellcard_hud §8-§9) -------------------------------
+
+void Gui::setBossSegment(int i, float start, float end, std::uint32_t color) {
+    if (i < 0 || i >= 8) return;
+    segStart_[static_cast<std::size_t>(i)] = start;
+    segEnd_[static_cast<std::size_t>(i)] = end;
+    segColor_[static_cast<std::size_t>(i)] = color;
+}
+
+void Gui::clearBossSegments() {
+    segStart_.fill(0.0f);
+    segEnd_.fill(0.0f);
+}
+
+void Gui::messageA(std::int32_t value) {
+    messages_[0] = Message{true, 416.0f, 48.0f, value, 0, Timer{0, 0.0f, 0}};
+    requestRedraw(2);
+}
+
+void Gui::messageB(std::int32_t value, int type) {
+    messages_[1] = Message{true, 416.0f, 168.0f, value, type, Timer{0, 0.0f, 0}};
+    requestRedraw(2);
+}
+
+void Gui::messageC(std::int32_t value) {
+    messages_[2] = Message{true, 224.0f, 16.0f, value, 0, Timer{0, 0.0f, 0}};
+    requestRedraw(2);
+}
+
+void Gui::bossTimerSounds(const World& w) {
+    if (!bossPresent_ || bossState_ == 0 || msgRunning_) return;
+    const int v = std::min(bossSeconds_, 99);
+    if (bossSeconds_ != lastSeconds_) {
+        if (v < 3) w.playSound(38);
+        else if (v < 10) w.playSound(29);
+    }
+    lastSeconds_ = bossSeconds_;
+}
+
+// DrawHud2's boss part (spec 8.3): the bar, its segments, the name label, the life markers and
+// the timer.
+void Gui::drawBossHud(SpriteSink& sink, AsciiText& ascii) {
+    if (msgRunning_ || !bossPresent_ || bossState_ == 0) return;
+    const std::uint32_t a = (bossAlpha_ & 0xFFu) << 24;
+    gradientRect(sink, ui_, 64.0f, 19.0f, 64.0f + bossFill_ * 320.0f, 23.0f, a | 0xFFFFFFu, a | 0x202060u);
+    for (std::size_t i = 0; i < 8; ++i) {
+        if (segEnd_[i] == 0.0f || !(segStart_[i] < bossFill_)) continue;
+        const float e = std::min(segEnd_[i], bossFill_);
+        const std::uint32_t c = segColor_[i];
+        const std::uint32_t dark = static_cast<std::uint32_t>(static_cast<std::int32_t>(c) >> 2) & 0x3F3F3Fu;
+        gradientRect(sink, ui_, 64.0f + segStart_[i] * 320.0f, 19.0f, 64.0f + e * 320.0f, 23.0f, a | (c & 0xFFFFFFu), a | dark);
+    }
+    const AnmDrawState none;
+    drawVm(sink, front_[12], none);
+    const int n = lifeMarkers_;
+    const int gap = n <= 5 ? 2 : 1;
+    for (int i = 0; i < n; ++i) {
+        const float x0 = static_cast<float>(static_cast<std::int32_t>(static_cast<float>(i) * 26.0f) / n) + 35.0f;
+        const float x1 = static_cast<float>(static_cast<std::int32_t>(static_cast<float>(i + 1) * 26.0f) / n) + 35.0f - static_cast<float>(gap);
+        const auto top = static_cast<std::uint32_t>(0xFFFFFF - i * 255 / 9);
+        gradientRect(sink, ui_, x0, 19.0f, x1, 23.0f, a | top, a | 0x202020u);
+    }
+    static constexpr std::uint32_t kTimer[4] = {0xA0D0FFu, 0xA080FFu, 0xE080C0u, 0xFF4040u};
+    const int v = std::min(bossSeconds_, 99);
+    const std::uint32_t c = bossSeconds_ >= 20 ? kTimer[0] : bossSeconds_ >= 10 ? kTimer[1] : bossSeconds_ >= 5 ? kTimer[2] : kTimer[3];
+    ascii.add(384.0f, 16.0f, std::format("{:02d}", std::max(v, 0)), a | c);
+}
+
+void Gui::drawMessages(SpriteSink& sink, AnmLibrary& anm) {
+    const Message& ma = messages_[0];
+    if (ma.on) messageText_.add(ma.x, 48.0f, std::format(" BONUS {:8d}", ma.value), 0xFFFFFF80u);
+    const Message& mb = messages_[1];
+    if (mb.on) {
+        if (mb.type == 1) messageText_.add(mb.x, 168.0f, "Full Power Mode!", 0xFFC0B0FFu);
+        else if (mb.type == 5 || mb.type == 6)
+            messageText_.add(mb.x, 168.0f, mb.type == 5 ? "Spell Bonus Failed" : "Last Spell Failed", 0xFFE0B0FFu, 1.0f, 11.0f, 0.9f);
+    }
+    const Message& mc = messages_[2];
+    if (mc.on) {
+        messageText_.add((384.0f - 17.0f * 14.0f) / 2.0f + 32.0f, 80.0f, "Spell Card Bonus!", 0xFFFF0000u);
+        const std::string v = std::format("+{}", mc.value);
+        messageText_.add((384.0f - static_cast<float>(v.size()) * 28.0f) / 2.0f + 32.0f, 96.0f, v, 0xFFFF8080u, 2.0f);
+    }
+    sink.setClip(kPlayfieldX, kPlayfieldY, kPlayfieldW, kPlayfieldH);
+    messageText_.draw(sink, anm);
+    messageText_.clear();
+    sink.clearClip();
 }
 
 void Gui::draw(SpriteSink& sink, const GameState& g, AsciiText& ascii) {
@@ -316,6 +452,7 @@ void Gui::draw(SpriteSink& sink, const GameState& g, AsciiText& ascii) {
     drawVm(sink, titleClock_, none);
     drawVm(sink, stageClock_, none);
     drawVm(sink, nightCaption_, none);
+    drawBossHud(sink, ascii);
     drawPanel(sink, g, ascii);
 }
 
@@ -359,6 +496,9 @@ void Gui::drawPanel(SpriteSink& sink, const GameState& g, AsciiText& ascii) {
         front_[11].position = {488.0f + 16.0f * static_cast<float>(i), 104.0f, 0.46f};
         drawVm(sink, front_[11], none);
     }
+    // The "Nullity" marker over the lives and bombs rows during a boss Last Spell (spec_spellcard_hud
+    // 8.5; the original paints it on the rows' redraw and leaves it there).
+    if (nullity_) drawVm(sink, lastSpellMarker_, none);
     for (float x : {32.0f, 160.0f, 288.0f}) {
         strip.position = {x, 464.0f, 0.49f};
         drawVm(sink, strip, none);

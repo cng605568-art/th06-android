@@ -157,5 +157,7 @@ void renderSpriteText(TextureLibrary* textures, TextRenderer* text, AnmVm& vm, s
 
 // A full-screen colour overlay (fades), colour 0xAARRGGBB.
 void fillScreen(SpriteSink& sink, const UiArt* ui, std::uint32_t argb);
+// An untextured rectangle with a vertical gradient (0x45B490): `top` and `bottom` 0xAARRGGBB.
+void gradientRect(SpriteSink& sink, const UiArt* ui, float x0, float y0, float x1, float y1, std::uint32_t top, std::uint32_t bottom);
 
 }  // namespace touhou::th08

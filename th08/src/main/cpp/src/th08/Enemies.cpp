@@ -15,6 +15,7 @@
 #include "th08/Msg.hpp"
 #include "th08/ScreenEffects.hpp"
 #include "th08/ShotData.hpp"
+#include "th08/Spellcard.hpp"
 #include "th08/ExeTables.hpp"
 #include "th08/Gui.hpp"
 #include "th08/Player.hpp"
@@ -208,9 +209,14 @@ std::int32_t EnemyManager::readInt(Enemy& e, std::int32_t id) {
         case 10095: return x86ToInt(a.floatB[1]);
         case 10096: return familiarCountOf(e);
         case 10097: return wd.player && wd.player->youkaiInFront() ? 1 : 0;
-        case 10098: return g.timePoints >= g.timeQuota ? 2 : 0;
-        case 10099: return spell_.active ? (spell_.capturable ? 1 : 0) : 0;
-        case 10100: return spell_.timer.current;
+        case 10098: {
+            // The quota test counts the card's time points still to come and the orbs on screen.
+            const std::int32_t pending = wd.spellcard ? wd.spellcard->pendingTime() : 0;
+            const std::int32_t orbs = wd.bullets ? wd.bullets->timeOrbsInUse() : 0;
+            return g.timePoints + pending + orbs >= g.timeQuota ? 2 : 0;
+        }
+        case 10099: return cardFlag();
+        case 10100: return wd.spellcard ? wd.spellcard->timer().current : 0;
         default: return id;
     }
 }
@@ -277,7 +283,7 @@ float EnemyManager::readFloat(Enemy& e, float raw) {
         case 10095: return a.floatB[1];
         case 10096: return static_cast<float>(familiarCountOf(e));
         case 10097: return wd.player && wd.player->youkaiInFront() ? 1.0f : 0.0f;
-        case 10099: return spell_.active ? (spell_.capturable ? 1.0f : 0.0f) : 0.0f;
+        case 10099: return static_cast<float>(cardFlag());
         default: return raw;  // unknown (10098 and 10100 included): the argument word
     }
 }
@@ -400,7 +406,6 @@ bool EnemyManager::stageStart(const World& w, const Vfs& vfs, TextureLibrary& te
     timelines_ = {};
     timelineGate_ = 0;
     signals_.fill(-1);
-    spell_ = SpellCard{};
     bossPresent_ = false;
     bossBar_ = 0;
     managerTimer_ = zeroTimer();
@@ -718,7 +723,7 @@ void EnemyManager::bulletOp(Enemy& e, const std::uint8_t* insConst) {
     s.speed1 = o.FB(3, 4);
     s.angle2 = o.FB(6, 7);
     s.speed2 = o.FB(4, 5);
-    if (!w().spellCardActive) {
+    if (!w().spellCardActive()) {
         const std::int32_t r = w().state->rank;
         auto rankI = [&](std::int16_t lo, std::int16_t hi) { return lo + (hi - lo) * r / 32; };
         s.count1 = static_cast<std::int16_t>(std::max(1, s.count1 + rankI(e.rankAmounts[0], e.rankAmounts[1])));
@@ -1205,7 +1210,7 @@ EnemyManager::Exec EnemyManager::execute(Enemy& e, std::uint32_t& ip) {
             break;
         case 155:
             e.survival = (o.B(0) & 1) != 0;
-            spell_.displayed = 99999990u;
+            if (wd.spellcard) wd.spellcard->setSurvivalCap();
             break;
         case 156:
             e.projectile = o.B(0) != 0;
@@ -1233,6 +1238,10 @@ EnemyManager::Exec EnemyManager::execute(Enemy& e, std::uint32_t& ip) {
                 if (slot == 0) {
                     bossPresent_ = true;
                     bossBar_ = 1.0f;
+                    if (wd.gui) {
+                        wd.gui->setBossPresent(true);
+                        wd.gui->setBossFraction(1.0f);
+                    }
                 }
                 e.boss = true;
                 e.bossId = static_cast<std::uint8_t>(slot);
@@ -1240,6 +1249,7 @@ EnemyManager::Exec EnemyManager::execute(Enemy& e, std::uint32_t& ip) {
             } else {
                 if (e.bossId < 4) {
                     bossPresent_ = false;
+                    if (wd.gui) wd.gui->setBossPresent(false);
                     bosses_[e.bossId] = nullptr;
                 }
                 e.boss = false;
@@ -1260,16 +1270,34 @@ EnemyManager::Exec EnemyManager::execute(Enemy& e, std::uint32_t& ip) {
             ++e.circleCount;
             break;
         }
-        case 158: case 148: break;  // the GUI's bar segments and life markers (boss HUD to come)
-        case 122: spellCardStart(e, p); break;
-        case 123: spellCardEnd(); break;
-        case 164: break;
+        case 158: {  // a bar segment: (I1, I2) / max life, colour I3 (read order I0, I2, I1, I3)
+            const std::int32_t seg = o.I(0), hi = o.I(2), lo = o.I(1), color = o.I(3);
+            if (wd.gui && e.maxLife != 0) {
+                wd.gui->setBossSegment(seg, static_cast<float>(lo) / static_cast<float>(e.maxLife),
+                                       static_cast<float>(hi) / static_cast<float>(e.maxLife), static_cast<std::uint32_t>(color));
+            }
+            break;
+        }
+        case 148:
+            if (wd.gui) wd.gui->setLifeMarkers(o.I(0));
+            if (wd.state) wd.state->playTime += 1800;
+            break;
+        case 122:
+            if (wd.spellcard) wd.spellcard->begin(wd, e, p);
+            log::info("th08: spell card {}", wd.spellcard ? wd.spellcard->id() : -1);
+            break;
+        case 123:
+            if (wd.spellcard) wd.spellcard->end(wd);
+            break;
+        case 164:
+            if (wd.spellcard) wd.spellcard->setCircleFrozen((o.I(0) & 1) != 0);  // (the position write is unused)
+            break;
         case 176: {
             // The Last Spell marker (spec 12.7): state 1 in mode bits 7-8 (bombs refused, a hit
             // starts the Dissolve spell), bit 13 in the final stages, and the enemy freezes
             // while the player bombs.
             wd.mode = (wd.mode & ~static_cast<std::uint32_t>(ModeDissolve | ModeBit13)) | (1u << 7);
-            const int card = spell_.id;
+            const int card = wd.spellcard ? wd.spellcard->id() : 0;
             const bool sp = (wd.mode & ModeSpellPractice) != 0;
             if ((!sp && (stage_ == 6 || stage_ == 7)) || (sp && ((card >= 143 && card <= 146) || (card >= 171 && card <= 190)))) {
                 wd.mode |= ModeBit13;
@@ -1277,7 +1305,9 @@ EnemyManager::Exec EnemyManager::execute(Enemy& e, std::uint32_t& ip) {
             e.frozenWhileBombing = true;
             break;
         }
-        case 184: spell_.noDrain = (o.I(0) & 1) != 0; break;
+        case 184:
+            if (wd.spellcard) wd.spellcard->setNoDrain((o.I(0) & 1) != 0);
+            break;
         case 86: {
             Enemy* b = bossAt(o.I(2));
             if (b) o.setIW(0, ((o.mask >> 1) & 1u) ? readInt(*b, o.L(1)) : o.L(1));
@@ -1767,7 +1797,7 @@ void EnemyManager::dismissFamiliars(Enemy& e, bool bonus) {
                 for (int i = 0; i < c; ++i) orb(f->abs, static_cast<float>(2 * c));
                 bool anyBossSlot = false;
                 for (Enemy* b : bosses_) anyBossSlot = anyBossSlot || b != nullptr;
-                if (!anyBossSlot || wd.spellCardActive) {
+                if (!anyBossSlot || wd.spellCardActive()) {
                     f->itemDrop = 8;
                     drops(*f, false);
                 }
@@ -1847,7 +1877,6 @@ void EnemyManager::update(const World& w) {
         ++liveCount_;
         updateEnemy(e);
     }
-    spellCardUpdate();
     managerTimer_.tick();
 }
 
@@ -1933,7 +1962,10 @@ void EnemyManager::updateEnemy(Enemy& e) {
         }
     }
     // Damage tint (visual), boss bar.
-    if (e.boss && e.bossId == 0 && !wd.dialogue && e.maxLife > 0) bossBar_ = static_cast<float>(e.life) / static_cast<float>(e.maxLife);
+    if (e.boss && e.bossId == 0 && !wd.dialogue && e.maxLife > 0) {
+        bossBar_ = static_cast<float>(e.life) / static_cast<float>(e.maxLife);
+        if (wd.gui) wd.gui->setBossFraction(bossBar_);
+    }
     updateCircles(e);
     if (!wd.timeStop) e.timer.tick();
     if (e.invincible.current > 0) e.invincible.decrement(1);
@@ -1960,7 +1992,7 @@ void EnemyManager::shotDamage(Enemy& e) {
     GameState& g = *wd.state;
     bool bomb = false;
     int d = 0;
-    if (!(wd.spellCardActive && e.parent && player->bombActive())) d = player->damageQuery(wd, e.abs, e.hitbox, e.damageWord, bomb);
+    if (!(wd.spellCardActive() && e.parent && player->bombActive())) d = player->damageQuery(wd, e.abs, e.hitbox, e.damageWord, bomb);
     if (e.box2.x > 0.0f) {
         bool bomb2 = false;
         const int d2 = player->damageQuery(wd, e.abs, e.box2, e.damageWord, bomb2);
@@ -1989,9 +2021,9 @@ void EnemyManager::shotDamage(Enemy& e) {
     d = std::min(d, 70);
     g.score += static_cast<std::uint32_t>(d / 5);  // d / 5 x 10 points
     if (e.damageable) {
-        if (wd.spellCardActive) {
+        if (wd.spellCardActive()) {
             if (!bomb) d = d > 7 ? d / 7 : 1;
-            else d = spell_.bombed && !e.familiar ? (d > 2 ? x86ToInt(static_cast<float>(d) / 2.5f) : 1) : 0;
+            else d = wd.spellcard && wd.spellcard->has(Spellcard::Bombed) && !e.familiar ? (d > 2 ? x86ToInt(static_cast<float>(d) / 2.5f) : 1) : 0;
         }
     } else {
         d = 0;
@@ -2047,6 +2079,8 @@ bool EnemyManager::lifeCallback(Enemy& e) {
 }
 
 bool EnemyManager::timerCallback(Enemy& e) {
+    // The boss HUD's seconds (0x42F340), every pass of boss 0.
+    if (e.boss && e.bossId == 0 && w().gui) w().gui->setBossSeconds((e.timerThreshold - e.timer.current) / 60);
     if (e.timer.current < e.timerThreshold) return false;
     std::int32_t best = -1;
     int bestIndex = -1;
@@ -2062,11 +2096,7 @@ bool EnemyManager::timerCallback(Enemy& e) {
     e.timerSub = e.deathSub;
     e.timer.assign(0);
     if (!e.survival) {
-        if (spell_.active) {
-            spell_.capturable = false;
-            spell_.timedOut = true;
-            spell_.captureValue = 0;
-        }
+        if (w().spellcard) w().spellcard->timeout();
         if (w().bullets) w().bullets->clearAll(w(), 4);
     }
     if (e.boss && w().player) w().player->makeInvulnerable(70);
@@ -2091,13 +2121,20 @@ bool EnemyManager::anyBoss() const {
 }
 
 void EnemyManager::playerMissed() {
-    spell_.capturable = false;
-    spell_.captureValue = 0;
+    if (w_ && w().spellcard) w().spellcard->deathFailure();
 }
 
 void EnemyManager::bombUsed() {
-    spell_.capturable = false;
-    spell_.bombed = spell_.active;
+    if (w_ && w().spellcard) w().spellcard->bombFailure();
+}
+
+// ECL variable 10099: the card's capturable flag while one is active, else "the last card was
+// captured".
+std::int32_t EnemyManager::cardFlag() const {
+    const Spellcard* c = w_ ? w().spellcard : nullptr;
+    if (!c) return 0;
+    if (c->active()) return c->capturable() ? 1 : 0;
+    return c->has(Spellcard::LastCaptured) ? 1 : 0;
 }
 
 void EnemyManager::dissolveStart() {
@@ -2141,6 +2178,7 @@ void EnemyManager::despawn(Enemy& e) {
     if (e.deathType == 0) e.active = false;
     if (e.boss && e.bossId < 4) {
         bossPresent_ = false;
+        if (w().gui) w().gui->setBossPresent(false);
         bosses_[e.bossId] = nullptr;
         e.boss = false;
     }
@@ -2202,6 +2240,7 @@ void EnemyManager::death(Enemy& e) {
             e.damageable = false;
             e.deathType = 0;
             bossPresent_ = false;
+            if (wd.gui) wd.gui->setBossPresent(false);
             if (e.death1 >= 0 && wd.effects) {
                 for (int k = 0; k < 3; ++k) wd.effects->spawn(wd, e.death1, e.abs, 1, 0xFFFFFFFFu);
             }
@@ -2216,13 +2255,15 @@ void EnemyManager::death(Enemy& e) {
             if (e.deathType == 1) e.contact = e.damageable = e.hittable = false;
             if (e.deathType != 2 && e.boss) {  // boss clean-up
                 bossPresent_ = false;
+                if (wd.gui) wd.gui->setBossPresent(false);
                 releaseCircles(e);
             }
             drops(e, bombing);
-            if (e.boss && !wd.spellCardActive && wd.bullets) {
+            if (e.boss && !wd.spellCardActive() && wd.bullets) {
                 std::uint32_t s = wd.bullets->bonusClear(wd, 8000);
                 s = killAllScoring(8000, s);
                 g.score += s / 10;
+                if (s != 0 && wd.gui) wd.gui->messageA(static_cast<std::int32_t>(s));
             }
             e.life = 0;
             break;
@@ -2288,67 +2329,6 @@ std::uint32_t EnemyManager::killAllScoring(std::uint32_t max, std::uint32_t star
 }
 
 // ---- spell cards (spec 12) --------------------------------------------------------------
-
-void EnemyManager::spellCardStart(Enemy& e, const std::uint8_t* ins) {
-    const World& wd = w();
-    spell_ = SpellCard{};
-    spell_.active = true;
-    spell_.capturable = true;
-    spell_.id = eclU16(ins + 14);
-    spell_.boss = &e;
-    spell_.captureValue = spell_.displayed = static_cast<std::uint32_t>(eclI32(ins + 16));
-    if (e.survival) spell_.displayed = 99999990u;
-    const std::int32_t threshold = std::max(1, e.timerThreshold);
-    const std::uint32_t perSecond = static_cast<std::uint32_t>(threshold) / 60u;
-    spell_.drain = perSecond ? (spell_.captureValue - spell_.captureValue / 7) / perSecond : 0;
-    spell_.timer.assign(threshold);
-    spell_.duration = threshold;
-    std::string name;
-    for (int i = 0; i < 48; ++i) {
-        const auto c = static_cast<char>(ins[20 + i] ^ 0xAA);
-        if (c == 0) break;
-        name.push_back(c);
-    }
-    spell_.name = name;
-    if (wd.bullets) wd.bullets->clearAll(wd, 1);
-    if (wd.background && wd.anm && wd.rng) wd.background->spellStart(*wd.anm, *wd.rng);
-    e.rankSpeedLow = -0.5f;
-    e.rankSpeedHigh = 0.5f;
-    e.rankAmounts.fill(0);
-    log::info("th08: spell card {}", spell_.id);
-}
-
-void EnemyManager::spellCardEnd() {
-    const World& wd = w();
-    if (!spell_.active) return;
-    spell_.active = false;
-    if (!spell_.timedOut && wd.bullets) {
-        std::uint32_t s = wd.bullets->bonusClear(wd, 8000);
-        s = killAllScoring(8000, s);
-        wd.state->score += s / 10;
-    }
-    if (spell_.capturable) wd.state->score += spell_.captureValue / 10;
-    if (wd.player) wd.player->makeInvulnerable(70);
-    wd.playSound(15);
-    if (wd.background) wd.background->spellEnd();
-    if (spell_.boss) spell_.boss->survival = false;
-    spell_.boss = nullptr;
-}
-
-void EnemyManager::spellCardUpdate() {
-    const World& wd = w();
-    if (wd.timeStop) return;
-    if (spell_.active) {
-        if (!spell_.boss || !spell_.boss->active) {
-            spell_.active = false;
-        } else if (spell_.capturable && !spell_.noDrain && !spell_.boss->survival) {
-            const auto step = static_cast<std::uint32_t>(x86ToInt(static_cast<float>(spell_.drain / 60u) * g_timing.speed));
-            spell_.captureValue = spell_.captureValue > step ? spell_.captureValue - step : 0;
-            spell_.captureValue -= spell_.captureValue % 10;
-        }
-    }
-    spell_.timer.decrement(1);
-}
 
 // ---- ex routines (spec 11; claude/th08-specs/spec_ecl_ex_routines.md) --------------------
 
@@ -2641,9 +2621,12 @@ void EnemyManager::exRoutine(Enemy& e, int routine, const std::uint8_t* ins) {
             if (a != 0) g_timing.speed = 1.0f / static_cast<float>(a);  // (0 would be infinite; no data does it)
             break;
         case 19: c.args.intA[0] = 0; break;  // the practice card (spell practice not ported)
-        case 24: c.args.intA[0] = 0; break;  // spell cards captured this game
-        case 22:
-            spell_.active = false;  // (also "name only" and a GUI name; every caller ended the card first)
+        case 24: c.args.intA[0] = wd.state ? wd.state->cardsCaptured : 0; break;  // cards captured this game
+        case 22:  // the fake name (every caller ended the card first)
+            if (wd.spellcard) wd.spellcard->fakeName(wd, wd.tables ? std::string_view(wd.tables->fakeCardName) : std::string_view{});
+            break;
+        case 23:
+            if (wd.spellcard) wd.spellcard->hideName();
             break;
         case 26: {
             const auto low = static_cast<std::int8_t>(a & 0xFF);  // the low byte only
@@ -2675,8 +2658,8 @@ void EnemyManager::exRoutine(Enemy& e, int routine, const std::uint8_t* ins) {
         case 17:
             if (wd.screen) wd.screen->flash(180, 1, 0xFFFFFFFFu);
             break;
-        case 0: case 3: case 5: case 6: case 13: case 20: case 23:
-            break;  // visual or GUI only
+        case 0: case 3: case 5: case 6: case 13: case 20:
+            break;  // visual only
         default: eclWarnOnce(std::format("ex routine {} is not ported yet", routine)); break;
     }
 }

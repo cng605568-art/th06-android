@@ -132,4 +132,26 @@ void fillScreen(SpriteSink& sink, const UiArt* ui, std::uint32_t argb) {
     sink.fillRect(ui->white, 0.0f, 0.0f, 640.0f, 480.0f, argbToRgbaBytes(argb));
 }
 
+void gradientRect(SpriteSink& sink, const UiArt* ui, float x0, float y0, float x1, float y1, std::uint32_t top, std::uint32_t bottom) {
+    if (!ui || x1 <= x0 || y1 <= y0) return;
+    const SpriteRegion& r = ui->white;
+    const float u = (r.u0 + r.u1) * 0.5f, v = (r.v0 + r.v1) * 0.5f;
+    const float xs[4] = {x0, x1, x0, x1}, ys[4] = {y0, y0, y1, y1};
+    const std::uint32_t cs[4] = {argbToRgbaBytes(top), argbToRgbaBytes(top), argbToRgbaBytes(bottom), argbToRgbaBytes(bottom)};
+    Vertex3D q[4];
+    for (int k = 0; k < 4; ++k) {
+        q[k].x = xs[k] / 640.0f * 2.0f - 1.0f;
+        q[k].y = 1.0f - ys[k] / 480.0f * 2.0f;
+        q[k].z = -1.0f;
+        q[k].w = 1.0f;
+        q[k].u = u;
+        q[k].v = v;
+        q[k].color = cs[k];
+    }
+    Draw3DState st;
+    st.depthWrite = false;
+    st.clipX = 0.0f, st.clipY = 0.0f, st.clipW = 640.0f, st.clipH = 480.0f;
+    sink.drawQuad3D(r.texture, Blend::Alpha, q, st);
+}
+
 }  // namespace touhou::th08

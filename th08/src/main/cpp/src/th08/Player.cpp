@@ -840,7 +840,7 @@ int Player::damageQuery(const World& w, const Vec3f& centre, const Vec3f& size, 
         if (s.hitKind == 1) {  // explosive (spec_bombs 11.3)
             if (s.state == 2) {
                 if (s.age.current & 1) continue;
-                if (w.spellCardActive && (s.age.current % 4) != 0) continue;
+                if (w.spellCardActive() && (s.age.current % 4) != 0) continue;
                 s.damage = static_cast<std::int16_t>(std::max(1, s.damage / 3));
                 s.velocity = s.velocity * 0.88f;
             } else {
@@ -1071,7 +1071,7 @@ void Player::scoreGraze(const World& w, const Vec3f& at, bool laser) {
     // Time orbs from grazing near a boss at youkai 80 %.
     if ((!isHumanSolo(character_) || character_ == 10) && w.enemies && w.enemies->anyBoss() && g.y80() && w.bullets) {
         w.bullets->spawnItem(w, at, 10, BulletManager::Falling);
-        if (!laser && w.spellCardActive) {
+        if (!laser && w.spellCardActive()) {
             w.bullets->spawnItem(w, at, 10, BulletManager::Falling);
             if (!isYoukaiSolo(character_)) w.bullets->spawnItem(w, at, 10, BulletManager::Falling);
         }
@@ -1092,6 +1092,7 @@ void Player::makeInvulnerable(std::int32_t frames) {
 // ---- death (spec 8) -----------------------------------------------------------------------
 
 void Player::die(const World& w) {
+    if (devNoDeath) return;
     GameState& g = *w.state;
     w.timeStop = false;
     antiTamper(*w.rng);
@@ -1112,7 +1113,7 @@ void Player::die(const World& w) {
             countdown_ = bombs * 6;
             if (g.timePoints >= g.timeQuota) countdown_ += 7;
             countdown_ = std::min(countdown_, 15);
-            if (w.spellCardActive) countdown_ = std::min(countdown_ * 2, 30);
+            if (w.spellCardActive()) countdown_ = std::min(countdown_ * 2, 30);
             if (character_ == 0 || character_ == 4 || character_ == 5) countdown_ = countdown_ * 9 / 5;
             vm_.set(AnmVm::UseAltColor, true);
             vm_.altColor = 0xFFFFFFFFu;
@@ -1120,7 +1121,7 @@ void Player::die(const World& w) {
                 deathEffect_ = &w.effects->spawnSpecial(w, 59, pos_, 11, 1, 0xFFF0404Fu);
                 deathEffect_->ignoreFreeze = true;
             }
-            if (w.spellCardActive) w.mode |= ModeSpellFreeze;
+            if (w.spellCardActive()) w.mode |= ModeSpellFreeze;
         } else {
             countdown_ = 2;
         }

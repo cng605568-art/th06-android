@@ -27,6 +27,8 @@ void World::playSound(int id) const {
     if (sound && id >= 0) sound->playSound(id);
 }
 
+bool World::spellCardActive() const { return spellcard && spellcard->active(); }
+
 void World::addTimePoints(std::int32_t n) const {
     GameState& g = *state;
     if (n < 0 && g.timePoints < -n) {
@@ -173,6 +175,7 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
     world_.screen = &screen_;
     world_.msg = &dialogue_;
     world_.gui = &gui_;
+    world_.spellcard = &spellcard_;
     world_.mode = (state_.practice ? ModePractice : 0u) | (state_.spellPractice ? ModeSpellPractice : 0u);
     // The player (registered before the stage: its shot files every stage, its ANM once).
     if (!player_->load(*ctx_.vfs, *ctx_.textures, lib, state_.character, fresh, error)) return false;
@@ -243,6 +246,17 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
             log::warn("th08: {}", why);
         }
     }
+    // The spell card object (spec_spellcard_hud 1.1-1.2): zeroed and bound every stage.
+    if (fresh) {
+        if (ctx_.scores) *cards_ = ctx_.scores->cards;
+        else cards_->fill(CardRecord{});
+    }
+    Spellcard::Context sc;
+    sc.anm = &lib;
+    sc.textures = ctx_.textures;
+    sc.text = ctx_.text;
+    sc.cards = cards_.get();
+    spellcard_.stageStart(world_, sc);
     dialogue_.onScriptZero = [this](int) {
         if (state_.stage >= 6) background_.setSpellBackgrounds(2, 2);
     };
@@ -428,15 +442,16 @@ void Gameplay::tick(const MenuInput& in) {
     screen_.update(world_);
     background_.setYoukaiInFront(player_->youkaiInFront());
     background_.update(*ctx_.anm, rng, (world_.mode & ModeSpellFreeze) != 0);
-    world_.spellCardActive = enemies_->spellCard().active;
     player_->update(world_, gameInput_);
     enemies_->update(world_);
-    world_.spellCardActive = enemies_->spellCard().active;
+    spellcard_.update(world_);  // 12
     effects_->update(world_);
     bullets_->update(world_);
     // Gui (15): the HUD update with the results' bonus, stage end and clock count-up, then the
     // dialogue (nothing while time is stopped).
-    gui_.update(rng, state_, player_->position(), world_.timeStop);
+    gui_.setNullity(spellcard_.active() && ((world_.mode >> 7) & 3u) == 1u);
+    gui_.update(rng, state_, player_->position(), world_.timeStop, dialogue_.running());
+    gui_.bossTimerSounds(world_);
     if (!world_.timeStop) {
         const int lives = state_.practice ? 8 : state_.difficulty >= 4 ? 2 : setup_.lives;
         if (gui_.resultsStep(state_, gameInput_, lives, stageEnd_ == 0)) stageCleared();
@@ -474,10 +489,14 @@ void Gameplay::draw(SpriteSink& sink) {
     bullets_->draw(sink, drawState_);         // 13: lasers, items, bullets
     effects_->drawListD(sink, drawState_);     // (inside the bullet draw)
     drawState_.offsetX = drawState_.offsetY = 0.0f;
+    spellcard_.draw(sink);                    // 15 (in the playfield viewport)
     sink.clearClip();
     dialogue_.draw(sink, ctx_.ui);            // (the Gui draws the MSG layer before the HUD)
     gui_.draw(sink, state_, ascii_);          // 17
-    if (ctx_.anm) ascii_.draw(sink, *ctx_.anm);  // 20
+    if (ctx_.anm) {
+        ascii_.draw(sink, *ctx_.anm);  // 20
+        gui_.drawMessages(sink, *ctx_.anm);
+    }
     menu_.draw(sink);                          // (the AsciiManager's menus)
     screen_.draw(sink, background_.white);    // 21: flashes
 }

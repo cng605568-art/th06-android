@@ -127,17 +127,6 @@ struct Enemy {
     Timer invincible = zeroTimer();
 };
 
-// The spell card object (spec 12.1).
-struct SpellCard {
-    bool active = false, capturable = false, timedOut = false, noDrain = false, bombed = false;
-    std::int32_t id = 0;
-    Enemy* boss = nullptr;
-    std::uint32_t captureValue = 0, drain = 0, displayed = 0;
-    Timer timer = zeroTimer();
-    std::int32_t duration = 0;
-    std::string name;
-};
-
 class EnemyManager {
   public:
     static constexpr int kEnemies = 480;
@@ -161,7 +150,6 @@ class EnemyManager {
     const Enemy& enemy(int i) const { return enemies_[static_cast<std::size_t>(i)]; }
     int liveCount() const { return liveCount_; }
     Enemy* bossAt(int slot) const;
-    const SpellCard& spellCard() const { return spell_; }
     bool bossPresent() const { return bossPresent_; }
     float bossBar() const { return bossBar_; }
     std::uint16_t dropCounter() const { return dropCounter_; }
@@ -177,6 +165,7 @@ class EnemyManager {
     // Kill all non-boss enemies (spec 8.10): popups from 2000 in steps of 30 up to `max`, the
     // returned sum starting at `start` (a dialogue start passes 0, 0 and discards it).
     std::uint32_t killAllScoring(std::uint32_t max, std::uint32_t start);
+    std::int32_t cardFlag() const;  // ECL variable 10099
 
     // ---- spawning ----
     Enemy& spawn(int sub, const Vec3f& pos, std::int32_t life, std::int32_t item, std::int32_t score, bool mirror);
@@ -248,9 +237,6 @@ class EnemyManager {
     void spawnFamiliar(Enemy& parent, int op, std::int32_t sub, const Vec3f& pos, std::int32_t life, std::int32_t item, std::int32_t score);
     void releaseCircles(Enemy& e);
     void updateCircles(Enemy& e);
-    void spellCardStart(Enemy& e, const std::uint8_t* ins);
-    void spellCardEnd();
-    void spellCardUpdate();
     void exRoutine(Enemy& e, int routine, const std::uint8_t* ins);
     void formation(Enemy& e, EclContext& c);
     void beam(Enemy& e, EclContext& c, int routine);
@@ -272,7 +258,6 @@ class EnemyManager {
     bool spawnFailed_ = false;
     std::int32_t timelineGate_ = 0;
     std::array<std::int32_t, 4> signals_{-1, -1, -1, -1};
-    SpellCard spell_;
     bool bossPresent_ = false;
     float bossBar_ = 0;
     struct Timeline {

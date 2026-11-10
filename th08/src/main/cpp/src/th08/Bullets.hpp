@@ -128,6 +128,7 @@ class BulletManager {
     void clearAll(const World& w, int q);
     std::uint32_t bonusClear(const World& w, std::uint32_t maxBonus);
     int liveBullets() const { return liveCount_; }
+    int timeOrbsInUse() const;  // (ECL variable 10098's quota test)
     Bullet& bullet(int i) { return bullets_[static_cast<std::size_t>(i)]; }
     Laser& laser(int i) { return lasers_[static_cast<std::size_t>(i)]; }
     int laserIndex(const Laser* l) const {

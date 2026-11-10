@@ -170,6 +170,8 @@ class Player {
     void ringBarrier(const World& w, const Vec3f& centre, float angle, float radius, float thickness, bool lastSpell);
     void makeInvulnerable(std::int32_t frames);
     void setBombLockout(std::int32_t frames) { lockout_ = frames; }
+    static inline bool devNoDeath = false;  // developer aid (TH08_DEV_LIVES=2): hits do nothing
+    std::int32_t bombLockout() const { return lockout_; }
     bool continueRequested() const { return continueRequested_; }
     void continueGame() { continueRequested_ = false; }  // the spawn-in resumes next pass
 

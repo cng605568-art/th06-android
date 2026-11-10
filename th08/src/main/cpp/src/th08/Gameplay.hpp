@@ -19,6 +19,7 @@
 #include "th08/InGameMenu.hpp"
 #include "th08/Msg.hpp"
 #include "th08/ScreenEffects.hpp"
+#include "th08/Spellcard.hpp"
 #include "th08/Player.hpp"
 #include "th08/World.hpp"
 
@@ -97,6 +98,9 @@ class Gameplay {
     ScreenEffects screen_;
     InGameMenu menu_;
     Dialogue dialogue_;
+    Spellcard spellcard_;
+    // The game's spell card records (CATK; copied from score.dat at the game start).
+    std::unique_ptr<std::array<CardRecord, kCardCount>> cards_ = std::make_unique<std::array<CardRecord, kCardCount>>();
     bool facesLoaded_ = false, bossFacesLoaded_ = false;
     std::uint16_t prevGameInput_ = 0;
     Effect* moon_ = nullptr;  // the 6B moon (special effect slot 12)

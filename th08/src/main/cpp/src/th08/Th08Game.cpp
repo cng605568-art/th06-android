@@ -273,10 +273,12 @@ void Th08Game::tick(const InputState& input) {
                 input_.clear();
                 input_.sample(static_cast<std::uint16_t>(buttonWord(input) | devHold));
             }
-            // Developer aid: TH08_DEV_LIVES=1 keeps the lives at 8 (to reach late scenes).
+            // Developer aid: TH08_DEV_LIVES=1 keeps the lives at 8 (to reach late scenes); 2 also
+            // makes the player ignore hits.
             static const bool devLives = [] {
                 const char* v = std::getenv("TH08_DEV_LIVES");
-                return v && *v == '1';
+                if (v && *v == '2') Player::devNoDeath = true;
+                return v && (*v == '1' || *v == '2');
             }();
             if (devLives && gameplay_->world().state) gameplay_->world().state->lives = 8.0f;
             gameplay_->tick(input_);

@@ -40,6 +40,7 @@ struct GameState {
     std::int32_t pointValue = 100000;  // globals+0x24: the maximum point-item value
     std::int32_t timeTotal = 0;         // globals+0x44: this stage's running total of time points
     std::int32_t cardsCaptured = 0;     // globals+0x1C: spell cards captured this game (ECL ex 24)
+    std::int32_t playTime = 0;          // GM+0x3DE04: a play-time counter (+1800 by ECL op 148)
     std::int32_t extends = 0;           // globals+0x34: extends granted
     std::int32_t rank = 10, minRank = 8, maxRank = 16, subrank = 0;  // GM+0x3DE2C (spec 14)
     float misses = 0, bombsUsed = 0;
@@ -118,7 +119,7 @@ class Gui {
     bool stageStart(const FlowContext& ctx, const GameState& g, bool firstStage, std::string* error);
     void release(AnmLibrary& anm);
     // The per-frame update (spec 3.3); `playerPos` in field coordinates.
-    void update(ZunRng& rng, const GameState& g, const Vec3f& playerPos, bool frozen = false);
+    void update(ZunRng& rng, const GameState& g, const Vec3f& playerPos, bool frozen = false, bool dialogueRunning = false);
     // Gui draw (priority 17): the stage texts and clocks (3rd), then the panel (4th); ASCII
     // strings are queued for the AsciiManager's pass (priority 20).
     void draw(SpriteSink& sink, const GameState& g, AsciiText& ascii);
@@ -149,9 +150,54 @@ class Gui {
     // The stage-clear picture has stopped: the stage layers are not drawn (spec 3.11).
     bool stagePictureFinished() const;
 
+    // ---- the boss HUD (spec_spellcard_hud §8): inputs from the enemy manager ----
+    void setBossPresent(bool on) { bossPresent_ = on; }
+    void setBossFraction(float f) { bossFraction_ = f; }
+    void setBossSegment(int i, float start, float end, std::uint32_t color);
+    void clearBossSegments();
+    void setLifeMarkers(int n) { lifeMarkers_ = n; }
+    void setBossSeconds(int s) { bossSeconds_ = s; }
+    bool bossPresent() const { return bossPresent_; }
+    int bossHudState() const { return bossState_; }
+    float bossFill() const { return bossFill_; }
+
+    // ---- the timed messages (spec_spellcard_hud §9) ----
+    void messageA(std::int32_t value);            // " BONUS %8d"
+    void messageB(std::int32_t value, int type);  // 1 full power, 5 / 6 spell / Last Spell failed
+    void messageC(std::int32_t value);            // "Spell Card Bonus!"
+    bool messageOn(int k) const { return messages_[static_cast<std::size_t>(k)].on; }
+    // The lives and bombs rows redrawn (and the "Nullity" marker with them).
+    void refreshLivesBombs() { refresh_[0] = refresh_[1] = 3; }
+    // The "Nullity" marker's condition: a card active in Last-Spell state 1.
+    void setNullity(bool on) { nullity_ = on; }
+    // Draw priority 20, inside the playfield viewport: the messages.
+    void drawMessages(SpriteSink& sink, AnmLibrary& anm);
+    // The boss timer's tick sounds (played by the original's draw; here once a logic frame).
+    void bossTimerSounds(const World& w);
+
   private:
     void drawPanel(SpriteSink& sink, const GameState& g, AsciiText& ascii);
     void drawResults(const GameState& g, AsciiText& ascii);
+    void drawBossHud(SpriteSink& sink, AsciiText& ascii);
+
+    // The boss HUD (GUI+0x1C ... +0x7C, GI+0x2A40).
+    bool bossPresent_ = false;
+    float bossFraction_ = 0, bossFill_ = 0;
+    std::array<float, 8> segStart_{}, segEnd_{};
+    std::array<std::uint32_t, 8> segColor_{};
+    int lifeMarkers_ = 0, bossSeconds_ = 0, lastSeconds_ = 0;
+    int bossState_ = 0;
+    std::uint32_t bossAlpha_ = 0;
+    bool msgRunning_ = false, nullity_ = false;
+    struct Message {
+        bool on = false;
+        float x = 0, y = 0;
+        std::int32_t value = 0;
+        int type = 0;
+        Timer timer;
+    };
+    std::array<Message, 3> messages_{};
+    AsciiText messageText_;
 
     AnmLibrary* anm_ = nullptr;
     const UiArt* ui_ = nullptr;

@@ -92,6 +92,14 @@ bool loadExeTables(std::span<const std::uint8_t> exe, ExeTables& t, std::string*
         words(ExeTables::kMsgColors, 12 * 4, [&](std::size_t i, std::uint32_t v) { t.msgColors[i / 4][i % 4] = v; }) &&
         words(ExeTables::kClearBase, 9, [&](std::size_t i, std::uint32_t v) { t.clearBase[i] = static_cast<std::int32_t>(v); });
     if (!dialogue) return fail("dialogue tables not in the file");
+    t.fakeCardName = pe.cString(ExeTables::kFakeCardName, 48);
+    for (std::size_t i = 0; i < t.bombNames.size(); ++i) {
+        const auto push = pe.at(ExeTables::kBombNamePushes[i], 5);
+        if (push.size() != 5 || push[0] != 0x68) continue;
+        const std::uint32_t va = static_cast<std::uint32_t>(push[1]) | (static_cast<std::uint32_t>(push[2]) << 8) |
+                                 (static_cast<std::uint32_t>(push[3]) << 16) | (static_cast<std::uint32_t>(push[4]) << 24);
+        t.bombNames[i] = pe.cString(va, 131);
+    }
     return true;
 }
 

@@ -72,6 +72,16 @@ struct ExeTables {
     std::array<std::array<std::uint32_t, 4>, 12> msgColors{};
     std::array<std::int32_t, 9> clearBase{};
     static constexpr std::uint32_t kMsgFiles = 0x004C74C0, kMsgColors = 0x004C7180, kClearBase = 0x004C7158;
+    // The fake card name ECL ex 22 shows (spec_ecl_ex_routines 7.8), Shift-JIS.
+    std::string fakeCardName;
+    // The bomb and Last Spell names the banner shows (spec_bomb_names §3), in Player::Spell order:
+    // each routine pushes its own string, so the name is read through the push at that site
+    // (opcode 0x68, the pointer at +1). Empty when the site does not look as expected.
+    std::array<std::string, 17> bombNames;
+    static constexpr std::array<std::uint32_t, 17> kBombNamePushes{
+        0x0040C058, 0x0040C958, 0x00410C88, 0x00411028, 0x0040E3F8, 0x0040E7C8, 0x0040D479, 0x0040D9B9, 0x0040FD18,
+        0x00410438, 0x0040EE6A, 0x0040F5CA, 0x00411B78, 0x00412438, 0x00413188, 0x004139D8, 0x0040D153};
+    static constexpr std::uint32_t kFakeCardName = 0x004B495C;
     static constexpr std::uint32_t kTimeQuota = 0x004C77F0, kRankTable = 0x004C7880, kExtendMain = 0x004C7A84,
                                    kExtendExtra = 0x004C7A9C, kBurstColors = 0x004C6100;
     static constexpr std::uint32_t kSoundTable = 0x004C8040, kSampleNames = 0x004C81B0;

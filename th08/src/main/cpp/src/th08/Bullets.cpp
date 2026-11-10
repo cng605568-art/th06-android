@@ -7,6 +7,7 @@
 #include "th08/ExeTables.hpp"
 #include "th08/Gui.hpp"
 #include "th08/Player.hpp"
+#include "th08/Spellcard.hpp"
 
 namespace touhou::th08 {
 
@@ -615,6 +616,15 @@ void BulletManager::freeItem(int i) {
     it.next = it.prev = -1;
 }
 
+int BulletManager::timeOrbsInUse() const {
+    int n = 0;
+    for (int i = 0; i < kItems; ++i) {
+        const Item& it = items_[static_cast<std::size_t>(i)];
+        if (it.inUse && it.type == TimeOrb) ++n;
+    }
+    return n;
+}
+
 BulletManager::Item& BulletManager::spawnItem(const World& w, const Vec3f& pos, int type, int state) {
     Item& sink = items_[kItems];
     if (pos.x < -64.0f || pos.x > 448.0f) return sink;
@@ -839,7 +849,7 @@ void BulletManager::collect(const World& w, Item& it) {
             if (g.power >= 128.0f) {
                 g.power = 128.0f;
                 antiTamper(*w.rng);
-                if (!w.spellCardActive) clearAll(w, 1);
+                if (!w.spellCardActive()) clearAll(w, 1);
                 convertPowerItems(w, &it);
             }
             g.score += 1;  // 10 points
@@ -907,6 +917,7 @@ void BulletManager::collect(const World& w, Item& it) {
             const std::int32_t v = player.bombing() ? 100 : g.stagePointItems >= 2000 ? 10000 : std::max(100, (g.pointItems / 2) * 10);
             g.score += static_cast<std::uint32_t>(v) / 10;
             w.addTimePoints(1);
+            if (w.spellcard) w.spellcard->orbBonus(8000);  // (also with no card [QUIRK])
             if (player.orbTimer() == 0) g.addGauge(player.focused() ? 111 : -111, false, player.bombActive());
             break;
         }

@@ -15,6 +15,7 @@
 #include "th08/ExeTables.hpp"
 #include "th08/Gui.hpp"
 #include "th08/Player.hpp"
+#include "th08/Spellcard.hpp"
 #include "th08/ScreenEffects.hpp"
 #include "th08/World.hpp"
 
@@ -157,6 +158,7 @@ void Player::startBomb(const World& w, bool forced) {
 }
 
 void Player::endBomb(const World& w) {
+    if (w.spellcard) w.spellcard->bombBannerOff();
     bomb_.active = bombActive_ = false;
     moveMulX_ = moveMulY_ = 1.0f;
     if (bomb_.spell == Spell::Dissolve) {
@@ -169,6 +171,23 @@ void Player::endBomb(const World& w) {
 // The common start-up (0x40BE30, spec 9.3): the duration, the invulnerability, every
 // projectile off, every item collected.
 void Player::bombStartUp(const World& w, std::int32_t duration, std::int32_t invulnerable) {
+    // The banner and portrait (0x415D60, spec_bomb_names §2): the human side for Reimu, Marisa,
+    // Sakuya and Youmu, the youkai side for the others, none for the Dissolve spell; the Last
+    // Spells' decor sprite 1, except Youmu's.
+    if (w.spellcard) {
+        const auto k = static_cast<std::size_t>(bomb_.spell);
+        int side = -1;
+        switch (bomb_.spell) {
+            case Spell::ReimuBomb: case Spell::ReimuLast: case Spell::MarisaBomb: case Spell::MarisaLast:
+            case Spell::SakuyaBomb: case Spell::SakuyaLast: case Spell::YoumuBomb: case Spell::YoumuLast: side = 0; break;
+            case Spell::Dissolve: side = -1; break;
+            default: side = 1; break;
+        }
+        const bool last = bomb_.spell != Spell::Dissolve && (k % 2) == 1;
+        const int decor = last && bomb_.spell != Spell::YoumuLast ? 1 : 0;
+        const std::string_view name = w.tables && k < w.tables->bombNames.size() ? std::string_view(w.tables->bombNames[k]) : std::string_view{};
+        w.spellcard->bombBanner(w, side, name, decor);
+    }
     bomb_.duration = duration;
     state_ = State::Invulnerable;
     stateTimer_.assign(invulnerable);

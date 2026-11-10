@@ -31,6 +31,7 @@
 #include "th08/ScreenEffects.hpp"
 #include "th08/World.hpp"
 #include "th08/ShotData.hpp"
+#include "th08/Spellcard.hpp"
 #include "th08/ExeTables.hpp"
 #include "th08/Flow.hpp"
 #include "th08/MainMenu.hpp"
@@ -1373,6 +1374,60 @@ void testRealArchive() {
             CHECK(wd.timeStop);
             em.callExRoutine(wd, host, 26, 0);
             CHECK(!wd.timeStop);
+
+            // The spell card object (claude/th08-specs/spec_spellcard_hud.md): Begin, the drain,
+            // a capture in the first seventh (P = 1000), the end effect paying P as time orbs from
+            // t = 9 and the bonus at t = 130.
+            th08::Spellcard& sc = *wd.spellcard;
+            th08::Enemy& boss = em.enemy(450);
+            boss = th08::Enemy{};
+            boss.active = true;
+            boss.slot = 450;
+            boss.timerThreshold = 1800;
+            boss.pos = {192.0f, 100.0f, 0.0f};
+            std::array<std::uint8_t, 0xF4> card{};
+            card[0x0E] = 7;                                    // card 7
+            const std::uint32_t bonus = 2000000;
+            std::memcpy(card.data() + 0x10, &bonus, 4);
+            for (int i = 0; i < 48; ++i) card[static_cast<std::size_t>(0x14 + i)] = static_cast<std::uint8_t>((i < 4 ? 'A' + i : 0) ^ 0xAA);
+            sc.begin(wd, boss, card.data());
+            CHECK(sc.active() && sc.capturable() && sc.id() == 7 && sc.name() == "ABCD" && sc.capture() == bonus && sc.cap() == bonus);
+            CHECK(sc.drain() == (bonus - bonus / 7) / 30 && sc.timer().current == 1800 && sc.circle() != nullptr);
+            CHECK(sc.circle() && sc.circle()->segments == 64 && sc.circle()->radius == 256.0f);
+            sc.update(wd);
+            const std::uint32_t step = sc.drain() / 60;
+            std::uint32_t expect = bonus - step;
+            expect -= expect % 10;
+            CHECK(sc.capture() == expect && sc.timer().current == 1799);
+            // A time orb raises the value up to the cap, else the drain grows by 66.
+            const std::uint32_t drain = sc.drain();
+            sc.orbBonus(8000);
+            CHECK(sc.capture() == bonus && sc.drain() == drain);
+            sc.end(wd);
+            const std::uint32_t scoreBefore = wd.state->score;
+            CHECK(!sc.active() && sc.has(th08::Spellcard::Pending) && sc.has(th08::Spellcard::LastCaptured));
+            CHECK(sc.pendingTime() == 1000 && sc.awarded() == bonus && sc.endEffect() != nullptr && sc.circle() == nullptr);
+            CHECK(wd.state->cardsCaptured == 1 && wd.player->bombLockout() == 16);
+            int frames = 0, orbFrames = 0;
+            std::int32_t lastP = sc.pendingTime();
+            while (sc.endEffect() && frames < 200) {
+                sc.update(wd);
+                if (sc.pendingTime() != lastP) ++orbFrames, lastP = sc.pendingTime();
+                wd.effects->update(wd);
+                ++frames;
+            }
+            CHECK(!sc.endEffect() && !sc.has(th08::Spellcard::Pending) && sc.pendingTime() == 0);
+            CHECK(frames == 131 && orbFrames == 72);  // (1000 points: 14 a frame from t = 9)
+            CHECK(wd.state->score == scoreBefore + bonus / 10 && wd.gui->messageOn(2));
+            // A bomb fails the card (and marks it bombed); End then releases the circle with the
+            // "Spell Bonus Failed" message, and pays nothing.
+            sc.begin(wd, boss, card.data());
+            sc.bombFailure();
+            CHECK(!sc.capturable() && sc.capture() == 0 && sc.has(th08::Spellcard::Bombed));
+            sc.end(wd);
+            CHECK(!sc.active() && sc.circle() == nullptr && sc.endEffect() == nullptr && !sc.has(th08::Spellcard::Pending));
+            CHECK(wd.gui->messageOn(1) && wd.state->cardsCaptured == 1);
+            boss.active = false;
         }
         // The pause menu stops the game; Shoot on "resume" closes it after 20 passes.
         {
@@ -1429,6 +1484,9 @@ void testRealArchive() {
         th08::ExeTables tables;
         auto exe = MappedFile::open(exePath, &err);
         CHECK(exe && th08::loadExeTables(exe->bytes(), tables, &err));
+        // The bomb names, read through each routine's push (spec_bomb_names): Shift-JIS, 14-34 bytes.
+        for (const std::string& n : tables.bombNames) CHECK(n.size() >= 14 && n.size() <= 34);
+        CHECK(tables.bombNames[0].size() == 16 && tables.bombNames[16].size() == 20 && tables.fakeCardName.size() > 4);
         CHECK(tables.bulletScripts[0][0] == 0 && tables.bulletScripts[0][1] == 18 && tables.bulletScripts[10][0] == 25 &&
               tables.bulletScripts[20][0] == 115 && tables.bulletScripts[20][4] == 17);
         // The scoring tables: Stage 1 Normal's time quota, the Extra entry that reads into the
