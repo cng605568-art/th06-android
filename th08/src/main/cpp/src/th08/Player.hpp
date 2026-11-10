@@ -5,12 +5,13 @@
 // speeds, the human/youkai focus switch (the team's sprite, familiars and the 7-frame
 // "youkai in front" lag), the eight characters' familiars, the shots of the .sht files (128
 // slots, the 20-frame fire cycle, fire kinds 0-8, homing, rising missiles, the doll laser),
-// the stage-start spawn-in and invulnerability, and the damage the shots deal. Death, bombs,
-// Last Spells, the damage and cancel regions and the gauge come next. Calc priority 9, draw
-// priorities 9-10.
+// the stage-start spawn-in and invulnerability, the damage query (shots and damage regions),
+// death with the deathbomb window, the 17 bombs and Last Spells (Bombs.cpp), the cancel and
+// damage regions, and the human/youkai gauge. Calc priority 9, draw priorities 9-10.
 
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <string>
 
 #include "core/ZunMath.hpp"
@@ -87,6 +88,36 @@ class Player {
         std::int32_t timer = 0;
     };
 
+    // The 17 spells (spec 9.2): each character's bomb and Last Spell, and the Dissolve spell.
+    enum class Spell : std::uint8_t {
+        ReimuBomb, ReimuLast, YukariBomb, YukariLast, MarisaBomb, MarisaLast, AliceBomb, AliceLast,
+        SakuyaBomb, SakuyaLast, RemiliaBomb, RemiliaLast, YoumuBomb, YoumuLast, YuyukoBomb, YuyukoLast, Dissolve
+    };
+    static Spell spellFor(int character, int index);
+    // A bomb projectile (spec_bombs_familiars 1.1): its fields' meaning is per bomb. Bomb
+    // start-up only switches them off; the rest carries over within a stage [QUIRK].
+    static constexpr int kProjectiles = 128;
+    struct Projectile {
+        std::uint8_t state = 0;
+        std::int32_t counter = 0;
+        float f08 = 0, f0C = 0, f10 = 0;  // radius or speed, speed or acceleration, angle
+        Vec3f pos, centre, prev;          // +0x14, +0x20, +0x2C
+        Vec3f vec;                        // +0x1A0 (velocity, or radius and radial speed)
+        float f1AC = 0;
+        std::array<AnmVm, 8> vms{};
+        Effect* effect = nullptr;         // projectile 0 only
+        Timer ownTimer;
+        int damageRegion = -1, cancelRegion = -1;
+    };
+    struct Bomb {
+        bool active = false;
+        int index = 0;  // 0 human bomb, 1 youkai bomb, 2 human Last Spell, 3 youkai Last Spell, 4 Dissolve
+        Spell spell = Spell::ReimuBomb;
+        std::int32_t duration = 0, cost = 0, scratch = 0;
+        Timer timer;
+        Vec3f start;
+    };
+
     // Loads the shot files (every stage) and the character's ANM (the first stage of a game).
     bool load(const Vfs& vfs, TextureLibrary& textures, AnmLibrary& anm, int character, bool firstStage, std::string* error);
     void releaseAnm(AnmLibrary& anm);
@@ -96,7 +127,7 @@ class Player {
 
     // The player pass (spec 1.2) with the game input word.
     void update(const World& w, std::uint16_t input);
-    void drawShots(SpriteSink& sink, const AnmDrawState& state);   // draw priority 9
+    void drawShots(SpriteSink& sink, const AnmDrawState& state);   // draw priority 9 (with the bomb's)
     void drawPlayer(SpriteSink& sink, const AnmDrawState& state);  // draw priority 10
 
     // The damage the shots deal to an enemy box this frame (spec 6.5, shots part); `bomb` is
@@ -120,9 +151,23 @@ class Player {
     void scoreGraze(const World& w, const Vec3f& at, bool laser);
     bool canPickUp() const { return state_ == State::Alive || state_ == State::Invulnerable; }
     bool pickupBoxTouches(const Vec3f& item) const;
-    // Regions (spec 10.2).
-    void cancelRect(const Vec3f& centre, float w, float h, int itemType, std::int32_t lifetime);
-    void cancelCircle(const Vec3f& centre, float r, float growth, std::int32_t lifetime, int itemType);
+    // Regions (spec 10.2); each returns the record's index.
+    int cancelRect(const Vec3f& centre, float w, float h, int itemType, std::int32_t lifetime);
+    int cancelCircle(const Vec3f& centre, float r, float growth, std::int32_t lifetime, int itemType);
+    int damageRect(const Vec3f& centre, float w, float h, std::int32_t damage, std::int32_t lifetime);
+    int damageCircle(const Vec3f& centre, float r, float growth, std::int32_t damage, std::int32_t lifetime);
+    Region& region(int i) { return regions_[static_cast<std::size_t>(i)]; }
+    const Region& region(int i) const { return regions_[static_cast<std::size_t>(i)]; }
+    // The time-orb timer (Player+0xE2ADC): the gauge moves on a time-orb pickup only at 0.
+    std::int32_t& orbTimer() { return orbTimer_; }
+    // A familiar killed with a bonus resets the shooting ramp and idles the gauge (spec_ecl 9.6).
+    void gaugeAfterFamiliar() {
+        gaugeRamp_.assign(0);
+        gaugeIdle_.assign(30);
+    }
+    // The rings of Yukari's bomb and Last Spell (effect updates 0x4114E0 / 0x4117B0) put
+    // their barriers here (spec_bombs_familiars 3.2-3.3).
+    void ringBarrier(const World& w, const Vec3f& centre, float angle, float radius, float thickness, bool lastSpell);
     void makeInvulnerable(std::int32_t frames);
     bool continueRequested() const { return continueRequested_; }
 
@@ -135,6 +180,9 @@ class Player {
     Direction direction() const { return direction_; }
     int character() const { return character_; }
     bool bombActive() const { return bombActive_; }
+    bool bombing() const { return bombingFlag_; }  // Player+0xE2A7C: through the bomb's end frame
+    const Bomb& bomb() const { return bomb_; }
+    const Projectile& projectile(int i) const { return (*projectiles_)[static_cast<std::size_t>(i)]; }
     const ShotType& shots() const { return shots_; }
     const ShotFile& header() const { return shots_.unfocused; }
     const Familiar& familiar(int k) const { return familiars_[static_cast<std::size_t>(k)]; }
@@ -147,6 +195,26 @@ class Player {
 
   private:
     void regionUpkeep();
+    // The bomb (spec 9; spec_bombs_familiars 2-10), in Bombs.cpp.
+    void bombStep(const World& w, std::uint16_t input);
+    void startBomb(const World& w, bool forced);
+    void endBomb(const World& w);
+    void bombStartUp(const World& w, std::int32_t duration, std::int32_t invulnerable);
+    void runBomb(const World& w, std::int32_t t);
+    void drawBomb(SpriteSink& sink, const AnmDrawState& state);
+    void drawShotSprites(SpriteSink& sink, const AnmDrawState& state);
+    void reimu(const World& w, std::int32_t t, bool last);
+    void yukari(const World& w, std::int32_t t, bool last);
+    void marisa(const World& w, std::int32_t t, bool last);
+    void alice(const World& w, std::int32_t t, bool last);
+    void sakuya(const World& w, std::int32_t t, bool last);
+    void remilia(const World& w, std::int32_t t, bool last);
+    void youmu(const World& w, std::int32_t t, bool last);
+    void yuyuko(const World& w, std::int32_t t, bool last);
+    void butterflies(const World& w);
+    void dissolve(const World& w);
+    void gaugeFromShooting(const World& w);
+    Projectile& proj(int i) { return (*projectiles_)[static_cast<std::size_t>(i)]; }
     void die(const World& w);
     bool deathStep(const World& w);  // true: moved to the respawn point
     void commitDeath(const World& w);
@@ -209,10 +277,23 @@ class Player {
     bool continueRequested_ = false;  // no spare life at the respawn move
     bool committed_ = false;
 
-    // The bomb (spec 9): not ported yet; the shots and familiars read these.
-    bool bombActive_ = false;
+    // The bomb (spec 9).
+    bool bombActive_ = false;  // mirrors bomb_.active
     int bombIndex_ = 0;
-    Timer bombTimer_;
+    Timer bombTimer_;          // mirrors bomb_.timer
+    Bomb bomb_;
+    std::unique_ptr<std::array<Projectile, kProjectiles>> projectiles_ = std::make_unique<std::array<Projectile, kProjectiles>>();
+    bool bombingFlag_ = false;      // Player+0xE2A7C
+    std::int32_t lockout_ = 0;      // Player+0xE2A6C
+    bool dissolveTrigger_ = false;  // byte+6
+    std::uint16_t prevInput_ = 0;
+    Effect* bombEffect_ = nullptr;   // the bomb-invulnerability effect (special slot 0)
+    Effect* deathEffect_ = nullptr;  // the deathbomb countdown ring (special slot 11)
+
+    // The gauge from shooting (spec 11.3) and the time orbs (spec 6.5, 11.2).
+    Timer gaugeIdle_, gaugeRamp_;
+    std::int32_t orbTimer_ = 0;
+    std::int32_t orbStep_ = 40;     // Player+0xE2B2C: 27 for the human solos
 };
 
 }  // namespace touhou::th08

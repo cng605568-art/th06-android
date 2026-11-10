@@ -37,8 +37,47 @@ struct GameState {
     std::int32_t timePoints = 0, timeQuota = 0;
     int nightSteps = 0;  // 23:00 + 30 minutes per step
     std::int32_t pointValue = 100000;  // globals+0x24: the maximum point-item value
-    std::int32_t rank = 10;             // GM+0x3DE2C
+    std::int32_t timeTotal = 0;         // globals+0x44: this stage's running total of time points
+    std::int32_t extends = 0;           // globals+0x34: extends granted
+    std::int32_t rank = 10, minRank = 8, maxRank = 16, subrank = 0;  // GM+0x3DE2C (spec 14)
     float misses = 0, bombsUsed = 0;
+    std::int32_t lastSpellsUsed = 0, bombsUsedGame = 0;
+
+    // The human/youkai gauge (spec 11): negative human, positive youkai; the limits and the
+    // 80 % / 20 % thresholds are set per character at every stage set-up.
+    std::int16_t gauge = 0, gaugeShown = 0;
+    std::int16_t gaugeMin = -10000, gaugeMax = 10000;
+    std::int16_t human80 = -8000, youkai80 = 8000, human20 = -2000, youkai20 = 2000;
+    // Frame counters for the stage result's "over 80 %" lines (spec 1.2 step 11).
+    std::int32_t stageFrames = 0, gameFrames = 0, stageHuman80 = 0, gameHuman80 = 0, stageYoukai80 = 0, gameYoukai80 = 0;
+
+    bool h80() const { return gauge <= human80; }
+    bool y80() const { return gauge >= youkai80; }
+    bool h20() const { return gauge <= human20; }
+    bool y20() const { return gauge >= youkai20; }
+    // AddHumanYoukaiGauge (0x43C0BB): ignored during a bomb unless forced; clamped; the
+    // display copy follows.
+    void addGauge(int delta, bool force, bool bombActive) {
+        if (bombActive && !force) return;
+        gauge = static_cast<std::int16_t>(std::clamp(gauge + delta, static_cast<int>(gaugeMin), static_cast<int>(gaugeMax)));
+        gaugeShown = gauge;
+    }
+    void increaseSubrank(std::int32_t amount) {
+        subrank += amount;
+        while (subrank >= 100) {
+            ++rank;
+            subrank -= 100;
+        }
+        if (rank > maxRank) rank = maxRank;
+    }
+    void decreaseSubrank(std::int32_t amount) {
+        subrank -= amount;
+        while (subrank < 0) {
+            --rank;
+            subrank += 100;
+        }
+        if (rank < minRank) rank = minRank;
+    }
     int livesI() const { return static_cast<int>(lives); }
     int bombsI() const { return static_cast<int>(bombs); }
     int powerI() const { return static_cast<int>(power); }

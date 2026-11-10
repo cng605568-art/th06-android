@@ -104,6 +104,18 @@ void Player::stageStart(const World& w) {
     grazeMin_ = {pos_.x - gb, pos_.y - gb, 0}, grazeMax_ = {pos_.x + gb, pos_.y + gb, 0};
     itemMin_ = {pos_.x - ib, pos_.y - ib, 0}, itemMax_ = {pos_.x + ib, pos_.y + ib, 0};
     if (isSolo(character_)) buildFamiliars(w, false);
+    // The gauge limits and thresholds (spec 11.1) and the time-orb damage step (spec 8.7).
+    GameState& g = *w.state;
+    struct Limits {
+        std::int16_t min, max, h80, y80, h20, y20;
+    };
+    Limits l{-10000, 10000, -8000, 8000, -2000, 2000};
+    if (character_ == 3) l = {-5000, 10000, -3000, 8000, -2000, 2000};
+    else if (character_ == 10) l = {-5000, 5000, -3000, 3000, -2000, 2000};
+    else if (isHumanSolo(character_)) l = {-10000, 2000, -8000, 8000, -2000, 2001};
+    else if (isYoukaiSolo(character_)) l = {-2000, 10000, -8000, 8000, -2001, 2000};
+    g.gaugeMin = l.min, g.gaugeMax = l.max, g.human80 = l.h80, g.youkai80 = l.y80, g.human20 = l.h20, g.youkai20 = l.y20;
+    orbStep_ = isHumanSolo(character_) ? 27 : 40;
 }
 
 // ---- familiars --------------------------------------------------------------------------
@@ -352,8 +364,9 @@ void Player::update(const World& w, std::uint16_t input) {
         return;
     }
     if (focusEffect_) focusEffect_->vm.set(AnmVm::Frozen, false);
-    // 1. Regions. (2. The bomb: to come.)
+    // 1. Regions; 2. the bomb.
     regionUpkeep();
+    bombStep(w, input);
     // 3. Death; 4. spawn-in (also in the frame of the respawn move).
     bool spawnIn = state_ == State::Spawning;
     if (state_ == State::Dead && deathStep(w)) spawnIn = true;
@@ -370,6 +383,22 @@ void Player::update(const World& w, std::uint16_t input) {
     // 10. End of pass: the generic homing target and its lock are reset (the enemy pointer is not).
     target_ = kNoTarget;
     targetLock_ = false;
+    // 11. Gauge statistics: frames spent at either 80 %, worth 100 points each.
+    if (!w.dialogue) {
+        GameState& g = *w.state;
+        ++g.stageFrames;
+        ++g.gameFrames;
+        if (g.h80()) {
+            ++g.stageHuman80;
+            ++g.gameHuman80;
+            g.score += 10;
+        } else if (g.y80()) {
+            ++g.stageYoukai80;
+            ++g.gameYoukai80;
+            g.score += 10;
+        }
+    }
+    prevInput_ = input;
 }
 
 void Player::spawnInStep(const World& w) {
@@ -400,8 +429,11 @@ void Player::stateStep(const World& w) {
     }
     if (state_ == State::Invulnerable) {
         lastSpellArmed_ = false;
+        if (bombEffect_) bombEffect_->pos = pos_;
         stateTimer_.decrement(1);
         if (stateTimer_.current <= 0) {
+            if (bombEffect_) bombEffect_->inUse = false;
+            bombEffect_ = nullptr;
             state_ = State::Alive;
             stateTimer_.assign(0);
             vm_.color = 0xFFFFFFFFu;
@@ -426,6 +458,7 @@ void Player::focusBookkeeping(const World& w) {
             }
             if (!focusEffect_ && w.effects) focusEffect_ = &w.effects->spawnSpecial(w, 22, pos_, 2, 1, 0xFFFFFFFFu);
             switchCounter_ = 0;
+            gaugeRamp_.assign(0);
         } else {
             ++switchCounter_;
         }
@@ -447,6 +480,7 @@ void Player::focusBookkeeping(const World& w) {
             if (focusEffect_) focusEffect_->inUse = false;
             focusEffect_ = nullptr;
             switchCounter_ = 0;
+            gaugeRamp_.assign(0);
         } else {
             ++switchCounter_;
         }
@@ -521,8 +555,44 @@ void Player::movementStep(const World& w, std::uint16_t input) {
         for (int i = kHistory - 1; i > 0; --i) history_[static_cast<std::size_t>(i)] = history_[static_cast<std::size_t>(i - 1)];
         history_[0] = pos_;
     }
+    gaugeFromShooting(w);
     // The first shot trigger (0x44BDBE).
     if ((input & BtnShoot) && fireCycle_.current < 0 && !w.dialogue) fireCycle_.assign(0);
+}
+
+// The gauge from shooting and its decay (spec 11.3).
+void Player::gaugeFromShooting(const World& w) {
+    if (w.dialogue || switchCounter_ < 30 || bombActive_) return;
+    GameState& g = *w.state;
+    if (fireCycle_.current >= 0) {
+        if (gaugeIdle_.current > 0) {
+            gaugeIdle_.decrement(1);
+            return;
+        }
+        const float t = gaugeRamp_.asFloat();
+        int n = t > 300.0f ? 21 : static_cast<int>(t / 15.0f);  // 21 from t = 301 [QUIRK]
+        if (focus_ != 1) n = -n;
+        g.addGauge(static_cast<int>(static_cast<float>(n) * g_timing.speed), false, bombActive_);
+        gaugeRamp_.tick();
+        return;
+    }
+    if (gaugeIdle_.current >= 4) gaugeRamp_.assign(0);
+    if (gaugeIdle_.current >= 30) {
+        if (std::abs(static_cast<int>(g.gauge)) <= 9) {
+            g.gauge = 0;  // set directly: no clamp, the display copy untouched
+            return;
+        }
+        int delta;
+        if (g.y80()) delta = -5;
+        else if (g.y20()) delta = -3;
+        else if (g.gauge > 0) delta = -2;
+        else if (!g.h20()) delta = 2;
+        else if (!g.h80()) delta = 3;
+        else delta = 5;
+        g.addGauge(static_cast<int>(static_cast<float>(delta) * g_timing.speed), false, bombActive_);
+    } else {
+        gaugeIdle_.tick();
+    }
 }
 
 // ---- shots ------------------------------------------------------------------------------
@@ -557,7 +627,7 @@ void Player::shotInit(const World& w, Shot& s, const ShotEntry& e) {
     if (e.sound >= 0) w.playSound(e.sound);
     s.vm = AnmVm{};
     s.vm.start(*w.anm, *w.rng, kSlotPlayer, e.sprite + 10);
-    s.youkaiPower = false;  // (the gauge comes later)
+    s.youkaiPower = w.state->y80() && e.side > 0;  // (tints the sprite red)
 }
 
 bool Player::fire(const World& w, Shot& s, int slot, const ShotEntry& e, int cycle) {
@@ -759,14 +829,47 @@ void Player::shotUpdate(const World& w) {
 int Player::damageQuery(const World& w, const Vec3f& centre, const Vec3f& size, std::int32_t& accumulator, bool& bomb) {
     if (!ticked(stateTimer_)) return 0;
     bomb = false;
+    GameState& g = *w.state;
     int sum = 0;
     const float hw = size.x / 2.0f, hh = size.y / 2.0f;
+    // 3. Shots.
     for (Shot& s : shotSlots_) {
         if (!(s.state == 1 || (s.state != 0 && s.shotClass == 3))) continue;
         if (!boxesTouch(s.pos, s.boxW / 2.0f, s.boxH / 2.0f, centre, hw, hh)) continue;
         if ((s.shotClass == 4 || s.shotClass == 5) && (s.age.current & 1)) continue;
-        // (Hit kinds 1 and 2 come with the effect sparks.)
+        if (s.hitKind == 1) {  // explosive (spec_bombs 11.3)
+            if (s.state == 2) {
+                if (s.age.current & 1) continue;
+                if (w.spellCardActive && (s.age.current % 4) != 0) continue;
+                s.damage = static_cast<std::int16_t>(std::max(1, s.damage / 3));
+                s.velocity = s.velocity * 0.88f;
+            } else {
+                const float blast = w.rng->f32InRange(kZunPi / 2.0f) - 3.0f * kZunPi / 4.0f;
+                float box = -1.0f;
+                switch (s.vm.scriptIndex - 12) {
+                    case 0: box = 48.0f; break;
+                    case 2: box = 64.0f; break;
+                    case 4: box = 80.0f; break;
+                    case 6: box = 96.0f; break;
+                    case 8: box = 128.0f; break;
+                    default: break;
+                }
+                if (box > 0.0f) {
+                    s.boxW = s.boxH = box;
+                    s.velocity = polarOnce(blast, 6.0f);
+                }
+            }
+            if (s.age.current % 6 == 0 && w.effects) w.effects->spawn(w, 5, centre, 1, 0xFFFFFFFFu);
+        } else if (s.hitKind == 2) {  // the doll laser's sparks (shared counter)
+            ++sparkCounter_;
+            if (sparkCounter_ % 8 == 0 && w.effects) w.effects->spawn(w, 5, {s.pos.x, centre.y, 0.0f}, 1, 0xFFFFFFFFu);
+        }
         sum += bombActive_ ? std::max(1, s.damage / 5) : s.damage;
+        // Time orbs from the damage, with the accumulator as it stood before this query.
+        while (accumulator >= orbStep_) {
+            if (g.h80() && s.side < 0 && w.bullets) w.bullets->spawnItem(w, s.pos, BulletManager::TimeOrb, BulletManager::Falling);
+            accumulator -= orbStep_;
+        }
         if (s.shotClass == 4 || s.shotClass == 5 || s.shotClass == 6) continue;  // piercing
         if (s.state == 1) {
             s.vm.start(*w.anm, *w.rng, kSlotPlayer, s.sprite + 11);
@@ -776,7 +879,40 @@ int Player::damageQuery(const World& w, const Vec3f& centre, const Vec3f& size, 
             if (s.shotClass != 3) s.velocity = s.velocity * (1.0f / 8.0f);
         }
     }
+    // 4.
     accumulator += std::min(sum, 50);
+    // 5. Damage regions, on the frames their interval allows.
+    for (int i = 0; i < 192; ++i) {
+        Region& r = regions_[static_cast<std::size_t>(i)];
+        if (!r.active || r.interval == 0 || (r.lifetime % r.interval) != 0) continue;
+        bool hit;
+        if (r.radius != 0.0f) {
+            const float dx = centre.x - r.centre.x, dy = centre.y - r.centre.y;
+            hit = dx * dx + dy * dy <= r.radius * r.radius;
+        } else if (r.angle != 0.0f) {
+            const float sn = std::sin(-r.angle), cs = std::cos(-r.angle);
+            const float dx = centre.x - r.centre.x, dy = centre.y - r.centre.y;
+            const float x = dx * cs - dy * sn, y = dx * sn + dy * cs;
+            hit = std::fabs(x) <= r.w / 2.0f + hw && std::fabs(y) <= r.h / 2.0f + hh;
+        } else {
+            hit = boxesTouch(r.centre, r.w / 2.0f, r.h / 2.0f, centre, hw, hh);
+        }
+        if (!hit) continue;
+        int d = r.damage;
+        r.dealt += d;
+        if (r.cap > 0 && r.dealt >= r.cap) {
+            d -= r.dealt - r.cap;
+            r.damage = 0;
+        }
+        sum += d;
+        if (!r.noSpark) {
+            ++sparkCounter_;
+            if (sparkCounter_ % 4 == 0 && w.effects) w.effects->spawn(w, 3, centre, 1, 0xFFFFFFFFu);
+        }
+        if (bombActive_) bomb = true;
+    }
+    // 6. The youkai bonus.
+    if (g.y80() && sum != 0) sum = sum * 106 / 100;
     return sum;
 }
 
@@ -801,16 +937,36 @@ int Player::freeRegion(int first) const {
     return first + 191;
 }
 
-void Player::cancelRect(const Vec3f& centre, float w, float h, int itemType, std::int32_t lifetime) {
-    Region& r = regions_[static_cast<std::size_t>(freeRegion(192))];
+int Player::cancelRect(const Vec3f& centre, float w, float h, int itemType, std::int32_t lifetime) {
+    const int i = freeRegion(192);
+    Region& r = regions_[static_cast<std::size_t>(i)];
     r = Region{};
     r.centre = centre, r.w = w, r.h = h, r.itemType = itemType, r.lifetime = lifetime, r.active = true;
+    return i;
 }
 
-void Player::cancelCircle(const Vec3f& centre, float radius, float growth, std::int32_t lifetime, int itemType) {
-    Region& r = regions_[static_cast<std::size_t>(freeRegion(192))];
+int Player::cancelCircle(const Vec3f& centre, float radius, float growth, std::int32_t lifetime, int itemType) {
+    const int i = freeRegion(192);
+    Region& r = regions_[static_cast<std::size_t>(i)];
     r = Region{};
     r.centre = centre, r.radius = radius, r.growth = growth, r.lifetime = lifetime, r.itemType = itemType, r.active = true;
+    return i;
+}
+
+int Player::damageRect(const Vec3f& centre, float w, float h, std::int32_t damage, std::int32_t lifetime) {
+    const int i = freeRegion(0);
+    Region& r = regions_[static_cast<std::size_t>(i)];
+    r = Region{};
+    r.centre = centre, r.w = w, r.h = h, r.damage = damage, r.lifetime = lifetime, r.active = true;
+    return i;
+}
+
+int Player::damageCircle(const Vec3f& centre, float radius, float growth, std::int32_t damage, std::int32_t lifetime) {
+    const int i = freeRegion(0);
+    Region& r = regions_[static_cast<std::size_t>(i)];
+    r = Region{};
+    r.centre = centre, r.radius = radius, r.growth = growth, r.damage = damage, r.lifetime = lifetime, r.active = true;
+    return i;
 }
 
 bool Player::cancelTest(const Vec3f& c) {
@@ -900,15 +1056,25 @@ Player::HitResult Player::enemyContact(const World& w, const Vec3f& centre, cons
 }
 
 void Player::scoreGraze(const World& w, const Vec3f& at, bool laser) {
-    (void)laser;
     GameState& g = *w.state;
     if (!bombActive_) {
-        if (g.stageGraze < 99999) ++g.stageGraze;
-        if (g.graze < 999999) ++g.graze;
+        const int k = g.h80() ? 3 : g.h20() ? 2 : 1;
+        if (g.stageGraze < 99999) g.stageGraze += k;
+        if (g.graze < 999999) g.graze += k;
     }
     if (w.effects) w.effects->spawn(w, 8, (pos_ + at) * 0.5f, 1, 0xFFFFFFFFu);
+    g.increaseSubrank(6);
     w.playSound(30);
-    g.score += 200;  // 2000 points
+    g.score += g.y20() ? 400 : 200;
+    if (youkaiFront_) g.addGauge(100, false, bombActive_);
+    // Time orbs from grazing near a boss at youkai 80 %.
+    if ((!isHumanSolo(character_) || character_ == 10) && w.enemies && w.enemies->anyBoss() && g.y80() && w.bullets) {
+        w.bullets->spawnItem(w, at, 10, BulletManager::Falling);
+        if (!laser && w.spellCardActive) {
+            w.bullets->spawnItem(w, at, 10, BulletManager::Falling);
+            if (!isYoukaiSolo(character_)) w.bullets->spawnItem(w, at, 10, BulletManager::Falling);
+        }
+    }
 }
 
 bool Player::pickupBoxTouches(const Vec3f& item) const {
@@ -926,40 +1092,57 @@ void Player::makeInvulnerable(std::int32_t frames) {
 
 void Player::die(const World& w) {
     GameState& g = *w.state;
+    w.timeStop = false;
     antiTamper(*w.rng);
     if (w.effects) w.effects->spawn(w, 6, pos_, 16, 0xFFFFFFFFu);
     state_ = State::Dead;
     stateTimer_.assign(0);
     w.playSound(4);
     committed_ = false;
-    // The deathbomb countdown: bombs x 6, +7 with the time quota met, at most 15 (twice in a
-    // card, at most 30); x 9 / 5 for Reimu's characters.
-    const int bombs = g.bombsI();
-    if (bombs >= 1) {
-        countdown_ = bombs * 6;
-        if (g.timePoints >= g.timeQuota) countdown_ += 7;
-        countdown_ = std::min(countdown_, 15);
-        if (w.spellCardActive) countdown_ = std::min(countdown_ * 2, 30);
-        if (character_ == 0 || character_ == 4 || character_ == 5) countdown_ = countdown_ * 9 / 5;
-    } else {
+    if (w.mode & ModeDissolve) {  // a boss's Last Spell: the Dissolve spell starts next frame
         countdown_ = 2;
+        dissolveTrigger_ = true;
+    } else {
+        g.gauge = 0;  // set directly: the display copy is not touched [QUIRK]
+        // The deathbomb countdown: bombs x 6, +7 with the time quota met, at most 15 (twice in
+        // a card, at most 30); x 9 / 5 for Reimu's characters.
+        const int bombs = g.bombsI();
+        if (bombs >= 1) {
+            countdown_ = bombs * 6;
+            if (g.timePoints >= g.timeQuota) countdown_ += 7;
+            countdown_ = std::min(countdown_, 15);
+            if (w.spellCardActive) countdown_ = std::min(countdown_ * 2, 30);
+            if (character_ == 0 || character_ == 4 || character_ == 5) countdown_ = countdown_ * 9 / 5;
+            vm_.set(AnmVm::UseAltColor, true);
+            vm_.altColor = 0xFFFFFFFFu;
+            if (w.effects) {
+                deathEffect_ = &w.effects->spawnSpecial(w, 59, pos_, 11, 1, 0xFFF0404Fu);
+                deathEffect_->ignoreFreeze = true;
+            }
+            if (w.spellCardActive) w.mode |= ModeSpellFreeze;
+        } else {
+            countdown_ = 2;
+        }
     }
     if (w.bullets) w.bullets->stopHoming();
 }
 
 void Player::commitDeath(const World& w) {
     GameState& g = *w.state;
+    if (deathEffect_) deathEffect_->inUse = false;
+    deathEffect_ = nullptr;
     if (w.effects) {
         w.effects->spawnSpecial(w, 12, pos_, 3, 1, 0xFF4040FFu);
         w.effects->spawn(w, 6, pos_, 16, 0xFFFFFFFFu);
     }
     w.playSound(15);
+    w.mode &= ~static_cast<std::uint32_t>(ModeSpellFreeze);
+    vm_.set(AnmVm::UseAltColor, false);
     lastSpellArmed_ = false;
+    if (w.enemies) w.enemies->playerMissed();
     g.misses += 1.0f;
     antiTamper(*w.rng);
-    const std::int32_t loss = g.timePoints > 5000 ? 500 : g.timePoints / 10;
-    g.timePoints = std::max(0, g.timePoints - loss);
-    antiTamper(*w.rng);
+    w.addTimePoints(-(g.timePoints > 5000 ? 500 : g.timePoints / 10));
     if (g.lives >= 1.0f) {
         g.power = g.power <= 16.0f ? 0.0f : g.power - 16.0f;
         antiTamper(*w.rng);
@@ -978,17 +1161,13 @@ void Player::commitDeath(const World& w) {
             for (int k = 0; k < 5; ++k) w.bullets->spawnItem(w, pos_, BulletManager::FullPower, BulletManager::Scatter);
         }
     }
+    g.decreaseSubrank(1600);
 }
 
 bool Player::deathStep(const World& w) {
     GameState& g = *w.state;
     if (countdown_ != 0) {
-        if (g.timePoints < 15) {
-            g.timePoints = 0;
-        } else {
-            g.timePoints -= 15;
-            antiTamper(*w.rng);
-        }
+        w.addTimePoints(-15);
         --countdown_;
         lastSpellArmed_ = true;
         if (countdown_ == 0) {
@@ -1024,6 +1203,11 @@ bool Player::deathStep(const World& w) {
 // ---- drawing ----------------------------------------------------------------------------
 
 void Player::drawShots(SpriteSink& sink, const AnmDrawState& state) {
+    drawShotSprites(sink, state);
+    if (bomb_.active) drawBomb(sink, state);
+}
+
+void Player::drawShotSprites(SpriteSink& sink, const AnmDrawState& state) {
     for (Shot& s : shotSlots_) {
         if (s.state == 0) continue;
         if (s.state == 1 && s.vm.autoRotate != 0) s.vm.rotation.z = s.angle + kZunPi / 2.0f;

@@ -9,6 +9,8 @@
 #include "io/Vfs.hpp"
 #include "th08/Background.hpp"
 #include "th08/Effects.hpp"
+#include "th08/ScreenEffects.hpp"
+#include "th08/ShotData.hpp"
 #include "th08/ExeTables.hpp"
 #include "th08/Gui.hpp"
 #include "th08/Player.hpp"
@@ -1258,10 +1260,19 @@ EnemyManager::Exec EnemyManager::execute(Enemy& e, std::uint32_t& ip) {
         case 122: spellCardStart(e, p); break;
         case 123: spellCardEnd(); break;
         case 164: break;
-        case 176:
-            // The Last Spell marker (spec 12.7): the enemy freezes while the player bombs.
+        case 176: {
+            // The Last Spell marker (spec 12.7): state 1 in mode bits 7-8 (bombs refused, a hit
+            // starts the Dissolve spell), bit 13 in the final stages, and the enemy freezes
+            // while the player bombs.
+            wd.mode = (wd.mode & ~static_cast<std::uint32_t>(ModeDissolve | ModeBit13)) | (1u << 7);
+            const int card = spell_.id;
+            const bool sp = (wd.mode & ModeSpellPractice) != 0;
+            if ((!sp && (stage_ == 6 || stage_ == 7)) || (sp && ((card >= 143 && card <= 146) || (card >= 171 && card <= 190)))) {
+                wd.mode |= ModeBit13;
+            }
             e.frozenWhileBombing = true;
             break;
+        }
         case 184: spell_.noDrain = (o.I(0) & 1) != 0; break;
         case 86: {
             Enemy* b = bossAt(o.I(2));
@@ -1704,31 +1715,73 @@ void EnemyManager::familiarPreUpdate(Enemy& e) {
     e.extraMask = youkai ? 0x40 : 0x20;
 }
 
+// Dismissal (spec 9.6): the familiars die on their next update; with a bonus each one gives
+// a cancel circle, time orbs (and its drops when no boss is up or a card is active).
 void EnemyManager::dismissFamiliars(Enemy& e, bool bonus) {
     const World& wd = w();
-    if (!(e.parent == nullptr && e.next != nullptr)) {
-        if (e.parent) unlinkFromParent(e);
-        return;
-    }
-    int k = 0;
-    for (Enemy* f = e.next; f;) {
-        Enemy* nxt = f->next;
-        if (f->attached) f->offset = e.pos;
-        f->prev = f->next = nullptr;
-        f->parent = nullptr;
-        f->dismissed = true;
-        if (bonus) {
-            f->abs = f->pos + f->offset;
-            if (wd.player) wd.player->cancelCircle(f->abs, 32.0f, 2.0f, 8, e.boss ? 7 : 9);
-            wd.playSound(2 + (k % 2));
+    GameState& g = *wd.state;
+    Player* player = wd.player;
+    const bool bombing = player && player->bombActive();
+    auto orb = [&](const Vec3f& at, float magnitude) {
+        const float m = wd.rng->f32InRange(magnitude);  // magnitude first, then the angle
+        const float a = (static_cast<float>(wd.rng->u32()) / 2147483648.0f - 1.0f) * kZunPi;
+        Vec3f off;
+        fromAngle(off, a, m);
+        if (wd.bullets) wd.bullets->spawnItem(wd, at + off, BulletManager::TimeOrb, BulletManager::OrbRising);
+    };
+    if (e.parent == nullptr && e.next != nullptr) {
+        const int count = familiarCountOf(e);
+        int n = count;
+        int k = 0;
+        for (Enemy* f = e.next; f;) {
+            Enemy* nxt = f->next;
+            if (f->attached) f->offset = e.pos;
+            f->prev = f->next = nullptr;
+            f->parent = nullptr;
+            f->dismissed = true;
+            if (bonus) {
+                int c;
+                if (isYoukaiSolo(g.character)) c = n >= 10 ? 26 : 2 * n + 6;
+                else if (isHumanSolo(g.character)) c = n >= 4 ? 40 : 6 * n + 16;
+                else c = n >= 8 ? 26 : 2 * n + 10;
+                if (bombing) n /= 3;  // after c: later familiars get fewer [QUIRK]
+                f->abs = f->pos + f->offset;
+                if (player) player->cancelCircle(f->abs, 32.0f, 2.0f, 8, e.boss ? 7 : 9);
+                for (int i = 0; i < c; ++i) orb(f->abs, static_cast<float>(2 * c));
+                bool anyBossSlot = false;
+                for (Enemy* b : bosses_) anyBossSlot = anyBossSlot || b != nullptr;
+                if (!anyBossSlot || wd.spellCardActive) {
+                    f->itemDrop = 8;
+                    drops(*f, false);
+                }
+                wd.playSound(2 + (k % 2));
+            }
+            f->itemDrop = -2;
+            f->extraPoints = f->extraPower = 0;
+            f = nxt;
+            ++k;
         }
-        f->itemDrop = -2;
-        f->extraPoints = f->extraPower = 0;
-        f = nxt;
-        ++k;
+        e.next = nullptr;
+        e.familiarCount = 0;
+        if (bonus) {
+            for (int i = 0; i < 2 * count; ++i) orb(e.abs, 128.0f);
+            if (player) {
+                player->cancelCircle(e.abs, 32.0f, 1.0f, 16, 7);
+                player->orbTimer() = 0;
+            }
+        }
     }
-    e.next = nullptr;
-    e.familiarCount = 0;
+    if (e.familiar && bonus) {
+        g.gauge = static_cast<std::int16_t>(g.gauge - g.gauge / 12);
+        if (player) {
+            player->gaugeAfterFamiliar();
+            player->orbTimer() = 50;
+        }
+        if (wd.bullets) wd.bullets->spawnItem(wd, e.abs, BulletManager::TimeOrb, BulletManager::Homing);
+        e.itemDrop = -2;
+        e.extraPoints = e.extraPower = 0;
+    }
+    if (e.parent) unlinkFromParent(e);
 }
 
 // ---- the manager's frame (spec 8.2) -----------------------------------------------------
@@ -1760,11 +1813,10 @@ void EnemyManager::update(const World& w) {
     if (!loaded_) return;
     if (w.mode & ModeSpellFreeze) return;
     GameState& g = *w.state;
-    // Time points (spec 8.2 step 4): every 2400 - 240 x lives frames, +100.
+    // Rank (spec 8.2 step 4, corrected by spec_player 14.2): every 2400 - 240 x lives frames.
     const std::int32_t period = 2400 - 240 * g.livesI();
     if (!w.dialogue && hasTicked(managerTimer_) && period > 0 && managerTimer_.current % period == 0) {
-        g.timePoints += 100;
-        antiTamper(*w.rng);
+        g.increaseSubrank(100);  // (0x43BFC3 is IncreaseSubrank: spec_player 0.8)
     }
     for (auto& l : drawLists_) l.clear();
     runTimelines();
@@ -1993,6 +2045,38 @@ bool EnemyManager::timerCallback(Enemy& e) {
     return true;
 }
 
+bool EnemyManager::anyBoss() const {
+    for (Enemy* b : bosses_) {
+        if (b) return true;
+    }
+    return false;
+}
+
+void EnemyManager::playerMissed() {
+    spell_.capturable = false;
+    spell_.captureValue = 0;
+}
+
+void EnemyManager::bombUsed() {
+    spell_.capturable = false;
+    spell_.bombed = spell_.active;
+}
+
+void EnemyManager::dissolveStart() {
+    for (Enemy* b : bosses_) {
+        if (b) b->hittable = false;
+    }
+}
+
+void EnemyManager::dissolveEnd() {
+    for (Enemy* b : bosses_) {
+        if (!b) continue;
+        dismissFamiliars(*b, false);
+        b->life = 0;
+        b->frozenWhileBombing = false;
+    }
+}
+
 // Spell circles (spec_effects 5.2): the enemy drives its circles' centre, radius and angle,
 // and a release fades them out over 16 effect passes.
 void EnemyManager::releaseCircles(Enemy& e) {
@@ -2071,6 +2155,7 @@ void EnemyManager::death(Enemy& e) {
     freeThreads(e);
     if (e.familiar && e.parent) --e.parent->familiarCount;
     dismissFamiliars(e, true);
+    g.addGauge(wd.player && wd.player->focused() ? 200 : -200, false, wd.player && wd.player->bombActive());
     const bool wasDismissed = e.dismissed;
     const bool bombing = wd.player && wd.player->bombActive();
     switch (e.deathType) {
@@ -2111,6 +2196,7 @@ void EnemyManager::death(Enemy& e) {
             wd.effects->spawn(wd, e.death1, e.abs, 1, 0xFFFFFFFFu);
             wd.effects->spawn(wd, e.death2 + 4, e.abs, 4, 0xFFFFFFFFu);
         }
+        if ((g.h80() || g.y80()) && wd.bullets) wd.bullets->spawnItem(wd, e.abs, BulletManager::TimeOrb, BulletManager::Homing);
     }
     if (e.deathSub >= 0) {
         e.rankSpeedLow = -0.5f;
@@ -2230,7 +2316,7 @@ void EnemyManager::exRoutine(Enemy& e, int routine, const std::uint8_t* ins) {
         case 19: c.args.intA[0] = 0; break;  // the practice card (spell practice not ported)
         case 24: c.args.intA[0] = 0; break;  // spell cards captured this game
         case 26:
-            const_cast<World&>(wd).timeStop = a != 0;
+            wd.timeStop = a != 0;
             break;
         case 28:
             if (a != 0) g_timing.speed = 1.0f / static_cast<float>(a);
@@ -2241,7 +2327,24 @@ void EnemyManager::exRoutine(Enemy& e, int routine, const std::uint8_t* ins) {
         case 31:
             if (wd.bullets) wd.bullets->spawnItem(wd, e.pos, wd.player && wd.player->bombActive() ? 3 : 5, BulletManager::Falling);
             break;
-        case 0: case 1: case 3: case 5: case 6: case 10: case 13: case 15: case 17: case 20: case 22: case 23: case 30:
+        // Screen effects (spec_bombs_familiars 1.4): the flashes are visual, the shakes draw
+        // two u32 per frame from the next frame on.
+        case 1:
+            if (wd.screen) wd.screen->flash(60, 1, 0xFFFFFFFFu);
+            break;
+        case 10:
+            if (wd.screen) {
+                wd.screen->flash(30, 5, 0x41000000u);  // (the colour argument is the float 8.0's bits)
+                wd.screen->rampedShake(4.0f, 120, 190, 60);
+            }
+            break;
+        case 15:
+            if (wd.screen) wd.screen->rampedShake(16.0f, 20, 20, 20);
+            break;
+        case 17:
+            if (wd.screen) wd.screen->flash(180, 1, 0xFFFFFFFFu);
+            break;
+        case 0: case 3: case 5: case 6: case 13: case 20: case 22: case 23: case 30:
             break;  // visual or GUI only
         default: eclWarnOnce(std::format("ex routine {} is not ported yet", routine)); break;
     }

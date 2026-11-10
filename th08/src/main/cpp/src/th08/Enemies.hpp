@@ -166,6 +166,13 @@ class EnemyManager {
     std::uint16_t dropCounter() const { return dropCounter_; }
     std::uint16_t dropIndex() const { return dropIndex_; }
     int timelinesRunning() const { return ecl_.timelineCount(); }
+    bool anyBoss() const;  // any of the 8 boss slots set
+
+    // ---- the player's hooks ----
+    void playerMissed();   // death commit: the card's capture fails (0x44D150)
+    void bombUsed();       // bomb start: capture fails, "bombed during this card" (0x44CBA0)
+    void dissolveStart();  // the bosses can no longer be hit by shots
+    void dissolveEnd();    // the bosses are finished (familiars dismissed, life 0)
 
     // ---- spawning ----
     Enemy& spawn(int sub, const Vec3f& pos, std::int32_t life, std::int32_t item, std::int32_t score, bool mirror);

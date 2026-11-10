@@ -16,6 +16,7 @@ class BulletManager;
 class EnemyManager;
 class Effects;
 class Player;
+class ScreenEffects;
 class SoundPlayer;
 struct ExeTables;
 struct GameState;
@@ -44,14 +45,20 @@ struct World {
     Background* background = nullptr;
     BulletManager* bullets = nullptr;
     EnemyManager* enemies = nullptr;
+    ScreenEffects* screen = nullptr;
 
-    std::uint32_t mode = 0;          // ModeFlag bits
+    // Game-wide flags any object may change (the objects get the world as const).
+    mutable std::uint32_t mode = 0;  // ModeFlag bits
     std::int32_t stageFrame = 0;     // GM+0x3DDC0
     bool dialogue = false;           // a dialogue script is running
     bool spellCardActive = false;    // Spellcard flag bit 0
-    bool timeStop = false;           // GM+0x2C (Sakuya's time stop)
+    mutable bool timeStop = false;   // GM+0x2C (Sakuya's time stop)
 
     void playSound(int id) const;
+    // AddTimePoints (0x418220, spec_player_bullets_items 12.1): a loss larger than what is
+    // left zeroes the points without a draw; anything else adds, regenerates the anti-tamper
+    // values (4 steps) and, for a gain, raises the maximum point value.
+    void addTimePoints(std::int32_t n) const;
 };
 
 // The anti-tamper regeneration (spec_player 18.1 "R"): two u32 draws (4 steps) whenever a

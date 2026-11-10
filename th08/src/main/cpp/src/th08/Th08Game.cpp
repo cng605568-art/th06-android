@@ -112,6 +112,8 @@ void Th08Game::applyScene() {
         setup.lives = config_.lives;
         // Developer aid: TH08_DEV_STAGE=<stage index 0-8> starts that stage instead.
         if (const char* dev = std::getenv("TH08_DEV_STAGE"); dev && *dev) setup.stage = std::clamp(std::atoi(dev), 0, kStageCount - 1);
+        // TH08_DEV_CHARACTER=<0-11> plays that character (0-3 teams, 4-11 solos).
+        if (const char* dev = std::getenv("TH08_DEV_CHARACTER"); dev && *dev) setup.character = std::clamp(std::atoi(dev), 0, 11);
         if (gameplay_->start(setup, &err)) return;
         log::warn("The game could not start: {}", err);
         gameplay_.reset();

@@ -52,6 +52,21 @@ struct ExeTables {
     std::array<std::array<std::int32_t, 5>, kBulletTypes> bulletScripts{};
     std::array<std::uint8_t, 32> dropCycle{};
     static constexpr std::uint32_t kBulletScripts = 0x004B4AD8, kDropCycle = 0x004C70D8;
+
+    // Scoring tables (spec_player_bullets_items §7.4, §12.1, §14.1): the time quota per
+    // stage x 4 + difficulty (entry 36, Extra, reads on into the rank table), the rank start,
+    // minimum and maximum per difficulty, the extend thresholds (main game, Extra), and the
+    // Reimu Last Spell burst colours (spec_bombs_familiars §2.2).
+    std::array<std::int32_t, 37> timeQuota{};
+    struct Rank {
+        std::int32_t start = 10, min = 8, max = 16;
+    };
+    std::array<Rank, 6> rank{};
+    std::array<std::int32_t, 6> extendMain{};
+    std::array<std::int32_t, 3> extendExtra{};
+    std::array<std::uint32_t, 7> burstColors{};
+    static constexpr std::uint32_t kTimeQuota = 0x004C77F0, kRankTable = 0x004C7880, kExtendMain = 0x004C7A84,
+                                   kExtendExtra = 0x004C7A9C, kBurstColors = 0x004C6100;
     static constexpr std::uint32_t kSoundTable = 0x004C8040, kSampleNames = 0x004C81B0;
     static constexpr std::uint32_t kTitleTextTable = 0x004C8640, kOptionTextTable = 0x004C8664,
                                    kKeyConfigTextTable = 0x004C8690;

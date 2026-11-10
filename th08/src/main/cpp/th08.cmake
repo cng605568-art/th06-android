@@ -11,6 +11,7 @@ set(TH08_SRC "${CMAKE_CURRENT_LIST_DIR}/src")
 add_library(th08_game STATIC
   ${TH08_SRC}/th08/Anm.cpp
   ${TH08_SRC}/th08/Background.cpp
+  ${TH08_SRC}/th08/Bombs.cpp
   ${TH08_SRC}/th08/Bgm.cpp
   ${TH08_SRC}/th08/Bullets.cpp
   ${TH08_SRC}/th08/Effects.cpp
@@ -25,6 +26,7 @@ add_library(th08_game STATIC
   ${TH08_SRC}/th08/MusicRoom.cpp
   ${TH08_SRC}/th08/Player.cpp
   ${TH08_SRC}/th08/ScoreFile.cpp
+  ${TH08_SRC}/th08/ScreenEffects.cpp
   ${TH08_SRC}/th08/ShotData.cpp
   ${TH08_SRC}/th08/SoundPlayer.cpp
   ${TH08_SRC}/th08/Version.cpp)

@@ -81,6 +81,17 @@ Effect& Effects::spawnSpecial(const World& w, int type, const Vec3f& pos, int k,
     (void)count;  // ignored: one effect
     Effect& e = special(k);
     start(w, e, type, pos, color);
+    e.special = static_cast<std::int8_t>(k);
+    if (!runInit(w, e)) e.inUse = false;
+    return e;
+}
+
+Effect& Effects::spawnSpecialWithVector(const World& w, int type, const Vec3f& pos, const Vec3f& custom, int k, int count,
+                                        std::uint32_t color) {
+    (void)count;
+    Effect& e = special(k);
+    start(w, e, type, pos, color, &custom);
+    e.special = static_cast<std::int8_t>(k);
     if (!runInit(w, e)) e.inUse = false;
     return e;
 }
@@ -139,6 +150,17 @@ bool Effects::runInit(const World& w, Effect& e) {
             e.pos.y += static_cast<float>(std::sin(static_cast<double>(e.custom.x)) * 256.0);
             e.vm.rotation.z = addNormalizeAngle(e.custom.x, kZunPi / 2.0f);
             return true;
+        case 0x411720:    // Yukari's bomb ring (36) and Last Spell ring (37): the init spawns
+        case 0x411A80: {  // its own slot again as type 35, then takes the ring over [QUIRK]
+            const bool last = e.init == 0x411A80;
+            const Vec3f pos = e.pos, custom = e.custom;
+            const std::uint32_t color = e.vm.color;
+            Effect& inner = spawnSpecialWithVector(w, 35, pos, custom, e.special, 1, color);  // the same record
+            inner.update = last ? 0x4117B0u : 0x4114E0u;
+            inner.segments = last ? 54 : 44;
+            inner.width = last ? 6.0f : 4.0f;
+            return true;
+        }
         case 0x4272E0:  // rings
         case 0x427970:
             e.ring = true;
@@ -224,6 +246,24 @@ bool Effects::runUpdate(const World& w, Effect& e) {
             if (!e.vm.current) return false;
             if (w.player) e.pos = w.player->position();
             return true;
+        case 0x4114E0:    // Yukari's rings: they close in, then become four barriers
+        case 0x4117B0: {  // (spec_bombs_familiars 3.2-3.3)
+            const bool last = e.update == 0x4117B0;
+            const int k = e.special - 4;
+            if (last) e.angle = addNormalizeAngle(e.angle, (e.special & 1) ? kZunPi / 80.0f : -kZunPi / 80.0f);
+            const float span = last ? 50.0f : 40.0f;
+            const std::int32_t t = e.timer.current;
+            const float tf = static_cast<float>(t);
+            if (tf < span) {
+                const float s = 1.0f - tf / span;
+                e.width = 88.0f - tf * 80.0f / span;
+                e.radius = last ? (192.0f + 32.0f * static_cast<float>(k)) - (384.0f + 32.0f * static_cast<float>(k)) * s * s
+                                : 192.0f - 384.0f * s * s;
+            } else if (tf == span && w.player) {
+                w.player->ringBarrier(w, e.centre, e.angle, e.radius, e.width, last);
+            }
+            return true;
+        }
         case 0x427990:  // rings 35, 39, 49, 52, 59
             e.width = e.vm.scale.x;
             e.radius = e.vm.position.x;

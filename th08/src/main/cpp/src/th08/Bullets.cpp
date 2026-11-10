@@ -788,7 +788,38 @@ void BulletManager::updateItems(const World& w) {
         i = next;
     }
     if (itemSound_ >= 0) w.playSound(itemSound_);
+    if (player->orbTimer() > 0) --player->orbTimer();  // the time-orb gauge timer
 }
+
+namespace {
+
+// The extend threshold for the k-th extend (spec 7.4).
+std::int32_t extendThreshold(const World& w, std::int32_t k) {
+    const GameState& g = *w.state;
+    if (g.difficulty >= 4) {
+        if (k < 3) return w.tables ? w.tables->extendExtra[static_cast<std::size_t>(k)] : 99999;
+        return 99999;
+    }
+    if (k < 6) return w.tables ? w.tables->extendMain[static_cast<std::size_t>(k)] : 9999;
+    return 9999 + 500 * (k - 5);
+}
+
+// The extend routine (0x439B29): a life below 8, else a bomb below 8, else nothing.
+void extend(const World& w) {
+    GameState& g = *w.state;
+    if (g.lives < 8.0f) {
+        g.lives += 1.0f;
+    } else if (g.bombs < 8.0f) {
+        g.bombs += 1.0f;
+    } else {
+        return;
+    }
+    antiTamper(*w.rng);
+    w.playSound(28);
+    g.increaseSubrank(200);
+}
+
+}  // namespace
 
 void BulletManager::collect(const World& w, Item& it) {
     GameState& g = *w.state;
@@ -796,15 +827,20 @@ void BulletManager::collect(const World& w, Item& it) {
     switch (it.type) {
         case SmallPower:
         case BigPower: {
-            if (g.power >= 128.0f) break;
-            const int before = g.powerI();
-            g.power = std::min(128.0f, g.power + (it.type == SmallPower ? 1.0f : 8.0f));
-            g.score += 1;  // 10 points
             if (g.power >= 128.0f) {
+                if (it.type == SmallPower) g.increaseSubrank(1);
+                break;
+            }
+            g.power = std::min(128.0f, g.power + (it.type == SmallPower ? 1.0f : 8.0f));
+            antiTamper(*w.rng);
+            if (g.power >= 128.0f) {
+                g.power = 128.0f;
+                antiTamper(*w.rng);
                 if (!w.spellCardActive) clearAll(w, 1);
                 convertPowerItems(w, &it);
             }
-            (void)before;
+            g.score += 1;  // 10 points
+            if (it.type == SmallPower) g.increaseSubrank(1);
             break;
         }
         case Point: {
@@ -813,46 +849,62 @@ void BulletManager::collect(const World& w, Item& it) {
             std::int32_t v = it.pos.y < poc ? maxV : maxV / 2 - static_cast<std::int32_t>(it.pos.y - poc) * (maxV / 1000);
             if (it.fullValue) v = maxV;
             v -= v % 10;
+            if (g.h80()) v *= 2;
             if (v >= maxV) it.fullValue = true;
             g.score += static_cast<std::uint32_t>(std::max(0, v)) / 10;
             ++g.stagePointItems;
             ++g.pointItems;
+            g.increaseSubrank(v >= maxV ? 10 : 3);
+            while (g.extends >= 0 && g.pointItems >= extendThreshold(w, g.extends)) {
+                extend(w);
+                ++g.extends;
+            }
+            g.nextExtend = extendThreshold(w, g.extends);
+            antiTamper(*w.rng);
             break;
         }
         case SmallFullPower: {
-            const std::int32_t maxV = g.pointValue;
+            std::int32_t maxV = g.pointValue;
             const float poc = player.header().pocLine;
             std::int32_t v = it.pos.y < poc ? maxV : maxV / 2 - static_cast<std::int32_t>(it.pos.y - poc) * (maxV / 1000);
+            maxV /= 10;
+            maxV -= maxV % 10;
             v /= 10;
             v -= v % 10;
+            if (g.h80()) v *= 2;
             g.score += static_cast<std::uint32_t>(std::max(0, v)) / 10;
             break;
         }
         case Bomb:
-            if (g.bombs < 8.0f) g.bombs += 1.0f;
+            if (g.bombs < 8.0f) {
+                g.bombs += 1.0f;
+                antiTamper(*w.rng);
+            }
+            g.increaseSubrank(5);
             break;
         case FullPower:
             if (g.power < 128.0f) {
                 clearAll(w, 1);
+                w.playSound(31);
                 convertPowerItems(w, &it);
             }
             g.power = 128.0f;
+            antiTamper(*w.rng);
             g.score += 100;
             break;
         case Extend:
-            if (g.lives < 8.0f) g.lives += 1.0f;
-            else if (g.bombs < 8.0f) g.bombs += 1.0f;
-            w.playSound(28);
+            extend(w);
             break;
         case PointBullet: {
-            const std::int32_t v = std::max(10, g.graze / 40 * 10 + 300);
+            const std::int32_t v = player.bombing() ? 100 : std::max(10, g.graze / 40 * 10 + 300);
             g.score += static_cast<std::uint32_t>(v) / 10;
             break;
         }
         case TimeOrb: {
-            const std::int32_t v = g.stagePointItems >= 2000 ? 10000 : std::max(100, (g.pointItems / 2) * 10);
+            const std::int32_t v = player.bombing() ? 100 : g.stagePointItems >= 2000 ? 10000 : std::max(100, (g.pointItems / 2) * 10);
             g.score += static_cast<std::uint32_t>(v) / 10;
-            ++g.timePoints;
+            w.addTimePoints(1);
+            if (player.orbTimer() == 0) g.addGauge(player.focused() ? 111 : -111, false, player.bombActive());
             break;
         }
         default: break;

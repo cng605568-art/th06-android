@@ -69,6 +69,23 @@ bool loadExeTables(std::span<const std::uint8_t> exe, ExeTables& t, std::string*
     at = pe.offsetOf(ExeTables::kDropCycle, 32);
     if (at < 0) return fail("drop table not in the file");
     for (int i = 0; i < 32; ++i) t.dropCycle[static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(pe.u16(static_cast<std::size_t>(at) + static_cast<std::size_t>(i)) & 0xFF);
+    auto words = [&](std::uint32_t va, std::size_t n, auto&& put) {
+        const std::int64_t a = pe.offsetOf(va, 4 * n);
+        if (a < 0) return false;
+        for (std::size_t i = 0; i < n; ++i) put(i, pe.u32(static_cast<std::size_t>(a) + 4 * i));
+        return true;
+    };
+    const bool scoring =
+        words(ExeTables::kTimeQuota, t.timeQuota.size(), [&](std::size_t i, std::uint32_t v) { t.timeQuota[i] = static_cast<std::int32_t>(v); }) &&
+        words(ExeTables::kRankTable, 3 * t.rank.size(),
+              [&](std::size_t i, std::uint32_t v) {
+                  ExeTables::Rank& r = t.rank[i / 3];
+                  (i % 3 == 0 ? r.start : i % 3 == 1 ? r.min : r.max) = static_cast<std::int32_t>(v);
+              }) &&
+        words(ExeTables::kExtendMain, t.extendMain.size(), [&](std::size_t i, std::uint32_t v) { t.extendMain[i] = static_cast<std::int32_t>(v); }) &&
+        words(ExeTables::kExtendExtra, t.extendExtra.size(), [&](std::size_t i, std::uint32_t v) { t.extendExtra[i] = static_cast<std::int32_t>(v); }) &&
+        words(ExeTables::kBurstColors, t.burstColors.size(), [&](std::size_t i, std::uint32_t v) { t.burstColors[i] = v; });
+    if (!scoring) return fail("scoring tables not in the file");
     return true;
 }
 

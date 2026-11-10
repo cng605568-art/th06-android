@@ -25,6 +25,8 @@
 #include "th08/Background.hpp"
 #include "th08/Effects.hpp"
 #include "th08/Gameplay.hpp"
+#include "th08/ScreenEffects.hpp"
+#include "th08/World.hpp"
 #include "th08/ShotData.hpp"
 #include "th08/ExeTables.hpp"
 #include "th08/Flow.hpp"
@@ -1092,6 +1094,79 @@ void testRealArchive() {
             game->draw(sink);
             CHECK(sink.items.size() > 40);
         }
+        // Bombs: every character's bomb on both sides runs for its duration, with its
+        // invulnerability and cost, and pushes the gauge to that side's limit.
+        if (haveTables) {
+            const th08::Player& p = game->player();
+            static constexpr int kDuration[8] = {200, 150, 300, 210, 250, 240, 220, 300};  // by character
+            for (int c = 0; c < 12; ++c) {
+                for (int side = 0; side < 2; ++side) {
+                    setup.character = c;
+                    setup.practice = true;
+                    setup.stage = 5;
+                    CHECK(game->start(setup, &err));
+                    const std::uint16_t focus = side ? th08::BtnFocus : 0;
+                    run(focus, 3);
+                    run(focus | th08::BtnBomb, 1);
+                    const bool started = p.bombActive();
+                    CHECK(started);
+                    if (!started) continue;
+                    const int person = c < 4 ? c * 2 + side : c - 4;
+                    const int d = p.bomb().duration;
+                    CHECK(d == kDuration[person] && p.bomb().spell == th08::Player::spellFor(c, side));
+                    CHECK(p.state() == th08::Player::State::Invulnerable && game->state().bombs == 2.0f && p.bombing());
+                    if (person == 2) CHECK(game->screenEffects().jobs() == 1);  // Master Spark's ramped shake
+                    run(focus, d - 1);
+                    CHECK(p.bombActive());
+                    RecordingSink sink;
+                    game->draw(sink);
+                    run(focus, 1);
+                    CHECK(!p.bombActive() && p.bombing());  // the flag holds through the end frame
+                    run(focus, 1);
+                    CHECK(!p.bombing());
+                    // (Familiars the bomb kills pull the gauge back by a twelfth each, even
+                    // during the bomb.)
+                    const int gauge = game->state().gauge;
+                    CHECK(side ? gauge > game->state().gaugeMax / 2 : gauge < game->state().gaugeMin / 2);
+                }
+            }
+            // A hit, then Bomb: the first frame of the window gives an ordinary bomb [QUIRK],
+            // later frames the Last Spell of the character not in front (cost 2).
+            for (int late = 0; late < 2; ++late) {
+                setup.character = 0;
+                setup.practice = true;
+                setup.stage = 0;
+                CHECK(game->start(setup, &err));
+                run(th08::BtnLeft, 260);
+                const bool alive = p.state() == th08::Player::State::Alive;
+                CHECK(alive);
+                if (!alive) continue;
+                game->world().player->bulletHit(game->world(), p.position(), {4.0f, 4.0f, 0.0f});
+                CHECK(p.state() == th08::Player::State::Dead && p.deathbombCountdown() > 2);
+                if (late) run(0, 1);
+                run(th08::BtnBomb, 1);
+                CHECK(p.bombActive() && p.state() == th08::Player::State::Invulnerable);
+                if (late) CHECK(p.bomb().index == 3 && p.bomb().spell == th08::Player::Spell::YukariLast && game->state().bombs == 1.0f);
+                else CHECK(p.bomb().index == 0 && p.bomb().spell == th08::Player::Spell::ReimuBomb && game->state().bombs == 2.0f);
+                run(0, 320);
+                CHECK(!p.bombActive() && game->state().lives == 8.0f);  // the death never commits
+            }
+            // A hit during a boss's Last Spell (mode bits 7-8): the Dissolve spell starts by
+            // itself the next frame, costs nothing, and ends the boss's attack.
+            CHECK(game->start(setup, &err));
+            run(th08::BtnLeft, 260);
+            if (p.state() == th08::Player::State::Alive) {
+                game->world().mode |= 1u << 7;
+                game->world().player->bulletHit(game->world(), p.position(), {4.0f, 4.0f, 0.0f});
+                run(0, 1);  // the death step counts the window down to 1
+                CHECK(!p.bombActive());
+                run(0, 1);
+                CHECK(p.bombActive() && p.bomb().spell == th08::Player::Spell::Dissolve && p.bomb().duration == 120);
+                CHECK(game->state().bombs == 3.0f);
+                run(0, 120);
+                CHECK(!p.bombActive() && (game->world().mode & th08::ModeDissolve) == 0 && game->state().lives == 8.0f);
+            }
+        }
         game->end();
     }
     // Every stage's ECL (normal and spell practice) loads and runs 2400 frames of play: the
@@ -1109,6 +1184,10 @@ void testRealArchive() {
         CHECK(exe && th08::loadExeTables(exe->bytes(), tables, &err));
         CHECK(tables.bulletScripts[0][0] == 0 && tables.bulletScripts[0][1] == 18 && tables.bulletScripts[10][0] == 25 &&
               tables.bulletScripts[20][0] == 115 && tables.bulletScripts[20][4] == 17);
+        // The scoring tables: Stage 1 Normal's time quota, the Extra entry that reads into the
+        // rank table [QUIRK], the first extend.
+        CHECK(tables.timeQuota[1] == 2500 && tables.timeQuota[36] == tables.rank[0].start && tables.rank[0].start == 10);
+        CHECK(tables.extendMain[0] == 100 && tables.extendExtra[0] == 200 && tables.rank[4].start == 16);
         ZunRng rng(1);
         th08::FlowContext ctx;
         ctx.vfs = &vfs;

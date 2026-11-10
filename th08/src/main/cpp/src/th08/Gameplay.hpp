@@ -17,6 +17,7 @@
 #include "th08/Enemies.hpp"
 #include "th08/Flow.hpp"
 #include "th08/Gui.hpp"
+#include "th08/ScreenEffects.hpp"
 #include "th08/Player.hpp"
 #include "th08/World.hpp"
 
@@ -57,6 +58,7 @@ class Gameplay {
     const Gui& gui() const { return gui_; }
     const Player& player() const { return *player_; }
     const Effects& effects() const { return *effects_; }
+    const ScreenEffects& screenEffects() const { return screen_; }
     BulletManager& bullets() { return *bullets_; }
     EnemyManager& enemies() { return *enemies_; }
     const World& world() const { return world_; }
@@ -77,6 +79,7 @@ class Gameplay {
     std::unique_ptr<Effects> effects_ = std::make_unique<Effects>();
     std::unique_ptr<BulletManager> bullets_ = std::make_unique<BulletManager>();
     std::unique_ptr<EnemyManager> enemies_ = std::make_unique<EnemyManager>();
+    ScreenEffects screen_;
     Gui gui_;
     std::uint16_t gameInput_ = 0;
     AsciiText ascii_;

@@ -39,6 +39,7 @@ struct Effect {
     std::uint8_t type = 0;
     std::uint8_t layer = 0;    // 0 playfield (lists A/E, or D), 1 and >= 3 stage (B), 2 billboard (C)
     bool listD = false;        // +0x355: drawn with the bullets
+    std::int8_t special = -1;  // +0x328: the special slot index k
     bool ignoreFreeze = false; // +0x357
 };
 
@@ -58,6 +59,8 @@ class Effects {
     void shiftWeather(const Vec3f& delta);
     // The special allocator: overwrites slot 640 + k.
     Effect& spawnSpecial(const World& w, int type, const Vec3f& pos, int k, int count, std::uint32_t color);
+    // 0x4259E0: the same with a custom vector (Yukari's rings).
+    Effect& spawnSpecialWithVector(const World& w, int type, const Vec3f& pos, const Vec3f& custom, int k, int count, std::uint32_t color);
     Effect& special(int k) { return slots_[static_cast<std::size_t>(kRing + kOther + k)]; }
     bool isSink(const Effect& e) const { return &e == &sink_; }
 
