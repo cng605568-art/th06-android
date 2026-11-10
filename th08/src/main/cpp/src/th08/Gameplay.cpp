@@ -1,6 +1,7 @@
 #include "th08/Gameplay.hpp"
 
 #include <algorithm>
+#include <cstring>
 #include <format>
 
 #include "core/Log.hpp"
@@ -8,6 +9,7 @@
 #include "gfx/SpriteSink.hpp"
 #include "io/Vfs.hpp"
 #include "th08/Bgm.hpp"
+#include "th08/GameConfig.hpp"
 #include "th08/SoundPlayer.hpp"
 
 namespace touhou::th08 {
@@ -161,19 +163,38 @@ const ExeTables::BossMusic* Gameplay::bossMusic() const {
 bool Gameplay::start(const Setup& setup, std::string* error) {
     end();
     setup_ = setup;
+    replay_ = setup.replay;
+    if (replay_) {  // (character, difficulty and card from the file; the practice flag clear)
+        const ReplaySummary& sm = replay_->summary;
+        setup_.character = std::clamp(sm.character(), 0, 11);
+        setup_.difficulty = std::clamp(sm.difficulty(), 0, 4);
+        setup_.practice = false;
+        setup_.spellPractice = sm.card() >= 0;
+        setup_.card = sm.card();
+        setup_.lives = sm.config()[0x1C];
+        if (setup_.stage < 0 || !replay_->hasStage(setup_.stage)) setup_.stage = replay_->firstStage();
+    }
+    const Setup& s0 = setup_;
+    // A new game starts a new recording; a retry records the stage again under the same
+    // summary (spec_replays 2.3).
+    if (replay_ || !retrying_) {
+        record_ = ReplayFile{};
+        recordValid_ = false;
+    }
+    retrying_ = false;
     outcome_ = Outcome::None;
     stageEnd_ = 0;
     pending_ = Pending::None;
     // Fresh set-up (spec 6.2 step 3).
     state_ = GameState{};
-    state_.stage = std::clamp(setup.stage, 0, kStageCount - 1);
-    state_.character = std::clamp(setup.character, 0, 11);
-    state_.difficulty = std::clamp(setup.difficulty, 0, 4);
-    state_.practice = setup.practice || setup.spellPractice;
-    state_.spellPractice = setup.spellPractice;
-    state_.card = setup.spellPractice ? std::clamp(setup.card, 0, 221) : -1;
+    state_.stage = std::clamp(s0.stage, 0, kStageCount - 1);
+    state_.character = std::clamp(s0.character, 0, 11);
+    state_.difficulty = std::clamp(s0.difficulty, 0, 4);
+    state_.practice = !replay_ && (s0.practice || s0.spellPractice);  // (clear in every playback)
+    state_.spellPractice = s0.spellPractice;
+    state_.card = s0.spellPractice ? std::clamp(s0.card, 0, 221) : -1;
     state_.nightSteps = state_.stage == 8 ? 6 : 0;  // (keyed on the stage index, spec_spell_practice 8.5)
-    state_.lives = state_.practice ? 8.0f : state_.difficulty >= 4 ? 2.0f : static_cast<float>(setup.lives);
+    state_.lives = state_.practice ? 8.0f : state_.difficulty >= 4 ? 2.0f : static_cast<float>(s0.lives);
     state_.bombs = 3.0f;
     state_.hiScore = 100000;
     static constexpr std::int32_t kRankStart[5] = {10, 10, 8, 8, 16};
@@ -200,14 +221,126 @@ bool Gameplay::start(const Setup& setup, std::string* error) {
         } else {
             state_.hiScore = r->bestScore(state_.difficulty, state_.character);
         }
-        // Step 9: the statistics (not in spell practice).
-        if (!state_.spellPractice) r->notePlay(state_.difficulty, state_.character, setup.restart, state_.practice);
+        // Step 9: the statistics (not in spell practice or a replay).
+        if (!state_.spellPractice && !replay_) r->notePlay(state_.difficulty, state_.character, s0.restart, state_.practice);
     }
     if (!setUpStage(true, error)) {
         end();
         return false;
     }
     return true;
+}
+
+// ---- recording (spec_replays 2) --------------------------------------------------------------
+
+void Gameplay::recordStageStart() {
+    const int s = state_.stage;
+    if (!recordValid_) {
+        ReplaySummary& sm = record_.summary;
+        sm.bytes.fill(0);
+        sm.bytes[0x01] = 'd';
+        sm.setCharacter(state_.character);
+        sm.setDifficulty(state_.difficulty);
+        sm.bytes[0x46] = 0x00;
+        sm.bytes[0x47] = 0x01;
+        sm.setExe(840704, static_cast<std::int32_t>(2724749753u), "0100d");
+        sm.setPractice(state_.practice);
+        sm.setCard(state_.spellPractice ? state_.card : -1);
+        // The route byte (MSG 9.3): 2 with a 6B clear on E-L (no continue) or a solo character,
+        // 1 with a 6A clear, else 0.
+        int route = state_.character > 3 ? 2 : 0;
+        if (ctx_.records && route == 0) {
+            const ClearRecord& r = ctx_.records->clears[static_cast<std::size_t>(state_.character)];
+            for (int d = 0; d < 4; ++d) {
+                if (r.noContinue[static_cast<std::size_t>(d)] & 0x80) route = 2;
+                else if ((r.noContinue[static_cast<std::size_t>(d)] & 0x40) && route < 1) route = 1;
+            }
+        }
+        sm.setRouteByte(route);
+        std::memcpy(sm.bytes.data() + 0x0A, "NO N", 4);  // (a placeholder until saved)
+        // The game's configuration copy: the practice / Extra lives, slow mode forced off.
+        std::vector<std::uint8_t> cfg = ctx_.config ? ctx_.config->save() : std::vector<std::uint8_t>(60, 0);
+        cfg.resize(60, 0);
+        cfg[0x1C] = static_cast<std::uint8_t>(state_.difficulty >= 4 ? 2 : state_.practice ? 8 : setup_.lives);
+        if (state_.difficulty >= 4 || state_.practice) cfg[0x25] = 0;
+        sm.setConfig(cfg);
+        recordValid_ = true;
+    } else {
+        for (int t = s - 1; t >= 0; --t) {  // the score carried out of the last recorded stage
+            if (!record_.hasStage(t)) continue;
+            record_.stages[static_cast<std::size_t>(t)].carriedScore = state_.score;
+            break;
+        }
+    }
+    ReplayStage& b = record_.stages[static_cast<std::size_t>(s)];
+    b = ReplayStage{};
+    b.present = true;
+    b.pointItems = state_.pointItems;
+    b.graze = state_.graze;
+    b.extends = state_.extends;
+    b.nextExtend = state_.nextExtend;
+    b.pointValue = state_.pointValue;
+    b.gauge = state_.gauge;
+    b.seed = stageSeed_;
+    b.power = static_cast<std::uint8_t>(state_.power);
+    b.lives = static_cast<std::uint8_t>(state_.lives);
+    b.bombs = static_cast<std::uint8_t>(state_.bombs);
+    b.rank = static_cast<std::uint8_t>(state_.rank);
+    b.cardsCaptured = static_cast<std::uint8_t>(state_.cardsCaptured);
+    b.nightSteps = static_cast<std::int8_t>(state_.nightSteps);
+    b.entries.assign(1, 0);
+    recordFrames_ = 0;
+    resultsEntries_ = 0;
+}
+
+// One recorded pass (the end of a pass that ran the game): the raw input word, an FPS sample
+// every 30 entries; nothing in slow mode or more than 3 passes after the stage results.
+void Gameplay::recordPass(std::uint16_t raw) {
+    if (!recordValid_ || !record_.hasStage(state_.stage)) return;
+    if (record_.summary.slowModeRecorded()) return;
+    if (world_.mode & ModeResults) {
+        if (resultsEntries_ >= 3) return;
+        ++resultsEntries_;
+    }
+    ReplayStage& b = record_.stages[static_cast<std::size_t>(state_.stage)];
+    if (b.entries.size() >= kReplayMaxEntries) return;
+    b.entries.push_back(raw);
+    if (recordFrames_ % 30 == 0) {
+        const std::size_t i = recordFrames_ / 30;
+        b.fps.resize(i + 2);
+        b.fps[i] = 60;
+        b.fps[i + 1] = 60;
+    }
+    ++recordFrames_;
+}
+
+void Gameplay::closeRecording() {
+    if (recordValid_ && record_.hasStage(state_.stage)) record_.stages[static_cast<std::size_t>(state_.stage)].entries.push_back(0);
+}
+
+// spec_replays 3.2 step 4 and 6: the stage header's state, the seed last; the score carried
+// from the previous recorded stage.
+void Gameplay::restoreReplayStage() {
+    if (!replay_ || !replay_->hasStage(state_.stage) || !ctx_.rng) return;
+    const ReplayStage& h = replay_->stages[static_cast<std::size_t>(state_.stage)];
+    state_.pointItems = h.pointItems;
+    state_.rank = h.rank;
+    state_.lives = static_cast<float>(h.lives);
+    state_.bombs = static_cast<float>(h.bombs);
+    state_.power = static_cast<float>(h.power);
+    state_.graze = h.graze;
+    state_.pointValue = h.pointValue;
+    state_.cardsCaptured = h.cardsCaptured;
+    state_.extends = h.extends;
+    state_.nextExtend = h.nextExtend;
+    state_.gauge = h.gauge;  // (the display copy is not updated [QUIRK])
+    state_.nightSteps = h.nightSteps;
+    ctx_.rng->seed(h.seed);
+    for (int t = state_.stage - 1; t >= 0; --t) {
+        if (!replay_->hasStage(t)) continue;
+        state_.score = state_.guiScore = replay_->stages[static_cast<std::size_t>(t)].carriedScore;
+        break;
+    }
 }
 
 bool Gameplay::setUpStage(bool fresh, std::string* error) {
@@ -256,9 +389,17 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
     world_.gui = &gui_;
     world_.spellcard = &spellcard_;
     gui_.setBackground(&background_);
-    world_.mode = (state_.practice ? ModePractice : 0u) | (state_.spellPractice ? ModeSpellPractice : 0u);
+    world_.mode = (state_.practice ? ModePractice : 0u) | (state_.spellPractice ? ModeSpellPractice : 0u) | (replay_ ? ModeReplay : 0u);
     // The player (registered before the stage: its shot files every stage, its ANM once).
     if (!player_->load(*ctx_.vfs, *ctx_.textures, lib, state_.character, fresh, error)) return false;
+    // Steps 7-8 (spec_replays 3.2): a replay restores the stage's recorded state and its RNG
+    // seed; then the seed is recorded. Every draw of the stage managers comes after it.
+    replayFrame_ = 0;
+    rawPending_ = 0;
+    gameInput_ = prevGameInput_ = 0;  // (game input cleared at every stage start, spec 1.1)
+    if (replay_) restoreReplayStage();
+    stageSeed_ = rng.currentSeed();
+    if (!replay_) recordStageStart();
     // Step 9: Stage, the bullet manager's etama.anm, the effect manager's file, the Gui.
     background_.white = ctx_.ui ? &ctx_.ui->white : nullptr;
     if (!background_.load(*ctx_.vfs, *ctx_.textures, lib, rng, state_.stage, state_.spellPractice, error)) return false;
@@ -420,6 +561,7 @@ void Gameplay::menuDone(InGameMenu::Request request) {
         }
         case R::Retry: {  // the same stage again, under the old frame's tiles
             if (const ExeTables::BossMusic* m = bossMusic()) keepMusic_ = m->restart == 0;
+            retrying_ = true;
             std::string err;
             if (!start(setup_, &err)) outcome_ = Outcome::Title;
             else if (ctx_.rng) gui_.startTransition(*ctx_.rng);
@@ -481,6 +623,26 @@ bool Gameplay::stageEndStep(const MenuInput& in) {
     if (stageEnd_ == 2) {
         stageEnd_ = 3;
         pending_ = Pending::None;
+        if (replay_) {  // playback: the next recorded stage, else the end (spec_replays 3.5)
+            state_.guiScore = state_.score;
+            const int next = state_.stage <= 5 ? replay_->nextStage(state_.stage) : -1;
+            if (next < 0) {
+                outcome_ = Outcome::ReplayEnd;
+                return true;
+            }
+            std::string err;
+            const std::uint32_t route = world_.mode & ModeFinalB;
+            releaseStageFiles();
+            state_.stage = next;
+            if (!setUpStage(false, &err)) {
+                log::warn("th08: the replay's next stage could not start: {}", err);
+                outcome_ = Outcome::ReplayEnd;
+                return true;
+            }
+            world_.mode |= route;
+            stageEnd_ = 0;  // ("press Shot" is auto-accepted in a replay)
+            return true;
+        }
         // The stage's bit in the clear records (no-continue only while no continue was used).
         if (ctx_.records) ctx_.records->markClear(state_.character, state_.difficulty, static_cast<std::uint16_t>(1u << state_.stage), state_.continues == 0);
         state_.guiScore = state_.score;
@@ -572,8 +734,22 @@ void Gameplay::tick(const MenuInput& in) {
     // The Supervisor (calc priority 0) counts the screen-effect suppression down.
     if (world_.screenSuppress != 0) --world_.screenSuppress;
     ZunRng& rng = *ctx_.rng;
-    prevGameInput_ = gameInput_;
-    gameInput_ = in.current() & (BtnShoot | BtnBomb | BtnFocus | BtnUp | BtnDown | BtnLeft | BtnRight | BtnSkip);
+    constexpr std::uint16_t kGameBits = BtnShoot | BtnBomb | BtnFocus | BtnUp | BtnDown | BtnLeft | BtnRight | BtnSkip;
+    if (replay_) {
+        // The playback feed (priority 6, spec_replays 3.3): entry k is frame k's input; frozen
+        // once the stage results are shown; past the block's end, 0.
+        if (!(world_.mode & ModeResults)) {
+            const auto& e = replay_->stages[static_cast<std::size_t>(state_.stage)].entries;
+            prevGameInput_ = gameInput_;
+            gameInput_ = replayFrame_ < e.size() ? static_cast<std::uint16_t>(e[replayFrame_] & kGameBits) : 0;
+            ++replayFrame_;
+        }
+    } else {
+        // Live play reads the raw input of the previous pass (the recorder sets the game input
+        // at priority 17, after every gameplay object: a one-pass delay [QUIRK]).
+        prevGameInput_ = gameInput_;
+        gameInput_ = static_cast<std::uint16_t>((inputDelay_ ? rawPending_ : in.current()) & kGameBits);
+    }
     world_.stageFrame = static_cast<std::int32_t>(stageFrame_);
     // Screen effects (3), Stage (8), Player (9), enemies (11, with the spell card 12),
     // effects (13), bullets (14), Gui (15).
@@ -599,8 +775,18 @@ void Gameplay::tick(const MenuInput& in) {
     // Out of lives: the continue menu (spec_flow 7.3).
     if ((player_->continueRequested() || world_.continueRequested) && !menu_.active()) {
         world_.continueRequested = false;
+        if (replay_) {  // a game over ends a playback at once (spec_replays 3.5)
+            state_.guiScore = state_.score;
+            outcome_ = Outcome::ReplayEnd;
+            return;
+        }
         if (ctx_.music) ctx_.music->pause();
         menu_.openContinue(world_);
+    }
+    // The recorder (priority 17): the game input of the next pass is this pass's raw input.
+    if (!replay_) {
+        rawPending_ = in.current();
+        recordPass(in.current());
     }
     ++stageFrame_;
 }

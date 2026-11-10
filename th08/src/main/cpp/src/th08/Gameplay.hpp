@@ -15,6 +15,7 @@
 #include "th08/Effects.hpp"
 #include "th08/Enemies.hpp"
 #include "th08/ExeTables.hpp"
+#include "th08/Replay.hpp"
 #include "th08/Flow.hpp"
 #include "th08/Gui.hpp"
 #include "th08/InGameMenu.hpp"
@@ -43,9 +44,12 @@ class Gameplay {
         int lives = 2;  // the configured lives (the set-up applies the Extra and practice rules)
         bool restart = false;  // scene 10: the main game restarted from the pause menu
         int card = -1;         // spell practice: the card (0-based)
+        // Playback (spec_replays 3): the file (kept alive by the caller); character,
+        // difficulty, card and the first stage come from it.
+        const ReplayFile* replay = nullptr;
     };
     // What the game hands over: the title, the ending (scene 9) or the result screen (6).
-    enum class Outcome : std::uint8_t { None, Title, Ending, Results };
+    enum class Outcome : std::uint8_t { None, Title, Ending, Results, ReplayEnd };
 
     explicit Gameplay(FlowContext& ctx) : ctx_(ctx) {}
     ~Gameplay();
@@ -59,6 +63,17 @@ class Gameplay {
 
     Outcome outcome() const { return outcome_; }
     bool menuOpen() const { return menu_.active(); }
+    bool replaying() const { return replay_ != nullptr; }
+    // The one-pass input delay of live play (spec_replays 2.2) is the original's; unit tests
+    // that drive the player frame by frame turn it off.
+    void setInputDelay(bool on) { inputDelay_ = on; }
+    std::uint16_t stageSeed() const { return stageSeed_; }
+    std::size_t replayFrame() const { return replayFrame_; }
+    // The run being recorded (live play; spec_replays 2): valid from the first stage's set-up.
+    bool recording() const { return recordValid_; }
+    const ReplayFile& recorded() const { return record_; }
+    // The GameManager's removal (spec 2.3): a 0 entry closes the stage being played.
+    void closeRecording();
     void requestTitle() { outcome_ = Outcome::Title; }
     // The stage end (spec 6.3), raised by the stage-clear sequence (stages 1-5) or the
     // dialogue (6A, 6B, Extra).
@@ -130,6 +145,20 @@ class Gameplay {
     bool effectsLoaded_ = false, etamaLoaded_ = false;
     int musicStart_ = 0;  // GM+0x3DE28: 1 = play slot 0 when play begins
     bool keepMusic_ = false;  // a spell-practice retry whose boss music keeps playing
+    // Replays (spec_replays): the file played back, its entries read this stage; live play's
+    // raw input of the previous pass (the one-pass input delay, spec 2.2); the stage seed.
+    const ReplayFile* replay_ = nullptr;
+    std::size_t replayFrame_ = 0;
+    std::uint16_t rawPending_ = 0;
+    bool inputDelay_ = true;
+    ReplayFile record_;
+    bool recordValid_ = false, retrying_ = false;
+    std::size_t recordFrames_ = 0;
+    int resultsEntries_ = 0;
+    void recordStageStart();
+    void recordPass(std::uint16_t raw);
+    std::uint16_t stageSeed_ = 0;
+    void restoreReplayStage();
     const ExeTables::BossMusic* bossMusic() const;  // spell practice: the card's record
     std::uint32_t stageFrame_ = 0;
     Outcome outcome_ = Outcome::None;

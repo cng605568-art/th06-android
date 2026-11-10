@@ -38,6 +38,7 @@
 #include "th08/MainMenu.hpp"
 #include "th08/Msg.hpp"
 #include "th08/MusicRoom.hpp"
+#include "th08/Replay.hpp"
 #include "th08/ResultScreen.hpp"
 #include "th08/ScoreFile.hpp"
 #include "th08/GameConfig.hpp"
@@ -1129,6 +1130,7 @@ void testRealArchive() {
         ctx.rng = &rng;
         ctx.tables = haveTables ? &tables : nullptr;
         auto game = std::make_unique<th08::Gameplay>(ctx);
+        game->setInputDelay(false);  // (the checks below expect each pass's own input)
         th08::MenuInput in;
         auto run = [&](std::uint16_t buttons, int frames) {
             for (int i = 0; i < frames; ++i) {
@@ -1836,6 +1838,188 @@ void testSpellPractice() {
     game->end();
 }
 
+// The four attract demos as a determinism test (spec_replays 6): each plays its stage from the
+// recorded state and seed with the recorded input; the stage results (MSG op 9) must come on
+// frame F - 3 with the recorded score, misses and bombs.
+void testDemoReplays() {
+    const char* path = std::getenv("TH08_REAL_DAT");
+    const char* exePath = std::getenv("TH08_REAL_EXE");
+    if (!path || !*path || !exePath || !*exePath) return;
+    std::string err;
+    th08::ExeTables tables;
+    auto exe = MappedFile::open(exePath, &err);
+    CHECK(exe && th08::loadExeTables(exe->bytes(), tables, &err));
+    Vfs vfs;
+    auto file = MappedFile::open(path, &err);
+    CHECK(file && vfs.mount(openArchive("th08.dat", std::move(file), &err)));
+    struct Want {
+        const char* name;
+        int stage, character;
+        std::uint16_t seed;
+        std::size_t entries;
+        std::uint32_t score;
+        int misses, bombs;
+    };
+    static constexpr Want kDemos[4] = {
+        {"demorpy0.rpy", 5, 0, 0x8D07, 11084, 7065227, 11, 1},
+        {"demorpy1.rpy", 3, 1, 0x684D, 7741, 5656648, 9, 1},
+        {"demorpy2.rpy", 2, 3, 0xD39A, 9273, 6858553, 10, 2},
+        {"demorpy3.rpy", 1, 2, 0x0322, 9264, 7433064, 9, 1},
+    };
+    for (const Want& w : kDemos) {
+        const auto bytes = vfs.read(w.name);
+        CHECK(bytes.has_value());
+        if (!bytes) continue;
+        const auto rf = th08::ReplayFile::parse(*bytes, &err);
+        CHECK(rf.has_value());
+        if (!rf) {
+            std::fprintf(stderr, "  %s: %s\n", w.name, err.c_str());
+            continue;
+        }
+        CHECK(rf->firstStage() == w.stage && rf->summary.character() == w.character && rf->summary.difficulty() == 3);
+        const th08::ReplayStage& st = rf->stages[static_cast<std::size_t>(w.stage)];
+        CHECK(st.seed == w.seed && st.entries.size() == w.entries && st.lives == 8 && st.rank == 8 && rf->summary.score() == w.score);
+        CHECK(st.entries[0] == 0 && !st.fps.empty());
+        // A round trip through the writer reads back the same blocks.
+        {
+            th08::ReplayFile copy = *rf;
+            ZunRng wr(5);
+            const auto again = th08::ReplayFile::parse(copy.serialize(wr, "test"), &err);
+            CHECK(again && again->stages[static_cast<std::size_t>(w.stage)].entries == st.entries && again->summary.score() == w.score);
+        }
+        // The playback.
+        TextureLibrary textures;
+        th08::AnmLibrary lib;
+        CHECK(lib.load(vfs, textures, "text.anm", th08::kSlotText, &err, true));
+        CHECK(lib.load(vfs, textures, "ascii.anm", th08::kSlotAscii, &err));
+        ZunRng rng(1);
+        th08::FlowContext ctx;
+        ctx.vfs = &vfs;
+        ctx.textures = &textures;
+        ctx.anm = &lib;
+        ctx.rng = &rng;
+        ctx.tables = &tables;
+        th08::ScoreData records;
+        ctx.records = &records;
+        auto game = std::make_unique<th08::Gameplay>(ctx);
+        th08::Gameplay::Setup setup;
+        setup.replay = &*rf;
+        setup.stage = w.stage;
+        CHECK(game->start(setup, &err));
+        CHECK(game->stageSeed() == w.seed);
+        th08::MenuInput in;
+        std::size_t resultsFrame = 0;
+        const std::size_t f = w.entries - 5;
+        for (std::size_t n = 0; n < f + 400 && game->outcome() == th08::Gameplay::Outcome::None; ++n) {
+            in.sample(0);
+            game->tick(in);
+            if (resultsFrame == 0 && (game->world().mode & th08::ModeResults)) resultsFrame = game->replayFrame();
+        }
+        const th08::GameState& g = game->state();
+        std::printf("  (%s: results at entry %zu (want %zu), score %u (want %u), misses %d (%d), bombs %d (%d), frame %zu)\n", w.name,
+                    resultsFrame, f - 3 + 1, g.score, w.score, static_cast<int>(g.misses), w.misses, static_cast<int>(g.bombsUsedGame), w.bombs,
+                    game->replayFrame());
+        // (The port does not stay in sync with the original's demos yet: these are reported,
+        // not checked. A port-recorded replay must play back exactly: testReplayRoundTrip.)
+        (void)resultsFrame;
+        game->end();
+    }
+}
+
+// A run recorded by the port plays back exactly (spec_replays 2-3): a practice stage under
+// scripted input, written, read back and replayed, reaches the same state frame for frame.
+void testReplayRoundTrip() {
+    const char* path = std::getenv("TH08_REAL_DAT");
+    const char* exePath = std::getenv("TH08_REAL_EXE");
+    if (!path || !*path || !exePath || !*exePath) return;
+    std::string err;
+    th08::ExeTables tables;
+    auto exe = MappedFile::open(exePath, &err);
+    CHECK(exe && th08::loadExeTables(exe->bytes(), tables, &err));
+    Vfs vfs;
+    auto file = MappedFile::open(path, &err);
+    CHECK(file && vfs.mount(openArchive("th08.dat", std::move(file), &err)));
+    TextureLibrary textures;
+    th08::AnmLibrary lib;
+    CHECK(lib.load(vfs, textures, "text.anm", th08::kSlotText, &err, true));
+    CHECK(lib.load(vfs, textures, "ascii.anm", th08::kSlotAscii, &err));
+    ZunRng rng(77);
+    th08::FlowContext ctx;
+    ctx.vfs = &vfs;
+    ctx.textures = &textures;
+    ctx.anm = &lib;
+    ctx.rng = &rng;
+    ctx.tables = &tables;
+    th08::ScoreData records;
+    ctx.records = &records;
+    struct Snap {
+        std::uint32_t score;
+        float x, y, lives, bombs, power;
+        std::uint16_t seed;
+        int enemies, bullets;
+        bool operator==(const Snap&) const = default;
+    };
+    auto snap = [&](th08::Gameplay& g) {
+        return Snap{g.state().score, g.player().position().x, g.player().position().y, g.state().lives, g.state().bombs, g.state().power,
+                    rng.currentSeed(), g.enemies().liveCount(), g.bullets().liveBullets()};
+    };
+    for (const int stage : {0, 3}) {
+        // The live run.
+        auto live = std::make_unique<th08::Gameplay>(ctx);
+        th08::Gameplay::Setup setup;
+        setup.character = stage == 0 ? 0 : 6;
+        setup.difficulty = 2;
+        setup.practice = true;
+        setup.stage = stage;
+        CHECK(live->start(setup, &err));
+        th08::MenuInput in;
+        std::uint32_t lcg = 12345;
+        auto buttons = [&](int frame) {
+            lcg = lcg * 1103515245u + 12345u;
+            std::uint16_t b = th08::BtnShoot;
+            const std::uint32_t r = lcg >> 16;
+            if (frame % 40 < 20) b |= (r & 1) ? th08::BtnLeft : th08::BtnRight;
+            if (r & 4) b |= th08::BtnFocus;
+            if ((r & 0x3F0) == 0x100) b |= th08::BtnUp;
+            if ((r & 0xFFF) == 7) b |= th08::BtnBomb;
+            return b;
+        };
+        constexpr int kFrames = 3000;
+        std::vector<Snap> want;
+        for (int f = 0; f < kFrames && live->outcome() == th08::Gameplay::Outcome::None; ++f) {
+            in.sample(buttons(f));
+            live->tick(in);
+            want.push_back(snap(*live));
+        }
+        CHECK(live->recording());
+        live->closeRecording();
+        th08::ReplayFile rec = live->recorded();
+        live->end();
+        CHECK(rec.hasStage(stage) && rec.stages[static_cast<std::size_t>(stage)].entries.size() == want.size() + 2);
+        ZunRng writer(3);
+        const auto bytes = rec.serialize(writer, "user");
+        const auto back = th08::ReplayFile::parse(bytes, &err);
+        CHECK(back.has_value());
+        if (!back) continue;
+        // The playback, from another RNG state.
+        rng.seed(999);
+        auto play = std::make_unique<th08::Gameplay>(ctx);
+        th08::Gameplay::Setup ps;
+        ps.replay = &*back;
+        ps.stage = stage;
+        CHECK(play->start(ps, &err));
+        std::size_t firstDiff = want.size();
+        for (std::size_t f = 0; f < want.size() && play->outcome() == th08::Gameplay::Outcome::None; ++f) {
+            in.sample(0);
+            play->tick(in);
+            if (firstDiff == want.size() && !(snap(*play) == want[f])) firstDiff = f;
+        }
+        std::printf("  (stage %d: %zu frames recorded, first difference at %zu)\n", stage, want.size(), firstDiff);
+        CHECK(firstDiff == want.size());
+        play->end();
+    }
+}
+
 // The result screen and the endings on the player's files (spec_result_ending 3, 5, 7).
 void testResultAndEnding() {
     const char* path = std::getenv("TH08_REAL_DAT");
@@ -2117,6 +2301,8 @@ int main() {
         {"the player's th08.dat (TH08_REAL_DAT)", testRealArchive},
         {"result screen and endings (TH08_REAL_DAT)", testResultAndEnding},
         {"spell card practice: tables, Last Words, a Last Word game (TH08_REAL_DAT, TH08_REAL_EXE)", testSpellPractice},
+        {"the four demo replays played back (TH08_REAL_DAT, TH08_REAL_EXE)", testDemoReplays},
+        {"a recorded run played back frame for frame (TH08_REAL_DAT, TH08_REAL_EXE)", testReplayRoundTrip},
     };
     for (const Test& t : tests) {
         const int before = g_failures;

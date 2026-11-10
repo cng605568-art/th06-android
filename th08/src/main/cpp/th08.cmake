@@ -30,6 +30,7 @@ add_library(th08_game STATIC
   ${TH08_SRC}/th08/Spellcard.cpp
   ${TH08_SRC}/th08/MusicRoom.cpp
   ${TH08_SRC}/th08/Player.cpp
+  ${TH08_SRC}/th08/Replay.cpp
   ${TH08_SRC}/th08/ResultScreen.cpp
   ${TH08_SRC}/th08/ScoreFile.cpp
   ${TH08_SRC}/th08/ScreenEffects.cpp
