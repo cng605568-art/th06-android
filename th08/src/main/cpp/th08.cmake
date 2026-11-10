@@ -2,13 +2,14 @@
 # engine/native/engine.cmake first). Used by the app's native build and by the host unit
 # tests. It grows system by system as the clean-room specs (claude/th08-specs) are
 # implemented.
-#   th08_game   the player's files (th08.exe 1.00d, the version file), th08.cfg, and later
-#               the TH08 systems. No SDL.
+#   th08_game   the player's files (th08.exe 1.00d, the version file), th08.cfg, the ANM
+#               animation system (version 3), and later the TH08 systems. No SDL.
 # Th08Game.cpp (the game as the host runs it) and main.cpp are compiled into the app.
 
 set(TH08_SRC "${CMAKE_CURRENT_LIST_DIR}/src")
 
 add_library(th08_game STATIC
+  ${TH08_SRC}/th08/Anm.cpp
   ${TH08_SRC}/th08/GameConfig.cpp
   ${TH08_SRC}/th08/GameFiles.cpp
   ${TH08_SRC}/th08/Version.cpp)

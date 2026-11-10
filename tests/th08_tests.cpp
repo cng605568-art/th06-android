@@ -17,6 +17,9 @@
 #include "io/MappedFile.hpp"
 #include "io/ThCrypt.hpp"
 #include "io/Vfs.hpp"
+#include "gfx/SpriteSink.hpp"
+#include "gfx/TextureLibrary.hpp"
+#include "th08/Anm.hpp"
 #include "th08/GameConfig.hpp"
 #include "th08/GameFiles.hpp"
 #include "th08/Version.hpp"
@@ -60,6 +63,101 @@ Bytes iota(std::size_t n) {
 void put32(Bytes& b, std::uint32_t v) {
     for (int i = 0; i < 4; ++i) b.push_back(static_cast<std::uint8_t>(v >> (8 * i)));
 }
+void put16(Bytes& b, std::uint16_t v) {
+    b.push_back(static_cast<std::uint8_t>(v));
+    b.push_back(static_cast<std::uint8_t>(v >> 8));
+}
+void set32(Bytes& b, std::size_t at, std::uint32_t v) {
+    for (int i = 0; i < 4; ++i) b[at + i] = static_cast<std::uint8_t>(v >> (8 * i));
+}
+
+// ---- synthetic version-3 ANM files ---------------------------------------------------------
+
+struct Ins {
+    std::int16_t op;
+    std::int16_t time;
+    std::vector<std::uint32_t> args;
+    std::uint16_t mask = 0;
+};
+std::uint32_t fbits(float f) {
+    std::uint32_t v;
+    std::memcpy(&v, &f, 4);
+    return v;
+}
+Bytes encode(const std::vector<Ins>& script) {
+    Bytes b;
+    for (const Ins& i : script) {
+        put16(b, static_cast<std::uint16_t>(i.op));
+        put16(b, static_cast<std::uint16_t>(8 + 4 * i.args.size()));
+        put16(b, static_cast<std::uint16_t>(i.time));
+        put16(b, i.mask);
+        for (std::uint32_t a : i.args) put32(b, a);
+    }
+    return b;
+}
+struct SpriteDef {
+    int id;
+    float x, y, w, h;
+};
+struct EntryDef {
+    std::vector<SpriteDef> sprites;
+    std::vector<std::pair<int, std::vector<Ins>>> scripts;  // (id, code): ids are ignored by TH08
+    int width = 16, height = 16, format = 1;                // THTX format; 0: blank '@' texture
+};
+Bytes anmFile(const std::vector<EntryDef>& entries) {
+    Bytes file;
+    for (std::size_t e = 0; e < entries.size(); ++e) {
+        const EntryDef& d = entries[e];
+        Bytes ent(0x40 + 4 * d.sprites.size() + 8 * d.scripts.size(), 0);
+        set32(ent, 0x00, static_cast<std::uint32_t>(d.sprites.size()));
+        set32(ent, 0x04, static_cast<std::uint32_t>(d.scripts.size()));
+        set32(ent, 0x0C, static_cast<std::uint32_t>(d.width));
+        set32(ent, 0x10, static_cast<std::uint32_t>(d.height));
+        set32(ent, 0x14, static_cast<std::uint32_t>(d.format));
+        set32(ent, 0x28, 3);
+        for (std::size_t i = 0; i < d.sprites.size(); ++i) {
+            set32(ent, 0x40 + 4 * i, static_cast<std::uint32_t>(ent.size()));
+            put32(ent, static_cast<std::uint32_t>(d.sprites[i].id));
+            for (float f : {d.sprites[i].x, d.sprites[i].y, d.sprites[i].w, d.sprites[i].h}) put32(ent, fbits(f));
+        }
+        for (std::size_t i = 0; i < d.scripts.size(); ++i) {
+            const std::size_t pair = 0x40 + 4 * d.sprites.size() + 8 * i;
+            set32(ent, pair, static_cast<std::uint32_t>(d.scripts[i].first));
+            set32(ent, pair + 4, static_cast<std::uint32_t>(ent.size()));
+            const Bytes code = encode(d.scripts[i].second);
+            ent.insert(ent.end(), code.begin(), code.end());
+        }
+        set32(ent, 0x1C, static_cast<std::uint32_t>(ent.size()));
+        const std::string name = d.format ? "data/test.png" : "@";
+        ent.insert(ent.end(), name.begin(), name.end());
+        ent.push_back(0);
+        while (ent.size() % 4) ent.push_back(0);
+        if (d.format) {
+            set32(ent, 0x30, static_cast<std::uint32_t>(ent.size()));
+            ent[0x34] = 1;
+            for (char c : std::string("THTX")) ent.push_back(static_cast<std::uint8_t>(c));
+            put16(ent, 0);
+            put16(ent, static_cast<std::uint16_t>(d.format));
+            put16(ent, static_cast<std::uint16_t>(d.width));
+            put16(ent, static_cast<std::uint16_t>(d.height));
+            put32(ent, 0);
+            for (int i = 0; i < d.width * d.height; ++i) put32(ent, 0xFF000000u | static_cast<std::uint32_t>(e));
+        }
+        if (e + 1 < entries.size()) set32(ent, 0x38, static_cast<std::uint32_t>(ent.size()));
+        file.insert(file.end(), ent.begin(), ent.end());
+    }
+    return file;
+}
+
+struct RecordingSink final : SpriteSink {
+    struct Item {
+        std::uint16_t texture;
+        Blend blend;
+        SpriteInstance s;
+    };
+    std::vector<Item> items;
+    void draw(std::uint16_t texture, Blend blend, const SpriteInstance& s) override { items.push_back({texture, blend, s}); }
+};
 
 void testCipher() {
     // The archive header of the player's th08.dat (spec_files 1.2).
@@ -153,6 +251,13 @@ Bytes pbgz(const std::vector<Member>& members) {
     return out;
 }
 
+std::unique_ptr<Archive> archiveOf(const std::vector<std::pair<std::string, Bytes>>& files) {
+    std::vector<Member> members;
+    for (const auto& [name, data] : files) members.push_back({name, '-', {0x35, 0x97, 0x80, 0x2800}, data});
+    std::string err;
+    return openArchive("th08.dat", MappedFile::fromMemory(pbgz(members)), &err);
+}
+
 void testPbgz() {
     std::mt19937 rng(17);
     auto random = [&](std::size_t n) {
@@ -209,6 +314,104 @@ void testPbgz() {
         std::memcpy(broken.data() + 4, head.data(), 12);
         CHECK(openArchive("th08.dat", MappedFile::fromMemory(broken), &err) == nullptr);
     }
+}
+
+// An archive holding the given members (all with the '-' parameters).
+std::unique_ptr<Archive> archiveOf(const std::vector<std::pair<std::string, Bytes>>& files);
+
+void testAnm() {
+    using th08::AnmVm;
+    // Two entries; scripts and sprites are numbered by position across the whole file, and
+    // the id fields (negative here, as in the shipped files) are ignored.
+    EntryDef e0;
+    e0.sprites = {{-5, 0, 0, 8, 4}, {-4, 8, 0, 8, 8}};
+    e0.scripts = {{-27, {{3, 0, {0}}, {7, 0, {fbits(2.0f), fbits(3.0f)}}, {9, 0, {0x11, 0x22, 0x33}}, {8, 0, {0x80}}, {20, 0, {}},
+                         {21, 0, {5}}, {9, 0, {10, 20, 30}}, {89, 0, {}}, {-1, 0, {}}}},
+                  {-26, {{3, 0, {1}}, {82, 0, {2}}, {16, 1, {7}}, {82, 2, {3}}, {83, 2, {3}}, {88, 2, {0x100}}, {84, 2, {1, 2, 3}},
+                         {85, 2, {200}}, {86, 2, {4, 0, 41, 42, 43}}, {87, 2, {4, 0, 100}}, {33, 2, {4, 0, 250, 251, 252}},
+                         {20, 3, {}}, {-1, 0, {}}}}};
+    EntryDef e1;
+    e1.sprites = {{900, 0, 0, 16, 16}};
+    e1.scripts = {{7, {{3, 0, {2}}, {89, 1, {}}, {-1, 0, {}}}}};
+    const Bytes anm = anmFile({e0, e1});
+    std::string err;
+    Vfs vfs;
+    CHECK(vfs.mount(archiveOf({{"test.anm", anm}})));
+    TextureLibrary textures;
+    th08::AnmLibrary lib;
+    CHECK(lib.load(vfs, textures, "test.anm", 4, &err));
+    const th08::AnmFile* f = lib.file(4);
+    CHECK(f && f->entries == 2 && f->sprites.size() == 3 && f->scripts.size() == 3);
+    CHECK(f && f->sprites[2].pixelWidth == 16 && f->textures.size() == 2 && f->sprites[2].texture == f->textures[1]);
+    CHECK(!lib.load(vfs, textures, "test.anm", 25, &err));  // 25 usable slots
+
+    ZunRng rng(1);
+    AnmVm vm;
+    vm.start(lib, rng, 4, 0);
+    // Sprite 0 selected (its size copied into the VM), scale, RGB from three arguments,
+    // alpha, then parked on a stop.
+    CHECK(vm.sprite == &f->sprites[0] && vm.spriteWidth == 8 && vm.spriteHeight == 4);
+    CHECK(vm.color == 0x80112233u && vm.has(AnmVm::Stopped));
+    // Interrupt 5 saves the return point; opcode 89 goes back to the stop.
+    vm.interrupt(5);
+    vm.tick(rng);
+    CHECK(vm.color == 0x800A141Eu && vm.has(AnmVm::Stopped) && !vm.finished());
+    // A frozen VM does nothing, not even its clock.
+    const std::int32_t clockBefore = vm.clock.current;
+    vm.set(AnmVm::Frozen, true);
+    vm.interrupt(5);
+    vm.tick(rng);
+    CHECK(vm.clock.current == clockBefore && vm.pendingInterrupt == 5);
+    vm.set(AnmVm::Frozen, false);
+
+    // Blend modes, draw mode, the alternative colour and its channels.
+    AnmVm b;
+    b.start(lib, rng, 4, 1);
+    CHECK(b.blend() == 2);
+    b.tick(rng);
+    CHECK(b.blend() == 1);  // opcode 16: any non-zero is 1
+    b.tick(rng);
+    CHECK(b.blend() == 3 && b.drawMode == 3 && b.has(AnmVm::UseAltColor));
+    CHECK((b.altColor & 0x00FFFFFFu) != 0x00010203u);  // channel 5 started from (1, 2, 3)
+    for (int i = 0; i < 6; ++i) b.tick(rng);
+    CHECK(b.altColor == ((100u << 24) | 0x292A2Bu) && (b.color & 0x00FFFFFFu) == 0xFAFBFCu);
+
+    // Opcode 89 without an interrupt: the original crashes; the port finishes the script.
+    AnmVm c;
+    c.start(lib, rng, 4, 2);
+    CHECK(c.sprite == &f->sprites[2]);
+    c.tick(rng);
+    CHECK(c.finished());
+
+    // A missing script or file clears the VM.
+    AnmVm d;
+    d.start(lib, rng, 5, 0);
+    CHECK(d.finished() && d.color == 0 && d.file == nullptr);
+
+    // Drawing: sizes from the VM copy; blend 2/3 keep the last destination blend.
+    RecordingSink sink;
+    th08::AnmDrawState state;
+    AnmVm v;
+    v.start(lib, rng, 4, 0);
+    v.position = {100, 50, 0};
+    v.color = 0xFFFFFFFFu;
+    v.spriteWidth = 20;  // game code resizes the quad without touching the sprite
+    v.setBlend(1);
+    th08::drawVm(sink, v, state);
+    v.setBlend(2);
+    th08::drawVm(sink, v, state);
+    CHECK(sink.items.size() == 2 && sink.items[0].s.w == 40 && sink.items[0].s.h == 12);
+    CHECK(sink.items[0].blend == Blend::Additive && sink.items[1].blend == Blend::Additive);
+    th08::noteAlphaBlendDrawn();
+    th08::drawVm(sink, v, state);
+    CHECK(sink.items.size() == 3 && sink.items[2].blend == Blend::Alpha);
+
+    // A file that is not version 3 is refused.
+    Bytes old = anm;
+    set32(old, 0x28, 2);
+    Vfs vfs2;
+    CHECK(vfs2.mount(archiveOf({{"old.anm", old}})));
+    CHECK(!lib.load(vfs2, textures, "old.anm", 6, &err) && !lib.loaded(6));
 }
 
 void testExeCheck() {
@@ -316,6 +519,37 @@ void testRealArchive() {
     }
     CHECK(decoded == 317);
     std::printf("  (the player's th08.dat: %zu members decoded)\n", decoded);
+    // Every .anm loads into a slot and each of its scripts runs for 300 ticks.
+    {
+        Vfs vfs;
+        auto again = MappedFile::open(path, &err);
+        CHECK(again && vfs.mount(openArchive("th08.dat", std::move(again), &err)));
+        TextureLibrary textures;
+        th08::AnmLibrary lib;
+        ZunRng rng(7);
+        std::size_t files = 0, scripts = 0, failed = 0;
+        for (const ArchiveEntry& e : archive->entries()) {
+            if (e.name.size() < 4 || e.name.substr(e.name.size() - 4) != ".anm") continue;
+            if (!lib.load(vfs, textures, e.name, 9, &err)) {
+                ++failed;
+                std::fprintf(stderr, "  %s\n", err.c_str());
+                continue;
+            }
+            ++files;
+            const th08::AnmFile* f = lib.file(9);
+            for (std::size_t s = 0; s < f->scripts.size(); ++s) {
+                th08::AnmVm vm;
+                vm.start(lib, rng, 9, static_cast<int>(s));
+                for (int i = 0; i < 300 && !vm.finished(); ++i) {
+                    if (i % 50 == 49) vm.interrupt(1 + i % 7);
+                    vm.tick(rng);
+                }
+                ++scripts;
+            }
+        }
+        CHECK(files == 113 && failed == 0);
+        std::printf("  (%zu .anm files, %zu scripts run)\n", files, scripts);
+    }
     // The version file has the 1.00d line (and its exe checksum, when TH08_REAL_EXE names it).
     for (std::size_t i = 0; i < archive->entries().size(); ++i) {
         if (archive->entries()[i].name != th08::kVersionFile) continue;
@@ -342,6 +576,7 @@ int main() {
         {"PBGZ archive (th08.dat)", testPbgz},
         {"th08.exe 1.00d check", testExeCheck},
         {"th08.cfg: layout, validation, re-initialisation", testGameConfig},
+        {"ANM v3: files, sprites by position, opcodes 9/33/82-89, interrupt return, freeze", testAnm},
         {"version file: every matching line, exe checksum", testVersionFile},
         {"the player's th08.dat (TH08_REAL_DAT)", testRealArchive},
     };

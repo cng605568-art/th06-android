@@ -54,6 +54,7 @@ add_library(thengine_core STATIC
   ${THENGINE_SRC}/gfx/Image.cpp
   ${THENGINE_SRC}/gfx/ProceduralArt.cpp
   ${THENGINE_SRC}/gfx/TextRenderer.cpp
+  ${THENGINE_SRC}/gfx/Thtx.cpp
   ${THENGINE_SRC}/gfx/TextureLibrary.cpp
   ${THENGINE_SRC}/audio/MusicPlayer.cpp
   ${THENGINE_SRC}/input/DragPad.cpp

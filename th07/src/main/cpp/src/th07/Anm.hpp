@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "core/ZunMath.hpp"
+#include "gfx/Thtx.hpp"
 
 namespace touhou {
 class SpriteSink;
@@ -199,7 +200,7 @@ void drawVmFacingCamera(SpriteSink& sink, const AnmVm& vm, const AnmDrawState& s
 // The effective colour (alternative colour if selected, times the multiplier).
 std::uint32_t effectiveColor(const AnmVm& vm, const AnmDrawState& state);
 
-// Decodes a THTX pixel block (formats 1-5) into RGBA8. False on an unknown format or short data.
-bool decodeThtx(std::span<const std::uint8_t> pixels, int format, int width, int height, std::vector<std::uint8_t>& rgba);
+// THTX pixel blocks (formats 1-5), decoded by the engine (gfx/Thtx).
+using touhou::decodeThtx;
 
 }  // namespace touhou::th07
