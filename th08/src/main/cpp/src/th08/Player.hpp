@@ -170,6 +170,7 @@ class Player {
     void ringBarrier(const World& w, const Vec3f& centre, float angle, float radius, float thickness, bool lastSpell);
     void makeInvulnerable(std::int32_t frames);
     bool continueRequested() const { return continueRequested_; }
+    void continueGame() { continueRequested_ = false; }  // the spawn-in resumes next pass
 
     const Vec3f& position() const { return pos_; }
     Vec3f& scriptPosition() { return pos_; }  // ECL can move the player

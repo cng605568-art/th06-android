@@ -973,8 +973,16 @@ void testRealArchive() {
         RecordingSink sink;
         game.draw(sink);
         CHECK(sink.items.size() > 40);  // the panel at least
+        // Menu pauses; Q quits to the title after the 20-pass closing.
         in.sample(th08::BtnMenu);
         game.tick(in);
+        CHECK(game.menu().pauseMenu() && game.outcome() == th08::Gameplay::Outcome::None);
+        in.sample(th08::BtnQ);
+        game.tick(in);
+        for (int i = 0; i < 20; ++i) {
+            in.sample(0);
+            game.tick(in);
+        }
         CHECK(game.outcome() == th08::Gameplay::Outcome::Title);
         game.end();
         CHECK(!lib.loaded(th08::Background::kSlotBackground) && !lib.loaded(th08::Gui::kSlotFront));
@@ -1165,6 +1173,46 @@ void testRealArchive() {
                 CHECK(game->state().bombs == 3.0f);
                 run(0, 120);
                 CHECK(!p.bombActive() && (game->world().mode & th08::ModeDissolve) == 0 && game->state().lives == 8.0f);
+            }
+        }
+        // The pause menu stops the game; Shoot on "resume" closes it after 20 passes.
+        {
+            th08::Gameplay::Setup main;
+            main.character = 0;
+            main.difficulty = 1;
+            main.lives = 2;
+            CHECK(game->start(main, &err));
+            run(0, 30);
+            const std::uint32_t frame = game->stageFrame();
+            run(th08::BtnMenu, 1);
+            CHECK(game->menu().active() && game->menu().pauseMenu());
+            run(0, 10);
+            CHECK(game->stageFrame() == frame);
+            run(th08::BtnShoot, 1);
+            run(0, 20);
+            CHECK(!game->menu().active());
+            run(0, 5);
+            CHECK(game->stageFrame() > frame && game->outcome() == th08::Gameplay::Outcome::None);
+            // Out of lives: the continue menu. "No" is the default; Up, then Shoot continues
+            // after 90 passes: a continue costs 30 minutes of the night.
+            if (haveTables) {
+                run(th08::BtnLeft, 260);
+                game->world().state->lives = 0.0f;
+                game->world().state->bombs = 0.0f;
+                const th08::Player& p = game->player();
+                if (p.state() == th08::Player::State::Alive) {
+                    game->world().player->bulletHit(game->world(), p.position(), {4.0f, 4.0f, 0.0f});
+                    run(0, 40);
+                    CHECK(game->menu().active() && !game->menu().pauseMenu());
+                    run(0, 40);
+                    run(th08::BtnUp, 1);
+                    run(0, 5);
+                    run(th08::BtnShoot, 1);
+                    run(0, 95);
+                    CHECK(!game->menu().active() && game->state().continues == 1 && game->state().lives == 2.0f && game->state().nightSteps == 1);
+                    run(0, 40);
+                    CHECK(p.state() == th08::Player::State::Invulnerable && game->outcome() == th08::Gameplay::Outcome::None);
+                }
             }
         }
         game->end();

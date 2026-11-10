@@ -311,10 +311,10 @@ void Th08Game::render(SpriteSink& sink, float, const FrameInfo&) {
     drawText(sink, *ui_, 136, 416, std::format("{} FILES IN THE GAME FOLDER", folder_.files), 2.0f, grey);
 }
 
-// Android Back: in a game, what Menu does (the pause menu is not ported yet: the title).
+// Android Back: in a game, what Menu does (the pause menu).
 bool Th08Game::back() {
     if (!gameplay_) return false;
-    gameplay_->requestTitle();
+    gameplay_->requestPause();
     return true;
 }
 

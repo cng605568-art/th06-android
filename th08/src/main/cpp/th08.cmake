@@ -22,6 +22,7 @@ add_library(th08_game STATIC
   ${TH08_SRC}/th08/GameFiles.cpp
   ${TH08_SRC}/th08/Gameplay.cpp
   ${TH08_SRC}/th08/Gui.cpp
+  ${TH08_SRC}/th08/InGameMenu.cpp
   ${TH08_SRC}/th08/MainMenu.cpp
   ${TH08_SRC}/th08/MusicRoom.cpp
   ${TH08_SRC}/th08/Player.cpp

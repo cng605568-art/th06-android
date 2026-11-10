@@ -17,6 +17,7 @@
 #include "th08/Enemies.hpp"
 #include "th08/Flow.hpp"
 #include "th08/Gui.hpp"
+#include "th08/InGameMenu.hpp"
 #include "th08/ScreenEffects.hpp"
 #include "th08/Player.hpp"
 #include "th08/World.hpp"
@@ -53,12 +54,15 @@ class Gameplay {
 
     Outcome outcome() const { return outcome_; }
     void requestTitle() { outcome_ = Outcome::Title; }
+    // Android Back: what Menu does (opens the pause menu, or closes it).
+    void requestPause() { pauseRequested_ = true; }
     const GameState& state() const { return state_; }
     const Background& background() const { return background_; }
     const Gui& gui() const { return gui_; }
     const Player& player() const { return *player_; }
     const Effects& effects() const { return *effects_; }
     const ScreenEffects& screenEffects() const { return screen_; }
+    const InGameMenu& menu() const { return menu_; }
     BulletManager& bullets() { return *bullets_; }
     EnemyManager& enemies() { return *enemies_; }
     const World& world() const { return world_; }
@@ -68,6 +72,7 @@ class Gameplay {
 
   private:
     bool setUpStage(bool fresh, std::string* error);
+    void menuDone(InGameMenu::Request request);
     void releaseStageFiles();
 
     FlowContext& ctx_;
@@ -80,6 +85,8 @@ class Gameplay {
     std::unique_ptr<BulletManager> bullets_ = std::make_unique<BulletManager>();
     std::unique_ptr<EnemyManager> enemies_ = std::make_unique<EnemyManager>();
     ScreenEffects screen_;
+    InGameMenu menu_;
+    bool pauseRequested_ = false;
     Gui gui_;
     std::uint16_t gameInput_ = 0;
     AsciiText ascii_;

@@ -168,11 +168,66 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
     return true;
 }
 
+void Gameplay::menuDone(InGameMenu::Request request) {
+    using R = InGameMenu::Request;
+    switch (request) {
+        case R::Resume:
+            if (ctx_.music) ctx_.music->resume();
+            break;
+        case R::Title:
+        case R::Results:    // (the result screen is not ported yet)
+        case R::BadEnding:  // (nor the endings)
+            outcome_ = Outcome::Title;
+            break;
+        case R::Restart: {  // the main game from Stage 1, fresh
+            Setup s = setup_;
+            s.stage = 0;
+            std::string err;
+            if (!start(s, &err)) outcome_ = Outcome::Title;
+            break;
+        }
+        case R::Retry: {  // the same stage again
+            std::string err;
+            if (!start(setup_, &err)) outcome_ = Outcome::Title;
+            break;
+        }
+        case R::Continue: {
+            // Spec_flow 7.3, pass 90: the score becomes the continue count; lives, bombs,
+            // power and the extend counters start again.
+            ++state_.continues;
+            state_.score = static_cast<std::uint32_t>(state_.continues);
+            state_.guiScore = state_.score;
+            state_.lives = static_cast<float>(setup_.lives);
+            state_.bombs = static_cast<float>(static_cast<int>(player_->header().bombsPerLife));
+            state_.power = 0.0f;
+            state_.pointItems = 0;
+            state_.extends = 0;
+            state_.nextExtend = 100;
+            player_->continueGame();
+            if (ctx_.music) ctx_.music->resume();
+            break;
+        }
+        case R::None: break;
+    }
+}
+
 void Gameplay::tick(const MenuInput& in) {
     if (!running_ || outcome_ != Outcome::None) return;
-    // (The pause menu is not ported yet: Menu goes back to the title.)
-    if (in.pressed(BtnMenu)) {
-        outcome_ = Outcome::Title;
+    // An in-game menu stops the simulation (spec_flow 6.6 step 8).
+    const bool backPressed = pauseRequested_;
+    pauseRequested_ = false;
+    if (menu_.active()) {
+        std::uint16_t pressed = backPressed && menu_.pauseMenu() ? BtnMenu : 0;
+        for (std::uint32_t b = 1; b <= 0x8000u; b <<= 1) {
+            if (in.pressed(static_cast<std::uint16_t>(b))) pressed |= static_cast<std::uint16_t>(b);
+        }
+        menuDone(menu_.update(world_, pressed));
+        return;
+    }
+    // The pause check (step 4).
+    if (in.pressed(BtnMenu) || backPressed) {
+        if (ctx_.music) ctx_.music->pause();
+        menu_.openPause(world_);
         return;
     }
     // GameManager (priority 4): the music starts when play begins (spec 6.6 step 3).
@@ -199,8 +254,11 @@ void Gameplay::tick(const MenuInput& in) {
     bullets_->update(world_);
     gui_.update(rng, state_, player_->position(), world_.timeStop);
     state_.guiScore = std::max(state_.guiScore, state_.score * 10);
-    // (The continue menu is not ported yet: out of lives goes back to the title.)
-    if (player_->continueRequested()) outcome_ = Outcome::Title;
+    // Out of lives: the continue menu (spec_flow 7.3).
+    if (player_->continueRequested() && !menu_.active()) {
+        if (ctx_.music) ctx_.music->pause();
+        menu_.openContinue(world_);
+    }
     ++stageFrame_;
 }
 
@@ -225,6 +283,7 @@ void Gameplay::draw(SpriteSink& sink) {
     sink.clearClip();
     gui_.draw(sink, state_, ascii_);          // 17
     if (ctx_.anm) ascii_.draw(sink, *ctx_.anm);  // 20
+    menu_.draw(sink);                          // (the AsciiManager's menus)
     screen_.draw(sink, background_.white);    // 21: flashes
 }
 
