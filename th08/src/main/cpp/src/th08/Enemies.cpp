@@ -1246,11 +1246,16 @@ EnemyManager::Exec EnemyManager::execute(Enemy& e, std::uint32_t& ip) {
                 e.boss = true;
                 e.bossId = static_cast<std::uint8_t>(slot);
                 e.noFireRadius2 = 0.0f;
+                if (wd.gui) wd.gui->bossMarker(slot, 1);
             } else {
                 if (e.bossId < 4) {
                     bossPresent_ = false;
                     if (wd.gui) wd.gui->setBossPresent(false);
                     bosses_[e.bossId] = nullptr;
+                }
+                if (wd.gui && e.bossId < 4) {
+                    wd.gui->bossMarker(e.bossId, 2);
+                    wd.gui->setBossMarker(e.bossId, -999.0f, 0);
                 }
                 e.boss = false;
                 releaseCircles(e);
@@ -1962,6 +1967,11 @@ void EnemyManager::updateEnemy(Enemy& e) {
         }
     }
     // Damage tint (visual), boss bar.
+    // The boss markers (spec_spellcard_hud 10.6): every boss, every pass.
+    if (e.boss && e.bossId < 4 && wd.gui) {
+        const int state = e.lowLife == 0 ? (e.vm.has(AnmVm::UseAltColor) ? 1 : 0) : e.lowLife + 1;
+        wd.gui->setBossMarker(e.bossId, e.noCollision ? -999.0f : e.abs.x + 32.0f, state);
+    }
     if (e.boss && e.bossId == 0 && !wd.dialogue && e.maxLife > 0) {
         bossBar_ = static_cast<float>(e.life) / static_cast<float>(e.maxLife);
         if (wd.gui) wd.gui->setBossFraction(bossBar_);
@@ -2178,7 +2188,10 @@ void EnemyManager::despawn(Enemy& e) {
     if (e.deathType == 0) e.active = false;
     if (e.boss && e.bossId < 4) {
         bossPresent_ = false;
-        if (w().gui) w().gui->setBossPresent(false);
+        if (w().gui) {
+            w().gui->setBossPresent(false);
+            w().gui->bossMarker(e.bossId, 2);
+        }
         bosses_[e.bossId] = nullptr;
         e.boss = false;
     }

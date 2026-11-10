@@ -58,8 +58,6 @@ struct GameState {
     bool y80() const { return gauge >= youkai80; }
     bool h20() const { return gauge <= human20; }
     bool y20() const { return gauge >= youkai20; }
-    // AddHumanYoukaiGauge (0x43C0BB): ignored during a bomb unless forced; clamped; the
-    // display copy follows.
     // The score roll (spec_flow_menus 6.6 step 9, as TH07): the shown score climbs towards the
     // score by (score - shown) >> 5 a frame, clamped to 1 .. 578910, never slowing down; the
     // hi-score follows the shown score.
@@ -81,6 +79,8 @@ struct GameState {
             hiScoreContinues = continues;
         }
     }
+    // AddHumanYoukaiGauge (0x43C0BB): ignored during a bomb unless forced; clamped; the
+    // display copy follows.
     void addGauge(int delta, bool force, bool bombActive) {
         if (bombActive && !force) return;
         gauge = static_cast<std::int16_t>(std::clamp(gauge + delta, static_cast<int>(gaugeMin), static_cast<int>(gaugeMax)));
@@ -161,6 +161,23 @@ class Gui {
     int bossHudState() const { return bossState_; }
     float bossFill() const { return bossFill_; }
 
+    // ---- the AsciiManager's HUD VMs (spec_spellcard_hud §10): the gauge and boss markers ----
+    // AM init at every stage set-up (after the Player): the scripts restarted, the end icons
+    // placed by the gauge limits, the stored interrupt re-sent. `firstStage` sends the intro (1).
+    void hudStageStart(ZunRng& rng, const GameState& g, bool firstStage);
+    // The Player's zone test after its VM tick (0x44D490): over the gauge (field y >= 400 and
+    // x < 160) -> interrupt 2, leaving it -> 3.
+    void hudPlayerZone(const Vec3f& playerPos);
+    void hudTick(ZunRng& rng);  // every frame, also while paused
+    // Draw priority 14: the frame, the icons, the pointer, the percentage and the point value.
+    void drawGauge(SpriteSink& sink, const GameState& g);
+    // The boss markers: shown / hidden (ECL op 127, despawn), placed and coloured by the enemy
+    // pass, drawn at priority 20 (full screen).
+    void bossMarker(int i, int label);
+    void setBossMarker(int i, float x, int state);
+    void drawBossMarkers(SpriteSink& sink, const Vec3f& playerPos);
+    int hudInterrupt() const { return hudK_; }
+
     // ---- the timed messages (spec_spellcard_hud §9) ----
     void messageA(std::int32_t value);            // " BONUS %8d"
     void messageB(std::int32_t value, int type);  // 1 full power, 5 / 6 spell / Last Spell failed
@@ -198,6 +215,13 @@ class Gui {
     };
     std::array<Message, 3> messages_{};
     AsciiText messageText_;
+    // The AM HUD VMs 3-12 and the stored interrupt k (AM+0x827C).
+    AnmVm gaugeFrame_, humanIcon_, youkaiIcon_, pointer_, stamp_, dusk_;
+    std::array<AnmVm, 4> markers_{};
+    std::array<int, 4> markerState_{};
+    int hudK_ = 0, hudFrame_ = 0;
+    bool hudLoaded_ = false;
+    void sendHudInterrupt(int k);
 
     AnmLibrary* anm_ = nullptr;
     const UiArt* ui_ = nullptr;

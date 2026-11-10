@@ -1,6 +1,7 @@
 #include "th08/Gui.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <format>
 
 #include "core/Log.hpp"
@@ -350,6 +351,123 @@ void Gui::update(ZunRng& rng, const GameState& g, const Vec3f& playerPos, bool f
         m.timer.tick();
     }
     ++frame_;
+}
+
+// ---- the AsciiManager's HUD VMs (spec_spellcard_hud §10) -----------------------------------
+
+void Gui::sendHudInterrupt(int k) {
+    hudK_ = k;
+    for (AnmVm* vm : {&gaugeFrame_, &humanIcon_, &youkaiIcon_, &pointer_}) vm->interrupt(k);
+}
+
+void Gui::hudStageStart(ZunRng& rng, const GameState& g, bool firstStage) {
+    if (!anm_ || !anm_->loaded(kSlotAscii)) return;
+    if (firstStage) hudK_ = 1;  // (the Player's added callback, first stage of a game)
+    gaugeFrame_.start(*anm_, rng, kSlotAscii, 5);
+    youkaiIcon_.start(*anm_, rng, kSlotAscii, 7);
+    humanIcon_.start(*anm_, rng, kSlotAscii, 6);
+    pointer_.start(*anm_, rng, kSlotAscii, 8);
+    stamp_.start(*anm_, rng, kSlotAscii, 4);
+    dusk_.start(*anm_, rng, kSlotAscii, 9);
+    for (AnmVm& m : markers_) m.start(*anm_, rng, kSlotAscii, 10);
+    // The end icons move in for the restricted characters: the limits, not the gauge value.
+    humanIcon_.position.x = humanIcon_.position.x - ((static_cast<float>(g.gaugeMin) * 56.0f) / -10000.0f);
+    youkaiIcon_.position.x = youkaiIcon_.position.x + ((static_cast<float>(g.gaugeMax) * 56.0f) / 10000.0f);
+    pointer_.drawMode = 1;  // (drawn unrounded)
+    sendHudInterrupt(hudK_);
+    hudLoaded_ = true;
+}
+
+void Gui::hudPlayerZone(const Vec3f& p) {
+    if (!hudLoaded_) return;
+    if (p.y >= 400.0f && p.x < 160.0f && hudK_ != 2) sendHudInterrupt(2);
+    else if (hudK_ == 2 && (p.y < 400.0f || p.x > 160.0f)) sendHudInterrupt(3);
+}
+
+void Gui::hudTick(ZunRng& rng) {
+    if (!hudLoaded_) return;
+    for (AnmVm* vm : {&gaugeFrame_, &humanIcon_, &youkaiIcon_, &pointer_, &stamp_}) vm->tick(rng);
+    for (AnmVm& m : markers_) m.tick(rng);
+    dusk_.tick(rng);  // (never drawn)
+    ++hudFrame_;
+}
+
+void Gui::drawGauge(SpriteSink& sink, const GameState& g) {
+    if (!hudLoaded_ || !gaugeFrame_.has(AnmVm::Visible)) return;
+    const AnmDrawState none;
+    const std::int32_t v = g.gaugeShown;
+    std::uint32_t rgb = 0xFFFFFFu;
+    if (v <= g.human80) rgb = 0x7070FFu;
+    else if (v <= g.human20) rgb = 0xB0B0FFu;
+    else if (v >= g.youkai80) rgb = 0xFF7070u;
+    else if (v >= g.youkai20) rgb = 0xFFB0B0u;
+    const float x3 = gaugeFrame_.position.x, y3 = gaugeFrame_.position.y;
+    pointer_.position.x = static_cast<float>(v) * 112.0f / 2.0f / 10000.0f + x3 + 64.0f;
+    drawVmByMode(sink, pointer_, none);
+    stamp_.position = {static_cast<float>(v) * 80.0f / 2.0f / 10000.0f + x3 + 64.0f, pointer_.position.y - 7.0f, pointer_.position.z};
+    stamp_.color = (gaugeFrame_.color & 0xFF000000u) | rgb;
+    gaugeFrame_.color = stamp_.color;
+    drawVm(sink, gaugeFrame_, none);
+    drawVm(sink, humanIcon_, none);
+    drawVm(sink, youkaiIcon_, none);
+    auto glyph = [&](int sprite) {
+        stamp_.selectSprite(sprite);
+        drawVm(sink, stamp_, none);
+        stamp_.position.x += 7.0f;
+    };
+    // The percentage, e.g. "-23.45%".
+    const std::int32_t a = v < 0 ? -v : v;
+    const int n = 4 + (v < 0 ? 1 : 0) + (a >= 10000 ? 3 : a >= 1000 ? 2 : 1);
+    stamp_.position.x = stamp_.position.x - (static_cast<float>(n) * 3.5f - 3.5f - 4.0f);
+    if (v < 0) glyph(148);
+    const std::int32_t whole = a >= 10000 ? 100 : a / 100;
+    for (char c : std::to_string(whole)) glyph(136 + (c - '0'));
+    glyph(147);
+    glyph(136 + (a % 100) / 10);
+    glyph(136 + a % 10);
+    glyph(146);
+    // The point-item value under it.
+    stamp_.position = {x3 + 62.0f - 14.0f, y3 + 3.0f + 8.0f, stamp_.position.z};
+    std::int32_t pv = g.pointValue, sum = 0;
+    for (std::int32_t div = 10000000; div >= 1; div /= 10) {
+        const std::int32_t d = (pv / div) % 10;
+        sum += d;
+        if (sum != 0) glyph(136 + d);
+    }
+}
+
+void Gui::bossMarker(int i, int label) {
+    if (i >= 0 && i < 4) markers_[static_cast<std::size_t>(i)].interrupt(label);
+}
+
+void Gui::setBossMarker(int i, float x, int state) {
+    if (i < 0 || i >= 4) return;
+    markers_[static_cast<std::size_t>(i)].position = {x, 472.0f, 0.0f};
+    markerState_[static_cast<std::size_t>(i)] = state;
+}
+
+void Gui::drawBossMarkers(SpriteSink& sink, const Vec3f& player) {
+    if (!hudLoaded_) return;
+    const AnmDrawState none;
+    for (std::size_t i = 0; i < markers_.size(); ++i) {
+        AnmVm m = markers_[i];
+        const float x = m.position.x;
+        if (!(x >= 56.0f && x <= 392.0f)) continue;
+        const float a = std::fabs(x - 32.0f - player.x);
+        const auto calm = static_cast<std::uint32_t>(a < 64.0f ? static_cast<std::int32_t>(a * 64.0f / 64.0f + 96.0f) : 0xA0);
+        m.selectSprite(157);
+        const int st = markerState_[i];
+        const int period = st == 2 ? 8 : st == 3 ? 4 : st == 4 ? 2 : 0;
+        if (st == 1) {
+            m.color = 0x80FF4040u;
+        } else if (period != 0 && hudFrame_ % period == 0) {
+            m.selectSprite(158);
+            m.color = 0xFFFFFFFFu;
+        } else {
+            m.color = (calm << 24) | 0xFFFFFFu;
+        }
+        drawVm(sink, m, none);
+    }
 }
 
 // ---- the boss HUD and the messages (spec_spellcard_hud §8-§9) -------------------------------

@@ -1428,6 +1428,13 @@ void testRealArchive() {
             CHECK(!sc.active() && sc.circle() == nullptr && sc.endEffect() == nullptr && !sc.has(th08::Spellcard::Pending));
             CHECK(wd.gui->messageOn(1) && wd.state->cardsCaptured == 1);
             boss.active = false;
+            // The gauge HUD's zone interrupt (spec_spellcard_hud 10.3): 2 over the gauge, 3 after.
+            wd.gui->hudPlayerZone({100.0f, 420.0f, 0.0f});
+            CHECK(wd.gui->hudInterrupt() == 2);
+            wd.gui->hudPlayerZone({160.0f, 420.0f, 0.0f});  // (x = 160 keeps the state)
+            CHECK(wd.gui->hudInterrupt() == 2);
+            wd.gui->hudPlayerZone({200.0f, 420.0f, 0.0f});
+            CHECK(wd.gui->hudInterrupt() == 3);
         }
         // The pause menu stops the game; Shoot on "resume" closes it after 20 passes.
         {

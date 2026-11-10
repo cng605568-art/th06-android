@@ -226,6 +226,7 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
         if (moon_ && moon_->inUse) Effects::drawRing(sink, *moon_, st);
     };
     if (!gui_.stageStart(ctx_, state_, fresh, error)) return false;
+    if (ctx_.rng) gui_.hudStageStart(*ctx_.rng, state_, fresh);  // (AM init, after the Player)
     // The dialogue (not in spell practice) and the faces (spec_msg_stage_end 2).
     if (!loadFaces(fresh, error)) return false;
     if (!state_.spellPractice) {
@@ -405,6 +406,8 @@ bool Gameplay::stageEndStep(const MenuInput& in) {
 void Gameplay::tick(const MenuInput& in) {
     if (!running_ || outcome_ != Outcome::None) return;
     if (stageEndStep(in)) return;
+    // The AsciiManager's HUD VMs tick every frame, also while paused.
+    if (ctx_.rng) gui_.hudTick(*ctx_.rng);
     // An in-game menu stops the simulation (spec_flow 6.6 step 8).
     const bool backPressed = pauseRequested_;
     pauseRequested_ = false;
@@ -443,6 +446,7 @@ void Gameplay::tick(const MenuInput& in) {
     background_.setYoukaiInFront(player_->youkaiInFront());
     background_.update(*ctx_.anm, rng, (world_.mode & ModeSpellFreeze) != 0);
     player_->update(world_, gameInput_);
+    gui_.hudPlayerZone(player_->position());  // (inside the Player update, after its VM tick)
     enemies_->update(world_);
     spellcard_.update(world_);  // 12
     effects_->update(world_);
@@ -489,12 +493,16 @@ void Gameplay::draw(SpriteSink& sink) {
     bullets_->draw(sink, drawState_);         // 13: lasers, items, bullets
     effects_->drawListD(sink, drawState_);     // (inside the bullet draw)
     drawState_.offsetX = drawState_.offsetY = 0.0f;
+    sink.clearClip();
+    gui_.drawGauge(sink, state_);             // 14 (the AsciiManager's popup pass)
+    sink.setClip(kPlayfieldX, kPlayfieldY, kPlayfieldW, kPlayfieldH);
     spellcard_.draw(sink);                    // 15 (in the playfield viewport)
     sink.clearClip();
     dialogue_.draw(sink, ctx_.ui);            // (the Gui draws the MSG layer before the HUD)
     gui_.draw(sink, state_, ascii_);          // 17
     if (ctx_.anm) {
         ascii_.draw(sink, *ctx_.anm);  // 20
+        gui_.drawBossMarkers(sink, player_->position());
         gui_.drawMessages(sink, *ctx_.anm);
     }
     menu_.draw(sink);                          // (the AsciiManager's menus)
