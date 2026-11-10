@@ -34,12 +34,22 @@ struct PracticeRecord {
     std::array<std::uint32_t, 45> plays{}, best{};
 };
 
+// A CATK record (spec_files §5.4): per spell card, per character (index 12 = all
+// characters) the best bonus, attempts and captures, in story mode and in spell practice.
+struct CardRecord {
+    bool present = false;
+    std::array<std::uint32_t, 13> best{}, attempts{}, captures{};
+    std::array<std::uint32_t, 13> practiceBest{}, practiceAttempts{}, practiceCaptures{};
+};
+inline constexpr int kCardCount = 222;
+
 struct ScoreData {
     std::array<ClearRecord, kClearRecords> clears{};
     std::array<PracticeRecord, kCharacters> practice{};
     std::uint32_t totalPlays = 0;            // PLST's total row
     std::array<std::uint8_t, 32> musicHeard{};  // PLST +0x208: Music Room track i has been heard
     std::array<std::uint8_t, 17> lastWords{};  // FLSP: byte k = 205 + k when Last Word 205 + k is unlocked
+    std::array<CardRecord, kCardCount> cards{};    // CATK (read; the game keeps its own counts)
     std::vector<std::uint8_t> image;         // the decoded header + body (empty: no file)
     std::size_t plstOffset = 0;              // the PLST record the image's flags come from (0: none)
 

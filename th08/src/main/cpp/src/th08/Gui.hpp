@@ -39,6 +39,7 @@ struct GameState {
     int nightSteps = 0;  // 23:00 + 30 minutes per step
     std::int32_t pointValue = 100000;  // globals+0x24: the maximum point-item value
     std::int32_t timeTotal = 0;         // globals+0x44: this stage's running total of time points
+    std::int32_t cardsCaptured = 0;     // globals+0x1C: spell cards captured this game (ECL ex 24)
     std::int32_t extends = 0;           // globals+0x34: extends granted
     std::int32_t rank = 10, minRank = 8, maxRank = 16, subrank = 0;  // GM+0x3DE2C (spec 14)
     float misses = 0, bombsUsed = 0;

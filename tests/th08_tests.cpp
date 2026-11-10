@@ -4,6 +4,7 @@
 // and a few members are checked against the spec's SHA-256 values (never in CI).
 
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -23,7 +24,9 @@
 #include "gfx/TextureLibrary.hpp"
 #include "th08/Anm.hpp"
 #include "th08/Background.hpp"
+#include "th08/Bullets.hpp"
 #include "th08/Effects.hpp"
+#include "th08/Enemies.hpp"
 #include "th08/Gameplay.hpp"
 #include "th08/ScreenEffects.hpp"
 #include "th08/World.hpp"
@@ -1286,6 +1289,90 @@ void testRealArchive() {
                 run(0, 5);
                 CHECK(game->stageEndState() == 0 && game->state().stage == 1 && game->stageFrame() == 5);
             }
+        }
+        // ECL ex routines (claude/th08-specs/spec_ecl_ex_routines.md) on Stage 4A.
+        if (haveTables) {
+            th08::Gameplay::Setup main;
+            main.character = 0;
+            main.difficulty = 1;
+            main.lives = 2;
+            main.stage = 3;
+            CHECK(game->start(main, &err));
+            run(0, 10);
+            const th08::World& wd = game->world();
+            th08::EnemyManager& em = *wd.enemies;
+            th08::BulletManager& bm = *wd.bullets;
+            th08::Enemy& host = em.enemy(400);
+            th08::Shooter sh;
+            sh.type = 16;
+            sh.color = 0;
+            sh.pos = {200.0f, 100.0f, 0.0f};
+            sh.speed1 = 2.0f;
+            sh.flags = 0x100000;
+            bm.fire(wd, sh);
+            int slot = -1;
+            for (int i = 0; i < th08::BulletManager::kBullets; ++i) {
+                if (bm.bullet(i).state != 0 && bm.bullet(i).allowed == 0x100000u) slot = i;
+            }
+            CHECK(slot >= 0);
+            if (slot >= 0) {
+                th08::BulletManager::Bullet& b = bm.bullet(slot);
+                // Ex 4: leaving the inner square (E/N) through its right edge scales the bullet
+                // out by 135.76451 / 67.882256 about (192, 208) and turns it round.
+                b.pos = {261.0f, 208.0f, 0.1f};
+                b.velocity = {3.0f, 0.0f, 0.0f};
+                b.angle = 0.0f;
+                em.callExRoutine(wd, host, 4, 0);
+                float x = 261.0f - 192.0f;
+                x = x * std::bit_cast<float>(0x4307C3B7u);
+                x = x / std::bit_cast<float>(0x4287C3B7u);
+                x = x + 192.0f;
+                CHECK(b.tag == 2 && b.pos.x == x && b.pos.y == 208.0f && b.velocity.x == -3.0f);
+                CHECK(std::fabs(std::fabs(b.angle) - 3.1415927f) < 1e-6f);
+                // The two-call cooldown, then nothing to do (no crossing).
+                em.callExRoutine(wd, host, 4, 0);
+                em.callExRoutine(wd, host, 4, 0);
+                CHECK(b.tag == 0 && b.pos.x == x);
+                em.callExRoutine(wd, host, 4, 0);
+                CHECK(b.tag == 0 && b.pos.x == x);
+                // Ex 12: the flagged group is held (additive, sprite + 16, no collision, the
+                // velocity from 10016/10017) and the host's familiars freeze; then released.
+                th08::Enemy& fam = em.enemy(401);
+                host.next = &fam;
+                fam.parent = &host;
+                host.ctx.args.intA[0] = 0x100000;
+                host.ctx.args.intA[1] = 0;
+                host.ctx.args.floatA[0] = 0.0f;
+                host.ctx.args.floatA[1] = 0.5f;
+                b.vm.autoRotate = 1;
+                b.speed = 2.0f;
+                b.angle = 1.0f;
+                const std::int16_t sprite = b.vm.activeSprite;
+                em.callExRoutine(wd, host, 12, 0);
+                CHECK(b.vm.autoRotate == 0 && b.noCollision && b.vm.blend() == 1 && b.velocity.x == 0.5f && fam.alwaysFrozen);
+                CHECK(b.vm.activeSprite == sprite + 16 || b.vm.activeSprite == sprite);  // (n + 16 exists in etama)
+                host.ctx.args.intA[1] = 1;
+                em.callExRoutine(wd, host, 12, 0);
+                CHECK(b.vm.autoRotate == 1 && !b.noCollision && b.vm.blend() == 0 && !fam.alwaysFrozen && b.vm.activeSprite == sprite);
+                CHECK(std::fabs(b.velocity.x - 2.0f * std::cos(1.0f)) < 1e-5f);
+                host.next = nullptr;
+                fam.parent = nullptr;
+            }
+            // Ex 30: the screen-effect counter removes a shake while it is non-zero.
+            em.callExRoutine(wd, host, 30, 2);
+            CHECK(wd.screenSuppress == 2);
+            wd.screen->shake(30, 2.0f, 2.0f);
+            run(0, 1);
+            CHECK(wd.screen->jobs() == 0 && wd.screenSuppress == 1);
+            run(0, 1);
+            CHECK(wd.screenSuppress == 0);
+            // Ex 26: time stop on the low byte only.
+            em.callExRoutine(wd, host, 26, 0x100);
+            CHECK(!wd.timeStop);
+            em.callExRoutine(wd, host, 26, 1);
+            CHECK(wd.timeStop);
+            em.callExRoutine(wd, host, 26, 0);
+            CHECK(!wd.timeStop);
         }
         // The pause menu stops the game; Shoot on "resume" closes it after 20 passes.
         {

@@ -17,6 +17,7 @@ class EnemyManager;
 class Effects;
 class Dialogue;
 class Gui;
+class Spellcard;
 class Player;
 class ScreenEffects;
 class SoundPlayer;
@@ -52,6 +53,7 @@ struct World {
     ScreenEffects* screen = nullptr;
     Dialogue* msg = nullptr;
     Gui* gui = nullptr;
+    Spellcard* spellcard = nullptr;
 
     // Game-wide flags any object may change (the objects get the world as const).
     mutable std::uint32_t mode = 0;  // ModeFlag bits
@@ -59,6 +61,9 @@ struct World {
     mutable bool dialogue = false;   // a dialogue script is running (kept by the Dialogue)
     bool spellCardActive = false;    // Spellcard flag bit 0
     mutable bool timeStop = false;   // GM+0x2C (Sakuya's time stop)
+    // The screen-effect suppression counter (0x18B8A2C; ECL ex 30): while non-zero, shakes
+    // (type 1), fades and flashes are removed. Counted down once a gameplay frame.
+    mutable std::int32_t screenSuppress = 0;
 
     void playSound(int id) const;
     // AddTimePoints (0x418220, spec_player_bullets_items 12.1): a loss larger than what is

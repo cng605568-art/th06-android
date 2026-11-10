@@ -121,6 +121,20 @@ bool parseScoreImage(std::span<const std::uint8_t> image, ScoreData& out,
                     r.best[i] = rd32(rec, 0xC0 + 4 * i);
                 }
             }
+        } else if (tag("CATK") && version == 3 && len >= 0x228) {
+            const std::uint16_t card = rd16(rec, 0x0C);
+            if (card < kCardCount) {
+                CardRecord& c = parsed.cards[card];
+                c.present = true;
+                for (std::size_t i = 0; i < 13; ++i) {
+                    c.best[i] = rd32(rec, 0xF0 + 4 * i);
+                    c.attempts[i] = rd32(rec, 0x124 + 4 * i);
+                    c.captures[i] = rd32(rec, 0x158 + 4 * i);
+                    c.practiceBest[i] = rd32(rec, 0x18C + 4 * i);
+                    c.practiceAttempts[i] = rd32(rec, 0x1C0 + 4 * i);
+                    c.practiceCaptures[i] = rd32(rec, 0x1F4 + 4 * i);
+                }
+            }
         } else if (tag("FLSP") && version == 1 && len >= 0x0C + 17) {
             std::memcpy(parsed.lastWords.data(), rec.data() + 0x0C, parsed.lastWords.size());
         } else if (tag("VRSM") && version == 1 && len >= 0x1C && exeVersion) {

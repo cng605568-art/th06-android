@@ -417,6 +417,8 @@ void Gameplay::tick(const MenuInput& in) {
         musicStart_ = 0;
     }
     state_.rollScore();  // (step 9)
+    // The Supervisor (calc priority 0) counts the screen-effect suppression down.
+    if (world_.screenSuppress != 0) --world_.screenSuppress;
     ZunRng& rng = *ctx_.rng;
     prevGameInput_ = gameInput_;
     gameInput_ = in.current() & (BtnShoot | BtnBomb | BtnFocus | BtnUp | BtnDown | BtnLeft | BtnRight | BtnSkip);

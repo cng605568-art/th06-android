@@ -1,6 +1,9 @@
 #include "th08/Enemies.hpp"
 
 #include <algorithm>
+#include <bit>
+#include <cmath>
+#include <cstring>
 #include <format>
 #include <set>
 
@@ -1859,7 +1862,7 @@ void EnemyManager::updateEnemy(Enemy& e) {
         return;
     }
     const bool bombing = player && player->bombActive();
-    if (e.frozenWhileBombing && (bombing || (player && player->state() != Player::State::Alive))) {
+    if (e.alwaysFrozen || (e.frozenWhileBombing && (bombing || (player && player->state() != Player::State::Alive)))) {
         e.timer.decrement(1);
     } else {
         if (e.familiar) familiarPreUpdate(e);
@@ -2347,7 +2350,270 @@ void EnemyManager::spellCardUpdate() {
     spell_.timer.decrement(1);
 }
 
-// ---- ex routines (spec 11, the ones without stage visuals) -------------------------------
+// ---- ex routines (spec 11; claude/th08-specs/spec_ecl_ex_routines.md) --------------------
+
+namespace {
+
+float bits(std::uint32_t v) { return std::bit_cast<float>(v); }
+
+// The border transfers of ex 4, 21 and 7 (ex spec 2): an inner and an outer rectangle (strict
+// bounds), the outer one possibly different for the estimated previous position.
+struct Border {
+    float cx, cy;
+    float inLoX, inHiX, inLoY, inHiY;
+    float outLoX, outHiX, outLoY, outHiY;
+    float prevOutLoX, prevOutHiX, prevOutLoY, prevOutHiY;
+    float hOut, hIn;
+};
+
+int borderRegion(const Border& b, float x, float y, bool previous) {
+    if (b.inLoX < x && x < b.inHiX && b.inLoY < y && y < b.inHiY) return 0;
+    const float lx = previous ? b.prevOutLoX : b.outLoX, hx = previous ? b.prevOutHiX : b.outHiX;
+    const float ly = previous ? b.prevOutLoY : b.outLoY, hy = previous ? b.prevOutHiY : b.outHiY;
+    if (lx < x && x < hx && ly < y && y < hy) return 1;
+    return 2;  // (also NaN)
+}
+
+const Border& borderFor(int routine) {
+    static const Border k4{192.0f, 208.0f,
+                           bits(0x42F83C49), bits(0x4381F0EE), bits(0x430C1E24), bits(0x4389F0EE),
+                           bits(0x4260F124), bits(0x43A3E1DC), bits(0x42907892), bits(0x43ABE1DC),
+                           bits(0x4260F124), bits(0x43A3E1DC), bits(0x42907892), bits(0x43ABE1DC),
+                           bits(0x4307C3B7), bits(0x4287C3B7)};
+    static const Border k21{192.0f, 208.0f,
+                            bits(0x42E19BAA), bits(0x43879915), bits(0x4300CDD5), bits(0x438F9915),
+                            bits(0x42066EAA), bits(0x43AF322B), bits(0x42466EAA), bits(0x43B7322B),
+                            bits(0x42066EAA), bits(0x43AF322B), bits(0x42466EAA), bits(0x43B7322B),
+                            bits(0x431E6456), bits(0x429E6456)};
+    // Ex 7: the whole playfield outside, and -31.100006 on the left for the previous position [QUIRK].
+    static const Border k7{192.0f, 224.0f,
+                           bits(0x4260F124), bits(0x43A3E1DC), bits(0x42B07892), bits(0x43B3E1DC),
+                           -32.0f, 416.0f, 0.0f, 448.0f,
+                           bits(0xC1F8CCD0), 416.0f, 0.0f, 448.0f,
+                           224.0f, bits(0x4307C3B7)};
+    return routine == 4 ? k4 : routine == 21 ? k21 : k7;
+}
+
+void borderTransfer(BulletManager& bm, const Border& k) {
+    for (int i = 0; i < BulletManager::kBullets; ++i) {
+        BulletManager::Bullet& b = bm.bullet(i);
+        if (b.state == 0) continue;
+        if (b.tag != 0) {
+            --b.tag;
+            continue;
+        }
+        const float px = b.pos.x - b.velocity.x, py = b.pos.y - b.velocity.y;
+        const int now = borderRegion(k, b.pos.x, b.pos.y, false), before = borderRegion(k, px, py, true);
+        if (now == before) continue;
+        b.tag = 2;
+        b.velocity = {b.velocity.x * -1.0f, b.velocity.y * -1.0f, b.velocity.z * -1.0f};
+        const bool inner = now == 0 || before == 0;
+        const float num = inner ? k.hOut : k.hIn, den = inner ? k.hIn : k.hOut;
+        // Two rounded steps, not one ratio [QUIRK].
+        float d = b.pos.x - k.cx;
+        d = d * num;
+        d = d / den;
+        b.pos.x = d + k.cx;
+        d = b.pos.y - k.cy;
+        d = d * num;
+        d = d / den;
+        b.pos.y = d + k.cy;
+        b.angle = addNormalizeAngle(b.angle, kZunPi);
+    }
+}
+
+}  // namespace
+
+// Ex 8 (ex spec 3): one familiar of a formation eases its orbit angle towards the leader's.
+void EnemyManager::formation(Enemy& e, EclContext& c) {
+    const std::int32_t key = c.args.intB[2];
+    Enemy* p = e.parent;
+    if (!p) return;
+    int n = 0;
+    Enemy* lead = nullptr;
+    for (Enemy* q = p->next; q; q = q->next) {
+        EclContext& qc = q == &e ? c : q->ctx;
+        if (qc.args.intB[2] != key) continue;
+        qc.args.intB[1] = n;
+        if (n == 0) lead = q;
+        ++n;
+    }
+    c.args.intA[5] = 0;
+    if (c.args.intA[6] != n) {
+        if (c.args.intA[6] != 0) c.args.intA[5] = 1;
+        c.args.intA[6] = n;
+    }
+    const std::int32_t i = c.args.intB[1];
+    c.args.intA[7] += 1;
+    if (i == 0 || !lead || n == 0) return;
+    float off = static_cast<float>(i) * kZunTwoPi;
+    off = off / static_cast<float>(n);
+    float target = addNormalizeAngle(lead->orbitAngle, off);
+    const EclContext& lc = lead == &e ? c : lead->ctx;
+    if (lc.args.intA[7] != c.args.intA[7]) target = addNormalizeAngle(target, lead->orbitAngularVelocity);
+    const float now = addNormalizeAngle(e.orbitAngle, e.orbitAngularVelocity);
+    float d = target - now;
+    if (std::fabs(d) > kZunPi) d = d > 0.0f ? -kZunTwoPi + d : kZunTwoPi + d;
+    d = d * bits(0x3CA3D70A);
+    e.orbitAngle = addNormalizeAngle(e.orbitAngle, d);
+}
+
+// Ex 9, 11 and 25 (ex spec 4): a 590-pixel beam from the enemy minus (10016, 10017) along the
+// enemy sprite's rotation; the narrow graze test every 12 timer counts, then the kill test.
+void EnemyManager::beam(Enemy& e, EclContext& c, int routine) {
+    Player* player = w().player;
+    if (!player) return;
+    const Vec3f& x = routine == 11 ? e.pos : e.abs;
+    const Vec3f o{x.x - c.args.floatA[0], x.y - c.args.floatA[1], 0.0f};
+    const Vec3f centre{590.0f / 2.0f + o.x, o.y, 0.0f};
+    const float theta = e.vm.rotation.z;
+    const float kill = routine == 9 ? 160.0f : routine == 11 ? 240.0f : 288.0f;
+    const float graze = routine == 9 ? 128.0f : routine == 11 ? 192.0f : 224.0f;
+    if (hasTicked(e.timer) && e.timer.current % 12 == 0) (void)player->laserTest(w(), o, theta, centre, {590.0f, graze, 0.0f}, true);
+    (void)player->laserTest(w(), o, theta, centre, {590.0f, kill, 0.0f}, false);
+}
+
+// Ex 12 and 14 (ex spec 5): two groups of bullets, picked by flag bits, held and released.
+void EnemyManager::bulletToggle(Enemy& e, EclContext& c, int routine) {
+    const World& wd = w();
+    if (!wd.bullets) return;
+    const float m = g_timing.speed;
+    for (int i = 0; i < BulletManager::kBullets; ++i) {
+        BulletManager::Bullet& b = wd.bullets->bullet(i);
+        if (b.state == 0 || (b.allowed & static_cast<std::uint32_t>(c.args.intA[0])) == 0) continue;
+        AnmVm& v = b.vm;
+        if (routine == 12) {
+            if (v.autoRotate == 1) {
+                v.autoRotate = 0;
+                v.setBlend(1);
+                v.selectSprite(v.activeSprite + 16);
+                b.noCollision = true;
+                fromAngle(b.velocity, c.args.floatA[0], m * c.args.floatA[1]);
+            } else {
+                v.autoRotate = 1;
+                v.setBlend(0);
+                v.selectSprite(v.activeSprite - 16);
+                b.noCollision = false;
+                fromAngle(b.velocity, b.angle, m * b.speed);
+            }
+        } else if (v.autoRotate == 1) {  // ex 14: 1 -> 0, vanish and slow
+            v.autoRotate = 0;
+            v.setBlend(1);
+            v.color &= 0x00FFFFFFu;
+            v.selectSprite(v.activeSprite + 16);
+            b.noCollision = true;
+            fromAngle(b.velocity, b.angle, m * c.args.floatA[1]);
+        } else if (v.autoRotate == 0) {  // 0 -> 2, a 15-frame fade in
+            v.autoRotate = 2;
+            v.color &= 0x00FFFFFFu;
+            v.progress[AnmVm::Alpha].assign(0);
+            v.duration[AnmVm::Alpha].assign(15);
+            v.ease[AnmVm::Alpha] = 0;
+            v.colorStart &= 0x00FFFFFFu;
+            v.colorEnd = (v.colorEnd & 0x00FFFFFFu) | 0xFF000000u;
+        } else {  // 2 (or anything else) -> 1, restored
+            v.autoRotate = 1;
+            v.setBlend(0);
+            v.selectSprite(v.activeSprite - 16);
+            b.noCollision = false;
+            fromAngle(b.velocity, b.angle, m * b.speed);
+        }
+    }
+    if (routine != 12) return;
+    // Ex 12 also freezes (10001 = 0) or thaws the enemy's own familiars, and interrupts the
+    // spell background, whether or not a bullet matched.
+    const bool freeze = c.args.intA[1] == 0;
+    for (Enemy* f = e.next; f; f = f->next) f->alwaysFrozen = freeze;
+    spellBackgroundInterrupt(freeze ? 2 : 1);
+}
+
+// Ex 16 (ex spec 6.1): a flagged bullet passing an idle familiar (10038 = 0) wakes it.
+void EnemyManager::bulletTrigger(Enemy& e, EclContext& c) {
+    const World& wd = w();
+    if (!wd.bullets) return;
+    for (int i = 0; i < BulletManager::kBullets; ++i) {
+        const BulletManager::Bullet& b = wd.bullets->bullet(i);
+        if (b.state == 0 || (b.allowed & 0x100000u) == 0) continue;
+        for (Enemy* f = e.next; f; f = f->next) {
+            EclContext& fc = f == &e ? c : f->ctx;
+            if (fc.args.intB[2] != 0) continue;
+            const float dx = b.pos.x - f->pos.x, dy = b.pos.y - f->pos.y, dz = b.pos.z - f->pos.z;
+            float d = dx * dx;
+            d = d + dy * dy;
+            d = d + dz * dz;
+            if (d < 4096.0f) {
+                fc.args.intB[2] = 60;
+                fc.args.intA[7] = c.args.intA[7];
+            }
+        }
+    }
+}
+
+// Ex 27 (ex spec 6.2): flagged bullets become enemies (sub 10038), each running its first
+// pass at once.
+void EnemyManager::bulletsToEnemies(EclContext& c) {
+    const World& wd = w();
+    if (!wd.bullets) return;
+    for (int i = 0; i < BulletManager::kBullets; ++i) {
+        BulletManager::Bullet& b = wd.bullets->bullet(i);
+        if (b.state == 0 || (b.allowed & 0x100000u) == 0) continue;
+        c.args.floatA[0] = b.angle;
+        const EclArgs args = c.args;
+        (void)spawnWithContext(static_cast<std::int16_t>(c.args.intB[2]), b.pos, 800, -2, 10, args);
+        b.allowed &= ~0x100000u;
+    }
+}
+
+// The stage's spell-background VMs 0 and 1 (Stage+0xB38, +0xDDC).
+void EnemyManager::spellBackgroundInterrupt(int label) {
+    if (Background* bg = w().background) {
+        bg->spellVms()[0].interrupt(label);
+        bg->spellVms()[1].interrupt(label);
+    }
+}
+
+// Ex 28 and 29 (ex spec 7.12-7.13): slow motion for the bullets.
+void EnemyManager::bulletSlowdown(int routine, std::int32_t a) {
+    const World& wd = w();
+    if (routine == 28) {
+        if (a == 0) return;  // (an infinite speed; no data does it)
+        g_timing.speed = 1.0f / static_cast<float>(a);
+        spellBackgroundInterrupt(2);
+        if (!wd.bullets) return;
+        const float m = g_timing.speed;
+        for (int i = 0; i < BulletManager::kBullets; ++i) {
+            BulletManager::Bullet& b = wd.bullets->bullet(i);
+            if (b.state == 0) continue;
+            b.velocity = {b.velocity.x * m, b.velocity.y * m, b.velocity.z * m};
+            b.vm.baseSprite = b.vm.activeSprite;
+            if (b.vm.activeSprite >= 0x60 && b.vm.activeSprite <= 0x6F) b.vm.selectSprite(0x6F);
+        }
+        return;
+    }
+    const float f = 1.0f / g_timing.speed;
+    if (wd.bullets) {
+        for (int i = 0; i < BulletManager::kBullets; ++i) {
+            BulletManager::Bullet& b = wd.bullets->bullet(i);
+            if (b.state == 0) continue;
+            b.velocity = {b.velocity.x * f, b.velocity.y * f, b.velocity.z * f};
+            if (b.vm.activeSprite >= 0x60 && b.vm.activeSprite <= 0x6F) b.vm.selectSprite(b.vm.baseSprite);
+        }
+    }
+    const float m = 1.0f / static_cast<float>(a);
+    if (m < 1.0f) g_timing.forceInteger = true;
+    g_timing.speed = 1.0f;
+    spellBackgroundInterrupt(1);
+}
+
+void EnemyManager::callExRoutine(const World& w, Enemy& e, int routine, std::int32_t a) {
+    std::array<std::uint8_t, 20> ins{};
+    std::memcpy(ins.data() + 16, &a, 4);
+    w_ = &w;
+    EclContext* saved = cur_;
+    cur_ = &e.ctx;
+    exRoutine(e, routine, ins.data());
+    cur_ = saved;
+}
 
 void EnemyManager::exRoutine(Enemy& e, int routine, const std::uint8_t* ins) {
     const World& wd = w();
@@ -2363,19 +2629,31 @@ void EnemyManager::exRoutine(Enemy& e, int routine, const std::uint8_t* ins) {
             if (changed) e.angle = zatan2(e.velocity.y, e.velocity.x);
             break;
         }
+        case 4: case 7: case 21:
+            if (wd.bullets) borderTransfer(*wd.bullets, borderFor(routine));
+            break;
+        case 8: formation(e, c); break;
+        case 9: case 11: case 25: beam(e, c, routine); break;
+        case 12: case 14: bulletToggle(e, c, routine); break;
+        case 16: bulletTrigger(e, c); break;
+        case 27: bulletsToEnemies(c); break;
         case 18:
-            if (a != 0) g_timing.speed = 1.0f / static_cast<float>(a);
+            if (a != 0) g_timing.speed = 1.0f / static_cast<float>(a);  // (0 would be infinite; no data does it)
             break;
         case 19: c.args.intA[0] = 0; break;  // the practice card (spell practice not ported)
         case 24: c.args.intA[0] = 0; break;  // spell cards captured this game
-        case 26:
-            wd.timeStop = a != 0;
+        case 22:
+            spell_.active = false;  // (also "name only" and a GUI name; every caller ended the card first)
             break;
-        case 28:
-            if (a != 0) g_timing.speed = 1.0f / static_cast<float>(a);
+        case 26: {
+            const auto low = static_cast<std::int8_t>(a & 0xFF);  // the low byte only
+            wd.timeStop = low != 0;
+            spellBackgroundInterrupt(low != 0 ? 2 : 1);
             break;
-        case 29:
-            g_timing.speed = 1.0f;
+        }
+        case 28: case 29: bulletSlowdown(routine, a); break;
+        case 30:
+            wd.screenSuppress = a;
             break;
         case 31:
             if (wd.bullets) wd.bullets->spawnItem(wd, e.pos, wd.player && wd.player->bombActive() ? 3 : 5, BulletManager::Falling);
@@ -2387,7 +2665,7 @@ void EnemyManager::exRoutine(Enemy& e, int routine, const std::uint8_t* ins) {
             break;
         case 10:
             if (wd.screen) {
-                wd.screen->flash(30, 5, 0x41000000u);  // (the colour argument is the float 8.0's bits)
+                wd.screen->flash(30, 5, 0x40FFFFFFu);
                 wd.screen->rampedShake(4.0f, 120, 190, 60);
             }
             break;
@@ -2397,7 +2675,7 @@ void EnemyManager::exRoutine(Enemy& e, int routine, const std::uint8_t* ins) {
         case 17:
             if (wd.screen) wd.screen->flash(180, 1, 0xFFFFFFFFu);
             break;
-        case 0: case 3: case 5: case 6: case 13: case 20: case 22: case 23: case 30:
+        case 0: case 3: case 5: case 6: case 13: case 20: case 23:
             break;  // visual or GUI only
         default: eclWarnOnce(std::format("ex routine {} is not ported yet", routine)); break;
     }

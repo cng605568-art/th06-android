@@ -82,6 +82,7 @@ class BulletManager {
         std::uint16_t offscreen = 0;
         std::uint8_t grazed = 0;
         bool pendingCancel = false, noCollision = false;
+        std::int32_t tag = 0;  // bullet+0xDC4: the ECL border routines' cooldown (ex 4, 7, 21)
         int sound = -1;
         int cursor = 0;
         std::array<BulletCommand, 6> commands{};

@@ -169,6 +169,7 @@ class Player {
     // their barriers here (spec_bombs_familiars 3.2-3.3).
     void ringBarrier(const World& w, const Vec3f& centre, float angle, float radius, float thickness, bool lastSpell);
     void makeInvulnerable(std::int32_t frames);
+    void setBombLockout(std::int32_t frames) { lockout_ = frames; }
     bool continueRequested() const { return continueRequested_; }
     void continueGame() { continueRequested_ = false; }  // the spawn-in resumes next pass
 

@@ -96,6 +96,7 @@ struct Enemy {
     bool projectile = false, familiar = false, attached = false, dismissed = false, youkaiState = false;
     bool deferredBullets = false, mirror = false, bounded = false, inBounds = false, noStack = false, survival = false;
     bool oobDisabled = false, frozenWhileBombing = false, intangibleWhileBombing = false;
+    bool alwaysFrozen = false;  // flags-2 bit 7 (set and cleared by ECL ex 12)
     std::uint8_t deathType = 0;
     bool sparkle = false, file1 = false, deathLatch = false, cannotDie = false;
     std::uint8_t lowLife = 0;
@@ -192,6 +193,8 @@ class EnemyManager {
 
     // One VM pass (spec 5.1); false when the script deleted the enemy (opcode 1).
     bool runVm(Enemy& e);
+    // Tests: ex routine n with argument a, as op 136 in e's main context.
+    void callExRoutine(const World& w, Enemy& e, int routine, std::int32_t a);
 
   private:
     friend struct EclOps;
@@ -249,6 +252,13 @@ class EnemyManager {
     void spellCardEnd();
     void spellCardUpdate();
     void exRoutine(Enemy& e, int routine, const std::uint8_t* ins);
+    void formation(Enemy& e, EclContext& c);
+    void beam(Enemy& e, EclContext& c, int routine);
+    void bulletToggle(Enemy& e, EclContext& c, int routine);
+    void bulletTrigger(Enemy& e, EclContext& c);
+    void bulletsToEnemies(EclContext& c);
+    void bulletSlowdown(int routine, std::int32_t a);
+    void spellBackgroundInterrupt(int label);
     void drawEnemy(SpriteSink& sink, Enemy& e, const AnmDrawState& state);
 
     const World* w_ = nullptr;

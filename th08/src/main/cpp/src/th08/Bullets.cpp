@@ -163,6 +163,7 @@ bool BulletManager::initBullet(const World& w, const Shooter& s, const Template&
     b.grazed = 0;
     b.pendingCancel = false;
     b.noCollision = false;
+    b.tag = 0;
     b.timerA.assign(0);
     b.timerB.assign(0);
     b.speed = v;

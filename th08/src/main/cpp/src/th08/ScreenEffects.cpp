@@ -71,6 +71,10 @@ void ScreenEffects::update(const World& w) {
         switch (j.type) {
             case 1:
                 if (frozen) break;
+                if (w.screenSuppress != 0) {
+                    remove = true;
+                    break;
+                }
                 j.timer.tick();
                 if (j.timer.current >= j.frames) {
                     remove = true;
@@ -98,9 +102,17 @@ void ScreenEffects::update(const World& w) {
                 break;
             }
             case 4:
+                if (w.screenSuppress != 0) {
+                    remove = true;
+                    break;
+                }
                 if (j.timer.current < j.frames) j.timer.tick();
                 break;
             case 3:
+                if (w.screenSuppress != 0) {
+                    remove = true;
+                    break;
+                }
                 j.timer.tick();
                 if (j.timer.current >= j.frames) {
                     if (--j.repeats > 0) j.timer.assign(0);
