@@ -33,6 +33,8 @@ class ScreenEffects {
     void flash(std::int32_t frames, std::int32_t repeats, std::uint32_t color);
     // Type 4: a full-screen fade to `color` over `frames` frames (MSG op 14), held at the end.
     void fadeTo(std::int32_t frames, std::uint32_t color);
+    // Type 2: the same over the playfield (the attract demo's ending fade).
+    void playfieldFadeTo(std::int32_t frames, std::uint32_t color);
 
     void update(const World& w);  // calc priority 3
     void draw(SpriteSink& sink, const SpriteRegion* white) const;  // draw priority 21

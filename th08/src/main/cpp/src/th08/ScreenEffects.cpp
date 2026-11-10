@@ -52,6 +52,11 @@ void ScreenEffects::fadeTo(std::int32_t frames, std::uint32_t color) {
     jobs_.push_back(j);
 }
 
+void ScreenEffects::playfieldFadeTo(std::int32_t frames, std::uint32_t color) {
+    fadeTo(frames, color);
+    jobs_.back().type = 2;
+}
+
 // Each shake frame draws two u32 mod 3 (x, then y): 0 none, 1 +offset, 2 -offset.
 static Vec2f shakeOffset(ZunRng& rng, float offset) {
     Vec2f o;
@@ -101,6 +106,7 @@ void ScreenEffects::update(const World& w) {
                 if (w.rng) offset_ = shakeOffset(*w.rng, j.amplitude * f);
                 break;
             }
+            case 2:
             case 4:
                 if (w.screenSuppress != 0) {
                     remove = true;
@@ -129,10 +135,11 @@ void ScreenEffects::update(const World& w) {
 void ScreenEffects::draw(SpriteSink& sink, const SpriteRegion* white) const {
     if (!white) return;
     for (const Job& j : jobs_) {
-        if (j.type == 4 && j.frames > 0) {
+        if ((j.type == 4 || j.type == 2) && j.frames > 0) {
             const std::uint32_t c = j.color;
             const auto alpha = static_cast<std::uint8_t>(std::min(255, j.timer.current * 255 / j.frames));
-            sink.fillRect(*white, 0.0f, 0.0f, 640.0f, 480.0f,
+            const bool field = j.type == 2;
+            sink.fillRect(*white, field ? kPlayfieldX : 0.0f, field ? kPlayfieldY : 0.0f, field ? kPlayfieldW : 640.0f, field ? kPlayfieldH : 480.0f,
                           rgba(static_cast<std::uint8_t>(c >> 16), static_cast<std::uint8_t>(c >> 8), static_cast<std::uint8_t>(c), alpha));
             continue;
         }

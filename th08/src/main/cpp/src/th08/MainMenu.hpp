@@ -103,6 +103,7 @@ class MainMenu {
     void drawPercent(SpriteSink& sink, float x, float y, float value, std::uint32_t argb);
     // The Replay menu (spec_replay_menu §1.3-1.8).
     void enterReplays(bool sound);
+    bool startDemo();
     void replays(const MenuInput& in);
     void scanReplays();
     int verticalMove(const MenuInput& in, int n);

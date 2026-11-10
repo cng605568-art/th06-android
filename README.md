@@ -217,9 +217,15 @@ Apple's C++ library has the number formatting the game uses from 16.3 on).
 ## Imperishable Night (th08) app: in progress
 
 `:th08` (app id `io.github.cng605568art.th08`, "TH08 Port") is the next game on the same
-engine. CI builds it as **th08-android-<version>** (releases do not carry it yet). For now
-the launcher imports your files (th08.dat, th08.exe **1.00d**, thbgm.dat) and Play shows
-which of them the game found; the game's own screens follow as the systems are ported.
+engine. CI builds it as **th08-android-<version>** (releases do not carry it yet). The
+launcher imports your files (th08.dat, th08.exe **1.00d**, thbgm.dat). Ported so far: the
+title and its menus (Game Start, Extra Start, Spell Card Practice, Practice Start, Replay,
+Player Data, Music Room, Option), every stage with its dialogue, bosses, spell cards and Last
+Spells, the human/youkai gauge and time orbs, the endings and staff roll, the result screen
+with high-score names, score.dat in the PC format, and replays in the PC `.rpy` format (saved
+from the result screen, watched from the Replay menu with its three playback modes). Not yet:
+the attract demo and Key Config (Android maps game pads itself). Replays recorded on the PC,
+and the demos inside th08.dat, do not stay in sync with the port yet.
 
 TH08 is written from clean-room behaviour specs taken from your own th08.exe and public
 format documentation (thtk, thcrap). It does not use the GensokyoClub/th08 decompilation:

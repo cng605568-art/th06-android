@@ -253,9 +253,13 @@ void MainMenu::title(const MenuInput& in) {
             if (rowLocked(r) && has_[static_cast<std::size_t>(kTitleRowVm + r)]) vm_[static_cast<std::size_t>(kTitleRowVm + r)].color = kGrey;
         }
     }
-    // Idle: the attract demo after 1500 passes (not ported yet: the counter starts again).
-    if (in.current() != 0) idle_ = 0;
-    else if (++idle_ > 1500) idle_ = 0;
+    // Idle: the attract demo after 1500 passes (spec_replays 5.1).
+    if (in.current() != 0) {
+        idle_ = 0;
+    } else if (++idle_ > 1500) {
+        if (ctx_.attractDemo && startDemo()) return;
+        idle_ = 0;
+    }
     if (cursor_ != remembered_) {
         showDescription(cursor_);
         remembered_ = cursor_;

@@ -171,6 +171,7 @@ bool Gameplay::start(const Setup& setup, std::string* error) {
     fpsTextTimer_ = 0;
     demoVm_ = AnmVm{};
     demoVmOn_ = false;
+    demoCounter_ = 0;
     if (replay_) {  // (character, difficulty and card from the file; the practice flag clear)
         const ReplaySummary& sm = replay_->summary;
         setup_.character = std::clamp(sm.character(), 0, 11);
@@ -762,6 +763,21 @@ void Gameplay::tick(const MenuInput& in) {
         const int f = replayFps_;
         const bool skip = f < 20 ? c % 3 != 0 : f < 30 ? c % 2 != 0 : f < 40 ? c % 3 == 0 : f < 50 ? c % 6 == 0 : false;
         if (skip) return;
+    }
+    // Step 7: the attract demo's clock (spec_replays 5.2): a 120-frame playfield fade and a 3 s
+    // music fade at the fade frame; at the end frame back to the title, before the input feed.
+    if (setup_.demo) {
+        static constexpr int kFadeFrame[4] = {6000, 4800, 4920, 6900};
+        const int fade = kFadeFrame[std::clamp(setup_.demoIndex, 0, 3)];
+        ++demoCounter_;
+        if (demoCounter_ == fade) {
+            screen_.playfieldFadeTo(120, 0x000000u);
+            if (ctx_.music) ctx_.music->fadeOut(3.0f);
+        }
+        if (demoCounter_ >= fade + 120) {
+            outcome_ = Outcome::Title;
+            return;
+        }
     }
     state_.rollScore();  // (step 9)
     // The Supervisor (calc priority 0) counts the screen-effect suppression down.

@@ -109,6 +109,11 @@ struct FlowContext {
     // Playback (title replay menu, attract demo): the file, the stage slot and the mode; the
     // flag stays set after the playback so the title reopens the replay menu.
     bool replayFlag = false, demo = false;
+    // The attract demo (spec_replays 5): which of demorpy0-3 played last (the GameManager starts
+    // at 3, so a session plays 0, 1, 2, 3, 0, ...), and whether the title starts one after 1500
+    // idle passes (off while the port's playback of the PC demos does not stay in sync).
+    int demoIndex = 3;
+    bool attractDemo = false;
     std::string replayPath;  // under the storage folder, or an archive member for a demo
     int replayStage = 0, replayMode = 0;
     std::function<std::vector<std::string>()> replayFiles;  // the files the replay menu lists

@@ -71,6 +71,30 @@ int MainMenu::verticalMove(const MenuInput& in, int n) {
     return d;
 }
 
+// The attract demo (spec_replays 5.1): the next of demorpy0-3, read from the archive; its first
+// stage block is played in mode 0. False (and the title stays) when the file is unusable.
+bool MainMenu::startDemo() {
+    const int index = (ctx_.demoIndex + 1) % 4;
+    ctx_.demoIndex = index;
+    const std::string name = std::format("demorpy{}.rpy", index);
+    const auto bytes = ctx_.vfs ? ctx_.vfs->read(name) : std::nullopt;
+    const auto file = bytes ? ReplayFile::parse(*bytes) : std::nullopt;
+    if (!file || file->firstStage() < 0) {
+        log::warn("error : Demo Play is not ready");
+        return false;
+    }
+    ctx_.replayFlag = ctx_.demo = true;
+    ctx_.replayPath = name;
+    ctx_.replayStage = file->firstStage();
+    ctx_.replayMode = 0;
+    ctx_.spellPractice = false;
+    if (ctx_.music) ctx_.music->stop();
+    hideDescription();
+    removed_ = true;
+    if (ctx_.request) ctx_.request(Scene::Game);
+    return true;
+}
+
 // From the title's Replay row (with SE 10) or the title entry after a playback (spec 1.2): the
 // next pass is the menu's entry pass.
 void MainMenu::enterReplays(bool sound) {

@@ -213,6 +213,7 @@ void Th08Game::applyScene() {
             setup.stage = flow_.replayStage;
             setup.playbackMode = flow_.replayMode;
             setup.demo = flow_.demo;
+            setup.demoIndex = flow_.demoIndex;
         }
         if (gameplay_->start(setup, &err)) return;
         log::warn("The game could not start: {}", err);
@@ -387,6 +388,8 @@ bool Th08Game::start(const GameContext& ctx) {
     }
     // Developer aid: TH08_DEV_SCENE=result|ending|badending starts on that scene with a made-up
     // run (team TH08_DEV_CHARACTER, Normal), to look at those screens.
+    // Developer aid: TH08_DEV_DEMO=1 lets the title start the attract demo when left idle.
+    if (const char* d = std::getenv("TH08_DEV_DEMO"); d && *d == '1') flow_.attractDemo = true;
     if (const char* dev = std::getenv("TH08_DEV_SCENE"); dev && *dev) {
         const std::string v(dev);
         lastGame_ = GameState{};

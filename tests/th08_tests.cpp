@@ -2571,6 +2571,48 @@ void testReplayMenu() {
     }
     std::printf("  (300 passes: %zu entries read in mode 0, %zu in mode 1)\n", frames[0], frames[1]);
     CHECK(frames[0] >= 290 && frames[1] + 2 >= frames[0] / 2 && frames[1] <= frames[0] / 2 + 2);
+    // The attract demo: 1500 idle passes on the title start demo 0 (stage 5, from the archive).
+    ctx.attractDemo = true;
+    ctx.demoIndex = 3;
+    requests.clear();
+    th08::MainMenu idle(ctx);
+    CHECK(idle.create(&err));
+    th08::MenuInput ii;
+    for (int i = 0; i < 1520 && !idle.removed(); ++i) {
+        ii.sample(0);
+        idle.update(ii);
+    }
+    CHECK(idle.removed() && requests.size() == 1 && ctx.demo && ctx.replayFlag && ctx.demoIndex == 0 && ctx.replayStage == 5 &&
+          ctx.replayPath == "demorpy0.rpy" && ctx.replayMode == 0);
+    // Its clock: demo 1 fades at 4800 and ends at 4920 having read entries 0 .. 4918 (deaths
+    // switched off: the port does not stay in sync with the PC's demos yet).
+    {
+        auto d1 = th08::ReplayFile::parse(demo(1));
+        CHECK(d1.has_value());
+        th08::Player::devNoDeath = true;
+        auto g = std::make_unique<th08::Gameplay>(ctx);
+        th08::Gameplay::Setup ds;
+        ds.replay = &*d1;
+        ds.stage = 3;
+        ds.demo = true;
+        ds.demoIndex = 1;
+        CHECK(g->start(ds, &err));
+        th08::MenuInput gi;
+        int passes = 0;
+        for (; passes < 6000 && g->outcome() == th08::Gameplay::Outcome::None; ++passes) {
+            gi.sample(0);
+            g->tick(gi);
+        }
+        th08::Player::devNoDeath = false;
+        std::printf("  (demo 1: back to the title after %d passes, %zu entries read)\n", passes, g->replayFrame());
+        CHECK(g->outcome() == th08::Gameplay::Outcome::Title && g->replayFrame() == 4919);
+        g->end();
+    }
+    // After a demo the title comes back (not the replay menu), character 0.
+    th08::MainMenu back(ctx);
+    CHECK(back.create(&err));
+    CHECK(!ctx.demo && !ctx.replayFlag && ctx.character == 0);
+    ctx.attractDemo = false;
 }
 
 int main() {

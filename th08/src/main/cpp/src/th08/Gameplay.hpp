@@ -48,6 +48,7 @@ class Gameplay {
         // difficulty, card and the first stage come from it.
         const ReplayFile* replay = nullptr;
         int playbackMode = 0;  // 0 normal, 1 the recorded slowdown, 2 x5 without a boss
+        int demoIndex = 0;     // with `demo`: which demo (its fade and end frames)
         bool demo = false;     // the attract demo: no pause menu
     };
     // What the game hands over: the title, the ending (scene 9) or the result screen (6).
@@ -169,6 +170,7 @@ class Gameplay {
     int fpsTextTimer_ = 0;
     AnmVm demoVm_;
     bool demoVmOn_ = false;
+    int demoCounter_ = 0;  // GM+0x3DBB8
     bool inputDelay_ = true;
     ReplayFile record_;
     bool recordValid_ = false, retrying_ = false;
