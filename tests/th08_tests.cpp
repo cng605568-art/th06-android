@@ -625,10 +625,75 @@ void testRealArchive() {
         in2.sample(th08::BtnDown);
         menu2.update(in2);
         CHECK(menu2.cursor() == th08::MainMenu::ExtraStart);
+        // (Drawn before the next menu reloads title01.anm into the same slot.)
         RecordingSink sink2;
         menu2.draw(sink2);
         CHECK(sink2.items.size() > 8);  // the background, the logo and the rows
         std::printf("  (title: %zu sprites drawn after 21 passes)\n", sink2.items.size());
+        // Option: the lives wrap within 0-4, a volume press moves 5, Exit goes back.
+        th08::GameConfig cfg;
+        ctx.config = &cfg;
+        th08::MainMenu menu3(ctx);
+        CHECK(menu3.create(&err));
+        th08::MenuInput in3;
+        auto pass3 = [&](std::uint16_t buttons) {
+            in3.sample(buttons);
+            menu3.update(in3);
+        };
+        for (int i = 0; i < 20; ++i) pass3(0);
+        pass3(th08::BtnUp);  // Quit
+        pass3(0);
+        pass3(th08::BtnUp);  // Option
+        pass3(0);
+        pass3(th08::BtnShoot);
+        for (int i = 0; i < 40; ++i) pass3(0);
+        CHECK(menu3.state() == th08::MainMenu::State::Options && menu3.cursor() == 0);
+        pass3(th08::BtnLeft);
+        pass3(0);
+        CHECK(cfg.lives == 1);
+        for (int i = 0; i < 3; ++i) {
+            pass3(th08::BtnRight);
+            pass3(0);
+        }
+        CHECK(cfg.lives == 4);
+        pass3(th08::BtnRight);
+        pass3(0);
+        CHECK(cfg.lives == 0);  // wraps within 0-4 (no play count yet)
+        for (int i = 0; i < 4; ++i) {
+            pass3(th08::BtnDown);
+            pass3(0);
+        }
+        CHECK(menu3.cursor() == th08::MainMenu::SeVolume);
+        pass3(th08::BtnLeft);
+        pass3(0);
+        CHECK(cfg.seVolume == 75);
+        pass3(th08::BtnBomb);  // cursor to Exit
+        pass3(0);
+        CHECK(menu3.cursor() == th08::MainMenu::OptionExit);
+        pass3(th08::BtnBomb);  // leave
+        pass3(0);
+        CHECK(menu3.state() == th08::MainMenu::State::Title);
+        // Game Start: difficulty, then the four teams; Cancel steps back.
+        for (int i = 0; i < 20; ++i) pass3(0);
+        while (menu3.cursor() != th08::MainMenu::GameStart) {
+            pass3(th08::BtnUp);
+            pass3(0);
+        }
+        pass3(th08::BtnShoot);
+        for (int i = 0; i < 10; ++i) pass3(0);
+        CHECK(menu3.state() == th08::MainMenu::State::Difficulty && menu3.cursor() == 1);
+        pass3(th08::BtnDown);
+        pass3(0);
+        pass3(th08::BtnShoot);
+        for (int i = 0; i < 10; ++i) pass3(0);
+        CHECK(cfg.difficulty == 2 && menu3.state() == th08::MainMenu::State::Character);
+        pass3(th08::BtnLeft);
+        pass3(0);
+        CHECK(menu3.cursor() == 3);  // four teams, wrapping
+        pass3(th08::BtnBomb);
+        pass3(0);
+        CHECK(menu3.state() == th08::MainMenu::State::Difficulty && ctx.character == 3);
+
     }
     // The version file has the 1.00d line (and its exe checksum, when TH08_REAL_EXE names it).
     for (std::size_t i = 0; i < archive->entries().size(); ++i) {

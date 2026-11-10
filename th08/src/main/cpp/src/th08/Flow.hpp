@@ -65,6 +65,8 @@ class MenuInput {
     bool held(std::uint16_t mask) const { return (current_ & mask) != 0; }
     bool pressed(std::uint16_t mask) const { return (current_ & mask) != 0 && (current_ & mask) != (previous_ & mask); }
     bool pressedOrRepeat(std::uint16_t mask) const { return pressed(mask) || (held(mask) && repeat_); }
+    // Passes the whole word has been held unchanged (it stays at 30 or more once reached).
+    int holdCount() const { return counter_; }
 
   private:
     std::uint16_t current_ = 0, previous_ = 0;
@@ -86,10 +88,17 @@ struct FlowContext {
     GameConfig* config = nullptr;
 
     std::function<void(Scene)> request;  // acted on at the start of the next pass
+    std::function<void()> saveConfig;    // writes th08.cfg
     Scene previous = Scene::Init;        // the Supervisor's previous scene
 
     // Unlocks (spec 5.1), from score.dat once it is ported.
     bool extraUnlocked = false, spellPracticeUnlocked = false, solosUnlocked = false;
+    int totalPlays = 0;  // PLST's total play count (the Option menu's lives range)
+
+    // Remembered selections (spec 1.5, 6.1): the difficulty lives in the configuration.
+    int character = 0;   // 0-3 teams, 4-11 solo characters
+    int stage = 0;       // stage index 0-8
+    bool practice = false, spellPractice = false;
 
     void playSound(int id) const;
 };

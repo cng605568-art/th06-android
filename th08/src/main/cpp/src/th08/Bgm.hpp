@@ -57,6 +57,8 @@ class BgmPlayer {
     void setData(std::vector<BgmRecord> records, std::span<const std::uint8_t> thbgm);
     bool hasStreamer() const { return !thbgm_.empty() && !records_.empty(); }
     void setMode(int mode) { mode_ = mode; }
+    // The Option menu's BGM volume (0-100), on top of the fades.
+    void setVolumePercent(int percent);
     // The launcher's replaced music: <dir>/th08_NN.wav (+ th08_NN.pos loop points, as the th06
     // app writes them) plays in place of that thbgm.dat record.
     void setOverrideDir(std::string dir) { overrideDir_ = std::move(dir); }
@@ -112,6 +114,7 @@ class BgmPlayer {
     std::string current_;
     bool playing_ = false, paused_ = false;
     int volume_ = 0;
+    int volumePercent_ = 100;
     bool fading_ = false;
     int fadeLeft_ = 0, fadeTotal_ = 0;
     std::unique_ptr<MusicStream> prepared_;  // START: made at step 3, played at step 4

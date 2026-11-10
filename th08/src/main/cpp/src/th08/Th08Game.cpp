@@ -97,6 +97,7 @@ bool Th08Game::start(const GameContext& ctx) {
         music_ = std::make_unique<BgmPlayer>(ctx.music);
         music_->setData(std::move(records), thbgm);
         music_->setMode(config_.music);
+        music_->setVolumePercent(config_.bgmVolume);
         if (!storage_.empty()) music_->setOverrideDir(storage_ + "music/");
         log::info("Music: {} song(s) in thbgm.fmt, thbgm.dat {}", songs_, thbgm.empty() ? "missing" : "found");
     }
@@ -127,6 +128,7 @@ bool Th08Game::start(const GameContext& ctx) {
     flow_.request = [this](Scene s) {
         if (s == Scene::Exit) quit_ = true;
     };
+    flow_.saveConfig = [this]() { saveConfig(); };
     menu_ = std::make_unique<MainMenu>(flow_);
     if (!menu_->create(&err)) {
         log::warn("The title could not be built: {}", err);

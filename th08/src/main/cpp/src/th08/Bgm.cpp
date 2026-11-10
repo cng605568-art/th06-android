@@ -129,9 +129,16 @@ void BgmPlayer::resume() {
     if (mode_ == Wav) push(Command(Op::Resume));
 }
 
+void BgmPlayer::setVolumePercent(int percent) {
+    percent = percent < 0 ? 0 : percent > 100 ? 100 : percent;
+    if (percent == volumePercent_) return;
+    volumePercent_ = percent;
+    setVolume(volume_);
+}
+
 void BgmPlayer::setVolume(int centibels) {
     volume_ = centibels;
-    if (backend_) backend_->setMusicGain(static_cast<float>(std::pow(10.0, centibels / 2000.0)));
+    if (backend_) backend_->setMusicGain(static_cast<float>(std::pow(10.0, centibels / 2000.0)) * static_cast<float>(volumePercent_) / 100.0f);
 }
 
 void BgmPlayer::fadeStep() {
