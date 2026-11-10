@@ -80,6 +80,13 @@ bool MainMenu::create(std::string* error) {
         ctx_.practice = ctx_.spellPractice = false;
     }
     cursor_ = titleCursor_;
+    // Step 3: after a playback the character is reset; after a demo the replay flag is dropped
+    // (so the title, not the replay menu, comes back). Step 11: the demo flag is cleared.
+    if (ctx_.replayFlag) {
+        ctx_.character = 0;
+        if (ctx_.demo) ctx_.replayFlag = false;
+    }
+    ctx_.demo = false;
     // Step 6: the Last Word unlocks; step 11.2: resulttext.anm (the spell practice lists).
     if (ctx_.records && ctx_.tables) ctx_.records->updateLastWords(ctx_.tables->bossFinal, ctx_.tables->cardCategories[1]);
     {
@@ -183,6 +190,11 @@ void MainMenu::enterTitle() {
 void MainMenu::title(const MenuInput& in) {
     if (sub_ == 0) {
         if (inputTimer_ == 0) enterTitle();
+        if (ctx_.replayFlag) {  // step 5: a playback just ended: the replay menu
+            ctx_.replayFlag = false;
+            enterReplays(false);
+            return;
+        }
         if (autoReturn_ == 1) {  // state 8 next (difficulty, one pass)
             setState(State::PracticeDifficulty);
             sendAll(5);
@@ -303,8 +315,11 @@ void MainMenu::title(const MenuInput& in) {
                 removed_ = true;
                 if (ctx_.request) ctx_.request(Scene::ResultViewer);
                 break;
+            case Replay:
+                titleCursor_ = Replay;
+                enterReplays(false);  // (SE 10 played above)
+                break;
             default:
-                notPorted();  // Replay
                 break;
         }
         return;
@@ -596,6 +611,7 @@ void MainMenu::character(const MenuInput& in) {
         ctx_.stage = state_ == State::ExtraCharacter ? 8 : 0;
         ctx_.practice = state_ == State::PracticeCharacter;
         ctx_.spellPractice = false;
+        ctx_.replayFlag = false;
         if (ctx_.music) ctx_.music->stop();
         removed_ = true;
         if (ctx_.request) ctx_.request(Scene::Game);
@@ -656,6 +672,7 @@ void MainMenu::practiceStage(const MenuInput& in) {
         ctx_.stage = cursor_;
         ctx_.practice = true;
         ctx_.spellPractice = false;
+        ctx_.replayFlag = false;
         if (ctx_.music) ctx_.music->stop();
         removed_ = true;
         if (ctx_.request) ctx_.request(Scene::Game);
@@ -715,6 +732,7 @@ void MainMenu::update(const MenuInput& in) {
         case State::SpellCharacter: spellCharacter(in); break;
         case State::SpellStage: spellStage(in); break;
         case State::SpellCards: spellCards(in); break;
+        case State::Replays: replays(in); break;
         default: setState(State::Title); break;
     }
     // After the state handler: all 142 VMs and the current description advance.
@@ -742,6 +760,7 @@ void MainMenu::draw(SpriteSink& sink) {
     if (state_ == State::PracticeStage) drawStageList();
     if (state_ == State::SpellStage) drawSpellStage(sink);
     if (state_ == State::SpellCards) drawSpellCards(sink);
+    if (state_ == State::Replays) drawReplays(sink);
     if (notice_ > 0) {
         const std::uint32_t a = static_cast<std::uint32_t>(std::min(255, notice_ * 8)) << 24;
         ascii_.add(160, 448, "NOT PORTED YET", a | 0x00FFE0A0u);

@@ -9,6 +9,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <format>
+#include <map>
 #include <memory>
 #include <random>
 #include <string>
@@ -2326,6 +2328,251 @@ void testResultAndEnding() {
 
 }  // namespace
 
+// The title's Replay menu (claude/th08-specs/spec_replay_menu.md §1) on the player's files, with
+// the archive's demo replays standing in for saved ones.
+void testReplayMenu() {
+    const char* path = std::getenv("TH08_REAL_DAT");
+    const char* exePath = std::getenv("TH08_REAL_EXE");
+    if (!path || !*path || !exePath || !*exePath) return;
+    std::string err;
+    th08::ExeTables tables;
+    auto exe = MappedFile::open(exePath, &err);
+    CHECK(exe && th08::loadExeTables(exe->bytes(), tables, &err));
+    CHECK(tables.replayDifficulties[3] == "Lunatic " && tables.replayStages[3] == "Stage4A" && tables.replayStages[8] == "StageEX");
+    Vfs vfs;
+    auto file = MappedFile::open(path, &err);
+    CHECK(file && vfs.mount(openArchive("th08.dat", std::move(file), &err)));
+    TextureLibrary textures;
+    th08::AnmLibrary lib;
+    CHECK(lib.load(vfs, textures, "text.anm", th08::kSlotText, &err, true));
+    CHECK(lib.load(vfs, textures, "ascii.anm", th08::kSlotAscii, &err));
+    ZunRng rng(5);
+    auto demo = [&](int i) { return *vfs.read(std::format("demorpy{}.rpy", i)); };
+    // A spell-practice replay (card 5) and a file from another executable, made from the demos.
+    auto remade = [&](int i, auto&& change) {
+        auto r = th08::ReplayFile::parse(demo(i));
+        CHECK(r.has_value());
+        change(*r);
+        ZunRng w(9);
+        return r->serialize(w);
+    };
+    const auto spell = remade(3, [](th08::ReplayFile& r) {
+        r.summary.setCard(5);
+        std::array<std::uint8_t, 48> name{};
+        std::memcpy(name.data(), "Test Sign", 9);
+        r.summary.setCardName(name);
+    });
+    const auto foreign = remade(0, [](th08::ReplayFile& r) { r.summary.setExe(1234, 5678); });
+    std::map<std::string, std::vector<std::uint8_t>> files = {
+        {"replay/th8_01.rpy", demo(0)},
+        {"replay/th8_03.rpy", demo(1)},
+        {"replay/th8_04.rpy", {1, 2, 3}},
+        {"replay/th8_05.rpy", foreign},
+        {"replay/th8_ud0001.rpy", spell},
+    };
+    std::vector<std::string> order = {"replay/th8_01.rpy", "replay/th8_03.rpy", "replay/th8_04.rpy", "replay/th8_05.rpy", "replay/th8_ud0001.rpy"};
+    th08::FlowContext ctx;
+    ctx.vfs = &vfs;
+    ctx.textures = &textures;
+    ctx.anm = &lib;
+    ctx.rng = &rng;
+    ctx.tables = &tables;
+    std::vector<th08::Scene> requests;
+    ctx.request = [&](th08::Scene s) { requests.push_back(s); };
+    ctx.replayFiles = [&]() { return order; };
+    ctx.readReplay = [&](const std::string& p) {
+        const auto it = files.find(p);
+        return it == files.end() ? std::vector<std::uint8_t>{} : it->second;
+    };
+    th08::MainMenu menu(ctx);
+    CHECK(menu.create(&err));
+    th08::MenuInput in;
+    auto pass = [&](std::uint16_t buttons) {
+        in.sample(buttons);
+        menu.update(in);
+    };
+    auto tap = [&](std::uint16_t buttons) {
+        pass(buttons);
+        pass(0);
+    };
+    for (int i = 0; i < 20; ++i) pass(0);
+    for (int i = 0; i < 5; ++i) tap(th08::BtnUp);  // Game Start -> Quit, Option, Music Room, Player Data, Replay
+    CHECK(menu.cursor() == th08::MainMenu::Replay);
+    pass(th08::BtnShoot);
+    CHECK(menu.state() == th08::MainMenu::State::Replays && menu.subState() == 0);
+    pass(0);  // the entry pass E: the scan
+    const auto& list = menu.replayEntries();
+    CHECK(list.size() == 3);  // (a broken file and another version's are left out)
+    if (list.size() == 3) {
+        CHECK(list[0].label == "No.01" && list[1].label == "No.03" && list[2].label == "User ");
+        CHECK(list[1].present[3] && !list[1].present[0] && list[2].summary.card() == 5);
+    }
+    for (int i = 1; i <= 7; ++i) pass(i == 3 ? th08::BtnDown : 0);  // E+1 .. E+7: nothing (not even a move)
+    CHECK(menu.subState() == 0 && menu.cursor() == 0);
+    pass(0);  // E+8
+    CHECK(menu.subState() == 1);
+    pass(th08::BtnDown);  // E+9: moves
+    CHECK(menu.cursor() == 1 && menu.chosenReplay() == 1);
+    for (int i = 10; i <= 17; ++i) pass(i == 16 ? th08::BtnShoot : 0);  // Select not before E+18
+    CHECK(menu.subState() == 1);
+    {
+        const auto text = menu.replayMenuText();
+        CHECK(text.size() == 4 && text[0].text == "No.   Name       Date  Player   Rank");
+        if (text.size() == 4) {
+            CHECK(text[2].text == "No.03 ZUN        07/25 Ms & Al  Lunatic ");
+            CHECK(text[2].selected && text[2].color == 0xFFFFFFFFu && !text[1].selected && text[1].color == 0xFF808080u);
+            CHECK(text[3].text.starts_with("User ") && text[3].text.ends_with("Spell No.  6"));
+        }
+    }
+    pass(th08::BtnShoot);  // E+18
+    CHECK(menu.subState() == 2 && menu.chosenStage() == 3);  // the demo's only stage, 4A
+    tap(th08::BtnDown);
+    CHECK(menu.cursor() == 3);  // (absent slots are skipped all the way round)
+    {
+        const auto text = menu.replayMenuText();
+        CHECK(text.size() == 4 + 2 + 9);
+        if (text.size() == 15) {
+            CHECK(text[4].text.starts_with("       ") && text[4].text.ends_with("%") && text[5].text == "Stage    LastScore");
+            CHECK(text[6].text == "Stage1  ----------" && text[9].text == "Stage4A   56566480" && text[9].selected);
+            CHECK(text[14].text == "StageEX ----------" && text[6].color == 0xFF808080u);
+        }
+    }
+    tap(th08::BtnShoot);
+    CHECK(menu.subState() == 3 && menu.cursor() == 0);
+    {
+        const auto text = menu.replayMenuText();
+        CHECK(text.size() == 15 && text[9].color == 0x60FFFFFFu && !text[9].selected && text[6].color == 0x60808080u);
+    }
+    tap(th08::BtnDown);
+    tap(th08::BtnDown);
+    CHECK(menu.cursor() == 2);
+    tap(th08::BtnDown);
+    CHECK(menu.cursor() == 0);  // three modes for a normal replay
+    tap(th08::BtnBomb);
+    CHECK(menu.subState() == 2 && menu.cursor() == 3);
+    tap(th08::BtnBomb);
+    CHECK(menu.subState() == 1 && menu.cursor() == 1);
+    tap(th08::BtnDown);
+    tap(th08::BtnShoot);  // (the state timer was not reset: Select works at once)
+    CHECK(menu.subState() == 2 && menu.chosenReplay() == 2);
+    {
+        const auto text = menu.replayMenuText();
+        bool spellLine = false;
+        for (const auto& l : text) spellLine = spellLine || (l.text.starts_with("No.006 ") && l.text.ends_with("0") && l.text.size() == 17);
+        CHECK(spellLine && text.size() == 4 + 3);
+    }
+    const int spellStage = menu.chosenStage();
+    tap(th08::BtnShoot);
+    CHECK(menu.subState() == 3);
+    tap(th08::BtnDown);
+    tap(th08::BtnDown);
+    CHECK(menu.cursor() == 0);  // two modes for a spell-practice replay
+    tap(th08::BtnDown);
+    CHECK(requests.empty());
+    pass(th08::BtnShoot);
+    CHECK(menu.removed() && requests.size() == 1 && requests[0] == th08::Scene::Game);
+    CHECK(ctx.replayFlag && ctx.replayPath == "replay/th8_ud0001.rpy" && ctx.replayStage == spellStage && ctx.replayMode == 1);
+    CHECK(ctx.spellPractice && ctx.card == 5 && !ctx.practice);
+    // After the playback the title opens the replay menu, on the first file, character 0.
+    ctx.character = 3;
+    th08::MainMenu after(ctx);
+    CHECK(after.create(&err));
+    CHECK(ctx.character == 0);
+    th08::MenuInput ia;
+    ia.sample(0);
+    after.update(ia);
+    CHECK(after.state() == th08::MainMenu::State::Replays && !ctx.replayFlag);
+    for (int i = 0; i < 19; ++i) after.update(ia);
+    CHECK(after.subState() == 1 && after.cursor() == 0 && after.replayEntries().size() == 3);
+    ia.sample(th08::BtnBomb);
+    after.update(ia);
+    CHECK(after.subState() == 4);
+    ia.sample(0);
+    for (int i = 0; i < 30; ++i) after.update(ia);
+    CHECK(after.state() == th08::MainMenu::State::Title && after.cursor() == th08::MainMenu::Replay);
+    // After a demo: the title.
+    ctx.replayFlag = ctx.demo = true;
+    th08::MainMenu demoAfter(ctx);
+    CHECK(demoAfter.create(&err));
+    CHECK(!ctx.replayFlag && !ctx.demo);
+    ia.sample(0);
+    demoAfter.update(ia);
+    CHECK(demoAfter.state() == th08::MainMenu::State::Title);
+    // Pages of 15 with more files: Right and Left wrap by the count.
+    order.clear();
+    for (int i = 1; i <= 15; ++i) order.push_back(std::format("replay/th8_{:02d}.rpy", i));
+    for (int i = 0; i < 5; ++i) order.push_back(std::format("replay/th8_ud{:04d}.rpy", i));
+    for (const auto& p : order) files[p] = demo(2);
+    th08::MainMenu paged(ctx);
+    CHECK(paged.create(&err));
+    th08::MenuInput ip;
+    auto ppass = [&](std::uint16_t b) {
+        ip.sample(b);
+        paged.update(ip);
+    };
+    for (int i = 0; i < 20; ++i) ppass(0);
+    for (int i = 0; i < 5; ++i) {
+        ppass(th08::BtnUp);
+        ppass(0);
+    }
+    ppass(th08::BtnShoot);
+    for (int i = 0; i < 12; ++i) ppass(0);
+    CHECK(paged.replayEntries().size() == 20 && paged.subState() == 1);
+    for (int i = 0; i < 7; ++i) {
+        ppass(th08::BtnDown);
+        ppass(0);
+    }
+    CHECK(paged.cursor() == 7);
+    ppass(th08::BtnRight);
+    CHECK(paged.cursor() == 2);
+    ppass(0);
+    ppass(th08::BtnLeft);
+    CHECK(paged.cursor() == 7);
+    ppass(0);
+    ppass(th08::BtnUp);
+    ppass(0);
+    for (int i = 0; i < 7; ++i) {
+        ppass(th08::BtnUp);
+        ppass(0);
+    }
+    CHECK(paged.cursor() == 19);
+    const auto text = paged.replayMenuText();
+    CHECK(text.size() == 1 + 5 && text.back().selected && text[1].text.starts_with("User "));
+    RecordingSink sink;
+    paged.draw(sink);
+    CHECK(sink.items.size() > 20);
+    // Playback mode 1: a recorded 25 fps runs every second pass; the sample is read along.
+    th08::ScoreData records;
+    ctx.records = &records;
+    auto slow = th08::ReplayFile::parse(demo(1));
+    CHECK(slow.has_value());
+    if (!slow) return;
+    for (auto& b : slow->stages[3].fps) b = 25;
+    slow->stages[3].fps[3] = 0x80 | 25;
+    std::size_t frames[2] = {};
+    for (int mode = 0; mode < 2; ++mode) {
+        auto g = std::make_unique<th08::Gameplay>(ctx);
+        th08::Gameplay::Setup ps;
+        ps.replay = &*slow;
+        ps.stage = 3;
+        ps.playbackMode = mode;
+        CHECK(g->start(ps, &err));
+        th08::MenuInput gi;
+        for (int f = 0; f < 300 && g->outcome() == th08::Gameplay::Outcome::None; ++f) {
+            gi.sample(0);
+            g->tick(gi);
+            if (g->replayFrame() == 61) CHECK(g->replayFps() == 25 && g->replayFpsFlagged());
+        }
+        frames[mode] = g->replayFrame();
+        CHECK(g->replayFps() == 25);
+        RecordingSink gs;
+        g->draw(gs);
+        g->end();
+    }
+    std::printf("  (300 passes: %zu entries read in mode 0, %zu in mode 1)\n", frames[0], frames[1]);
+    CHECK(frames[0] >= 290 && frames[1] + 2 >= frames[0] / 2 && frames[1] <= frames[0] / 2 + 2);
+}
+
 int main() {
     struct Test {
         const char* name;
@@ -2348,6 +2595,7 @@ int main() {
         {"spell card practice: tables, Last Words, a Last Word game (TH08_REAL_DAT, TH08_REAL_EXE)", testSpellPractice},
         {"the four demo replays played back (TH08_REAL_DAT, TH08_REAL_EXE)", testDemoReplays},
         {"a recorded run played back frame for frame (TH08_REAL_DAT, TH08_REAL_EXE)", testReplayRoundTrip},
+        {"the replay menu: scan, timing, lists, modes, start, return, pages (TH08_REAL_DAT, TH08_REAL_EXE)", testReplayMenu},
     };
     for (const Test& t : tests) {
         const int before = g_failures;

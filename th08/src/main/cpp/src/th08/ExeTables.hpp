@@ -126,6 +126,11 @@ struct ExeTables {
         std::array<std::string, 5> difficulties;
         std::array<std::string, 9> stages;
     } userText;
+    // The title's replay menu (claude/th08-specs/spec_replay_menu.md §1.10): its difficulty
+    // names (8 characters, space padded) and stage labels (7 characters).
+    std::array<std::string, 5> replayDifficulties;
+    std::array<std::string, 9> replayStages;
+    static constexpr std::uint32_t kReplayDifficulties = 0x004C86F0, kReplayStages = 0x004C8250;
     static constexpr std::uint32_t kShortNames = 0x004C8010, kUserDifficulties = 0x004C7F30, kUserStages = 0x004C7FAC;
     static constexpr std::uint32_t kStageCardTables = 0x004C6C40, kStageCardCounts = 0x004C6C68, kBossFinal = 0x004C6B90,
                                    kBossFinalCount = 0x004C6C3C, kStageLabels = 0x004C8274, kDifficultyNames = 0x004C8628,

@@ -164,6 +164,13 @@ bool Gameplay::start(const Setup& setup, std::string* error) {
     end();
     setup_ = setup;
     replay_ = setup.replay;
+    slowCounter_ = 0;
+    replayFps_ = 60;
+    replayFpsFlag_ = false;
+    fpsText_.clear();
+    fpsTextTimer_ = 0;
+    demoVm_ = AnmVm{};
+    demoVmOn_ = false;
     if (replay_) {  // (character, difficulty and card from the file; the practice flag clear)
         const ReplaySummary& sm = replay_->summary;
         setup_.character = std::clamp(sm.character(), 0, 11);
@@ -402,6 +409,7 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
     // Steps 7-8 (spec_replays 3.2): a replay restores the stage's recorded state and its RNG
     // seed; then the seed is recorded. Every draw of the stage managers comes after it.
     replayFrame_ = 0;
+    fpsIndex_ = 0;
     rawPending_ = 0;
     gameInput_ = prevGameInput_ = 0;  // (game input cleared at every stage start, spec 1.1)
     if (replay_) restoreReplayStage();
@@ -703,8 +711,18 @@ void Gameplay::tick(const MenuInput& in) {
     if (!running_ || outcome_ != Outcome::None) return;
     ++state_.runFrames;  // (the GameManager's frame counter: loading, pauses and dialogue too)
     if (stageEndStep(in)) return;
-    // The AsciiManager's HUD VMs tick every frame, also while paused.
-    if (ctx_.rng) gui_.hudTick(*ctx_.rng);
+    // The AsciiManager's HUD VMs tick every frame, also while paused; in a demo its marker VM
+    // starts on its first update (a start runs one tick, then the update's tick).
+    if (ctx_.rng) {
+        gui_.hudTick(*ctx_.rng);
+        if (setup_.demo && ctx_.anm) {
+            if (!demoVmOn_) {
+                demoVm_.startFresh(*ctx_.anm, *ctx_.rng, kSlotAscii, 11);
+                demoVmOn_ = true;
+            }
+            demoVm_.tick(*ctx_.rng);
+        }
+    }
     // An in-game menu stops the simulation (spec_flow 6.6 step 8).
     const bool backPressed = pauseRequested_;
     pauseRequested_ = false;
@@ -737,6 +755,14 @@ void Gameplay::tick(const MenuInput& in) {
         if (m && (musicStart_ == 1 || m->restart != 0) && ctx_.rng) gui_.musicCaption(*ctx_.rng, m->caption);
         musicStart_ = 0;
     }
+    // Step 6: the recorded slowdown (playback mode 1, no dialogue): passes are skipped by the
+    // replayed FPS sample (a skipped pass reads no entry).
+    if (replay_ && setup_.playbackMode == 1 && !dialogue_.running()) {
+        const std::uint32_t c = ++slowCounter_;
+        const int f = replayFps_;
+        const bool skip = f < 20 ? c % 3 != 0 : f < 30 ? c % 2 != 0 : f < 40 ? c % 3 == 0 : f < 50 ? c % 6 == 0 : false;
+        if (skip) return;
+    }
     state_.rollScore();  // (step 9)
     // The Supervisor (calc priority 0) counts the screen-effect suppression down.
     if (world_.screenSuppress != 0) --world_.screenSuppress;
@@ -749,6 +775,15 @@ void Gameplay::tick(const MenuInput& in) {
             const auto& e = replay_->stages[static_cast<std::size_t>(state_.stage)].entries;
             prevGameInput_ = gameInput_;
             gameInput_ = replayFrame_ < e.size() ? static_cast<std::uint16_t>(e[replayFrame_] & kGameBits) : 0;
+            // The FPS sample, one early: frame 30j reads byte j + 1 (past the block: kept).
+            if (replayFrame_ % 30 == 0) {
+                const auto& fps = replay_->stages[static_cast<std::size_t>(state_.stage)].fps;
+                if (fpsIndex_ + 1 < fps.size()) {
+                    replayFps_ = fps[fpsIndex_ + 1] & 0x7F;
+                    replayFpsFlag_ = (fps[fpsIndex_ + 1] & 0x80) != 0;
+                }
+                ++fpsIndex_;
+            }
             ++replayFrame_;
         }
     } else {
@@ -842,6 +877,18 @@ void Gameplay::draw(SpriteSink& sink) {
         gui_.drawMessages(sink, *ctx_.anm);
     }
     menu_.draw(sink);                          // (the AsciiManager's menus)
+    if (demoVmOn_) drawVm(sink, demoVm_, AnmDrawState{});  // the "Demonstration" logo, last
+    // The replayed FPS (spec_replay_menu 4.2): "%2d" at the play area's bottom-right corner,
+    // pale yellow (red for a flagged sample), refreshed about every 500 ms while no menu is up.
+    if (replay_ && !menu_.active() && ctx_.anm) {
+        if (fpsTextTimer_ <= 0) {
+            fpsText_ = std::format("{:2d}", replayFps_);
+            fpsTextTimer_ = 30;
+        }
+        --fpsTextTimer_;
+        ascii_.add(384.0f, 448.0f, fpsText_, replayFpsFlag_ ? 0xFFFF4040u : 0xFFFFFFD0u);
+        ascii_.draw(sink, *ctx_.anm);
+    }
     screen_.draw(sink, background_.white);    // 21: flashes
 }
 

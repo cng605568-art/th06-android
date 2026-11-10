@@ -766,8 +766,8 @@ void ResultScreen::drawSlots() {
     const ExeTables* tb = ctx_.tables;
     auto shortName = [&](int c) { return tb ? tb->shortNames[static_cast<std::size_t>(std::clamp(c, 0, 11))] : std::string("       "); };
     for (int i = 0; i < 15; ++i) {
+        // (drawn whatever the anchor's visibility: the rows not chosen sit at y = -32)
         const AnmVm& row = vm_[static_cast<std::size_t>(56 + i)];
-        if (!row.has(AnmVm::Visible) || (row.color >> 24) == 0) continue;
         const std::uint32_t colour = i == slot_ ? 0xFFFF8080u : 0xFF808080u;
         std::string line;
         if (state_ == State::ReplayName) {
@@ -925,7 +925,12 @@ void ResultScreen::draw(SpriteSink& sink) {
     if (done_) return;
     background_.blit(sink, 0.0f, 0.0f);
     const AnmDrawState none;
-    for (const AnmVm& v : vm_) {
+    for (std::size_t i = 0; i < vm_.size(); ++i) {
+        // VMs 55-70 are the slot list's anchors: their sprite (the "overwrite?" picture) is
+        // faded out by the decision interrupt, so the port draws nothing for them
+        // (claude/th08-specs/spec_replay_menu.md §2.2).
+        if (i >= 55 && i <= 70) continue;
+        const AnmVm& v = vm_[i];
         AnmVm d = v;
         d.position = {v.position.x + v.offset.x, v.position.y + v.offset.y, v.position.z + v.offset.z};
         drawVm(sink, d, none);
@@ -934,7 +939,8 @@ void ResultScreen::draw(SpriteSink& sink) {
     else if (shownCharacter_ >= 0) drawTable(difficulty_, shownCharacter_);
     if ((state_ == State::NameEntry && rank_ >= 0) || state_ == State::ReplayName) drawGrid();
     if (state_ >= State::ReplaySave && state_ <= State::ReplayOverwrite) {
-        for (int i = 46; i <= 51; ++i) drawVm(sink, vm_[static_cast<std::size_t>(i)], none);
+        // The prompt pictures (VMs 49-54) drawn again over the list, as the original.
+        for (int i = 49; i <= 54; ++i) drawVm(sink, vm_[static_cast<std::size_t>(i)], none);
         drawSlots();
     }
     if (state_ == State::Statistics || state_ == State::StatisticsOut) drawStatistics();

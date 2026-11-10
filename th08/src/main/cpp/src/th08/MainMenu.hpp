@@ -3,16 +3,19 @@
 // Imperishable Night's main menu (claude/th08-specs/spec_flow_menus.md §3-4): title00.png
 // or select00.png behind the 142 VMs of title01.anm (VM i runs script i). Ported so far: the
 // title (nine rows with their descriptions, the white fade-in and the title song), the Option
-// screen, and the difficulty and character selects of Game Start, Practice Start and Extra
-// Start. A row or choice whose screen is not ported yet says so.
+// screen, the difficulty and character selects of Game Start, Practice Start and Extra Start,
+// Spell Card Practice and the Replay menu (claude/th08-specs/spec_replay_menu.md §1). A row or
+// choice whose screen is not ported yet says so.
 
 #include <array>
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
-#include <cstdint>
 
 #include "th08/Anm.hpp"
 #include "th08/Flow.hpp"
+#include "th08/Replay.hpp"
 
 namespace touhou {
 class SpriteSink;
@@ -53,6 +56,25 @@ class MainMenu {
     // A Last Word's stage index (FLOW 4.6.3).
     static int lastWordStage(int card);
 
+    // The Replay menu (state 7): the listed files (numbered slots, then user files), the chosen
+    // file and stage slot, and the strings its draw queues this frame.
+    struct ReplayEntry {
+        std::string path, label;  // label "No.NN" (the slot number) or "User "
+        ReplaySummary summary;
+        std::array<bool, kReplayStages> present{};
+        std::array<std::uint32_t, kReplayStages> carriedScore{};
+    };
+    struct TextLine {
+        float x = 0, y = 0;
+        std::string text;
+        std::uint32_t color = 0xFFFFFFFFu;
+        bool selected = false;
+    };
+    const std::vector<ReplayEntry>& replayEntries() const { return replays_; }
+    int chosenReplay() const { return chosenFile_; }
+    int chosenStage() const { return chosenStage_; }
+    std::vector<TextLine> replayMenuText() const;
+
   private:
     void setState(State s);
     void enterTitle();
@@ -79,6 +101,13 @@ class MainMenu {
     void drawSpellCards(SpriteSink& sink);
     void drawPie(SpriteSink& sink, float cx, float cy, std::uint32_t argb, float fraction, float size);
     void drawPercent(SpriteSink& sink, float x, float y, float value, std::uint32_t argb);
+    // The Replay menu (spec_replay_menu §1.3-1.8).
+    void enterReplays(bool sound);
+    void replays(const MenuInput& in);
+    void scanReplays();
+    int verticalMove(const MenuInput& in, int n);
+    void highlightModes();
+    void drawReplays(SpriteSink& sink);
     void practiceStage(const MenuInput& in);
     bool stageSelectable(int stage) const;
     void drawStageList();
@@ -115,6 +144,9 @@ class MainMenu {
     std::array<float, 4> rates_{};
     int page_ = 0, detail_ = 0;
     bool resultTextLoaded_ = false;
+    std::vector<ReplayEntry> replays_;
+    std::optional<ReplayFile> chosen_;  // MM+0xC280: the chosen replay, read again on Select
+    int chosenFile_ = 0, chosenStage_ = 0;  // MM+0xC28C / MM+0xC290
     State prevState_ = State::Title;  // MM+0x68
     int sub_ = 0;          // MM+0xC
     int stateTimer_ = 0;   // MM+0x10

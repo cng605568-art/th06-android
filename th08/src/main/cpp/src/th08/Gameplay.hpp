@@ -47,7 +47,7 @@ class Gameplay {
         // Playback (spec_replays 3): the file (kept alive by the caller); character,
         // difficulty, card and the first stage come from it.
         const ReplayFile* replay = nullptr;
-        int playbackMode = 0;  // 0 normal, 1 recorded slowdown (played as 0), 2 x5 without a boss
+        int playbackMode = 0;  // 0 normal, 1 the recorded slowdown, 2 x5 without a boss
         bool demo = false;     // the attract demo: no pause menu
     };
     // What the game hands over: the title, the ending (scene 9) or the result screen (6).
@@ -71,6 +71,9 @@ class Gameplay {
     void setInputDelay(bool on) { inputDelay_ = on; }
     std::uint16_t stageSeed() const { return stageSeed_; }
     std::size_t replayFrame() const { return replayFrame_; }
+    // The replayed FPS sample (SUP+0x198) and its flag (bit 7, SUP+0x33C).
+    int replayFps() const { return replayFps_; }
+    bool replayFpsFlagged() const { return replayFpsFlag_; }
     // Playback speed (spec_replays 3.4): run another whole pass this frame (skippable dialogue
     // x3 in every mode, mode 2 x5 while no boss is present).
     bool runAgain() const;
@@ -155,6 +158,17 @@ class Gameplay {
     const ReplayFile* replay_ = nullptr;
     std::size_t replayFrame_ = 0;
     std::uint16_t rawPending_ = 0;
+    // The FPS block read along (one sample per 30 entries), mode 1's pass counter (GM+0x3DE08),
+    // the replayed-FPS text (refreshed about twice a second) and the demo marker (ascii.anm
+    // script 11, spec_replay_menu 4).
+    std::size_t fpsIndex_ = 0;
+    int replayFps_ = 60;
+    bool replayFpsFlag_ = false;
+    std::uint32_t slowCounter_ = 0;
+    std::string fpsText_;
+    int fpsTextTimer_ = 0;
+    AnmVm demoVm_;
+    bool demoVmOn_ = false;
     bool inputDelay_ = true;
     ReplayFile record_;
     bool recordValid_ = false, retrying_ = false;

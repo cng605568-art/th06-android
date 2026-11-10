@@ -26,6 +26,7 @@ add_library(th08_game STATIC
   ${TH08_SRC}/th08/InGameMenu.cpp
   ${TH08_SRC}/th08/MainMenu.cpp
   ${TH08_SRC}/th08/MainMenuSpell.cpp
+  ${TH08_SRC}/th08/MainMenuReplay.cpp
   ${TH08_SRC}/th08/Msg.cpp
   ${TH08_SRC}/th08/Spellcard.cpp
   ${TH08_SRC}/th08/MusicRoom.cpp

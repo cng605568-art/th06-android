@@ -227,7 +227,7 @@ void Th08Game::applyScene() {
         musicRoom_.reset();
         active_ = requested_ = Scene::MainMenu;  // as Init
     }
-    if (to == Scene::ReplayEnd) active_ = Scene::MainMenu;  // (scene 7: the title, which opens the replay menu)
+    if (to == Scene::ReplayEnd) active_ = requested_ = Scene::MainMenu;  // (scene 7: the title, which opens the replay menu)
     if (active_ == Scene::MainMenu) {
         musicRoom_.reset();
         gameplay_.reset();
@@ -362,7 +362,11 @@ bool Th08Game::start(const GameContext& ctx) {
         std::vector<std::string> user;
         for (const auto& e : std::filesystem::directory_iterator(storage_ + "replay", ec)) {
             const std::string n = e.path().filename().string();
-            if (n.size() == 15 && n.rfind("th8_ud", 0) == 0 && n.substr(10) == ".rpy") user.push_back("replay/" + n);
+            // th8_ud????.rpy, with Windows' rule that a '?' before the dot may match nothing
+            if (n.size() >= 10 && n.size() <= 14 && n.rfind("th8_ud", 0) == 0 && n.ends_with(".rpy") &&
+                n.find('.') == n.size() - 4) {
+                user.push_back("replay/" + n);
+            }
         }
         std::sort(user.begin(), user.end());
         for (std::size_t i = 0; i < user.size() && i < static_cast<std::size_t>(kReplayUserFiles); ++i) out.push_back(user[i]);

@@ -156,6 +156,8 @@ bool loadExeTables(std::span<const std::uint8_t> exe, ExeTables& t, std::string*
         (void)words(ExeTables::kLastWordEnemyAnm + 4 * 205, 17, [&](std::size_t i, std::uint32_t va) { t.lastWordEnemyAnm[i] = pe.cString(va, 64); });
         (void)words(ExeTables::kLastWordEffects + 4 * 216, 6, [&](std::size_t i, std::uint32_t va) { t.lastWordEffects[i] = pe.cString(va, 64); });
         (void)words(ExeTables::kShortNames, 12, [&](std::size_t i, std::uint32_t va) { t.shortNames[i] = pe.cString(va, 16); });
+        (void)words(ExeTables::kReplayDifficulties, 5, [&](std::size_t i, std::uint32_t va) { t.replayDifficulties[i] = pe.cString(va, 16); });
+        (void)words(ExeTables::kReplayStages, 9, [&](std::size_t i, std::uint32_t va) { t.replayStages[i] = pe.cString(va, 16); });
         ExeTables::UserText& u = t.userText;
         u.name = pe.cString(0x004B717C, 32);
         u.time = pe.cString(0x004B7158, 32);

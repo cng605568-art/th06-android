@@ -358,6 +358,7 @@ void MainMenu::spellCards(const MenuInput& in) {
         } else {
             ctx_.spellDifficulty = diff;
         }
+        ctx_.replayFlag = false;
         if (ctx_.music) ctx_.music->stop();
         removed_ = true;
         if (ctx_.request) ctx_.request(Scene::Game);
