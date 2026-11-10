@@ -43,6 +43,26 @@ void World::addTimePoints(std::int32_t n) const {
 
 Gameplay::~Gameplay() { end(); }
 
+bool Gameplay::takeCaptureRequest() {
+    if (captureOwner_ == CaptureOwner::None) {
+        if (menu_.takeCaptureRequest()) captureOwner_ = CaptureOwner::Menu;
+        else if (gui_.takeCaptureRequest()) captureOwner_ = CaptureOwner::Gui;
+    }
+    return captureOwner_ != CaptureOwner::None;
+}
+
+void Gameplay::captureRect(int& x, int& y, int& w, int& h) const {
+    x = y = w = h = 0;
+    if (captureOwner_ == CaptureOwner::Menu) menu_.captureRect(x, y, w, h);
+    else if (captureOwner_ == CaptureOwner::Gui) gui_.captureRect(x, y, w, h);
+}
+
+void Gameplay::setCaptureReady(bool ready) {
+    if (captureOwner_ == CaptureOwner::Menu) menu_.setCaptureReady(ready);
+    else if (captureOwner_ == CaptureOwner::Gui) gui_.setCaptureReady(ready);
+    captureOwner_ = CaptureOwner::None;
+}
+
 // The face files (spec_msg_stage_end 2.2): the decor and the two player faces once a game,
 // the stage's boss faces every stage (none in spell practice yet).
 bool Gameplay::loadFaces(bool fresh, std::string* error) {

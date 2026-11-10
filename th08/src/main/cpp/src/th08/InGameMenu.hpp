@@ -42,6 +42,16 @@ class InGameMenu {
     Request update(const World& w, std::uint16_t pressed);
     void draw(SpriteSink& sink);
 
+    // The playfield snapshot behind the menus (capture.anm script 0: the playfield copied into
+    // its 128 x 128 sprite, drawn scaled up and tinted).
+    bool takeCaptureRequest() {
+        const bool r = captureRequest_;
+        captureRequest_ = false;
+        return r;
+    }
+    void setCaptureReady(bool ready) { captureReady_ = ready; }
+    void captureRect(int& x, int& y, int& w, int& h) const;
+
   private:
     enum class Mode : std::uint8_t { None, Pause, Continue };
     enum class State : std::uint8_t {
@@ -63,6 +73,9 @@ class InGameMenu {
     std::array<AnmVm, kVms> vms_{};
     std::array<bool, kVms> visible_{};
     int selected_ = -1;  // the highlighted row (drawn offset by (-4, -4))
+    AnmVm snapshot_;
+    bool captureRequest_ = false, captureReady_ = false;
+    void startSnapshot(AnmLibrary& lib, ZunRng& rng);
 };
 
 }  // namespace touhou::th08

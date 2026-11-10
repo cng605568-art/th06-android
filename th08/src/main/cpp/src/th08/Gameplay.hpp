@@ -67,6 +67,11 @@ class Gameplay {
     const Background& background() const { return background_; }
     const Gui& gui() const { return gui_; }
     Gui& gui() { return gui_; }
+    // The host's playfield capture, one request at a time: the menus' snapshot or the Gui's
+    // (results snapshot, transition tiles).
+    bool takeCaptureRequest();
+    void captureRect(int& x, int& y, int& w, int& h) const;
+    void setCaptureReady(bool ready);
     const Player& player() const { return *player_; }
     const Effects& effects() const { return *effects_; }
     const ScreenEffects& screenEffects() const { return screen_; }
@@ -110,6 +115,7 @@ class Gameplay {
     // loaded and waiting for Shoot.
     int stageEnd_ = 0;
     std::uint32_t pressShotFrames_ = 0;
+    enum class CaptureOwner : std::uint8_t { None, Menu, Gui } captureOwner_ = CaptureOwner::None;
     enum class Pending : std::uint8_t { None, Results, BadEnding, Ending } pending_ = Pending::None;
     Gui gui_;
     std::uint16_t gameInput_ = 0;

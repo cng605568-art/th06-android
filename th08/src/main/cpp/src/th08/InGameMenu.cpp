@@ -34,6 +34,25 @@ void InGameMenu::openContinue(const World& w) {
     setState(State::Opening);
 }
 
+void InGameMenu::startSnapshot(AnmLibrary& lib, ZunRng& rng) {
+    snapshot_ = AnmVm{};
+    if (!lib.loaded(kSlotCapture)) return;
+    snapshot_.startFresh(lib, rng, kSlotCapture, 0);
+    snapshot_.position = {kPlayfieldX, kPlayfieldY, 0.0f};  // (anchored top-left, scaled 3 x 3.5)
+    captureRequest_ = true;
+    captureReady_ = false;
+}
+
+void InGameMenu::captureRect(int& x, int& y, int& w, int& h) const {
+    x = y = w = h = 0;
+    if (!snapshot_.sprite) return;
+    const AnmSprite& sp = *snapshot_.sprite;
+    x = static_cast<int>(sp.startX);
+    y = static_cast<int>(sp.startY);
+    w = static_cast<int>(sp.endX - sp.startX);
+    h = static_cast<int>(sp.endY - sp.startY);
+}
+
 InGameMenu::Request InGameMenu::update(const World& w, std::uint16_t pressed) {
     AnmLibrary& lib = *w.anm;
     lib_ = &lib;
@@ -64,6 +83,7 @@ InGameMenu::Request InGameMenu::update(const World& w, std::uint16_t pressed) {
         }
         switch (state_) {
             case State::Opening:
+                startSnapshot(lib, rng);
                 for (int i = 0; i < 10; ++i) {
                     AnmVm& vm = vms_[static_cast<std::size_t>(i)];
                     vm = AnmVm{};
@@ -151,6 +171,7 @@ InGameMenu::Request InGameMenu::update(const World& w, std::uint16_t pressed) {
                     mode_ = Mode::None;
                     return Request::BadEnding;
                 }
+                startSnapshot(lib, rng);
                 for (int i = 0; i < 3; ++i) {
                     AnmVm& vm = vms_[static_cast<std::size_t>(10 + i)];
                     vm = AnmVm{};
@@ -224,6 +245,7 @@ InGameMenu::Request InGameMenu::update(const World& w, std::uint16_t pressed) {
     for (std::size_t i = 0; i < vms_.size(); ++i) {
         if (visible_[i]) vms_[i].tick(rng);
     }
+    if (snapshot_.sprite) snapshot_.tick(rng);
     ++timer_;
     return done;
 }
@@ -239,6 +261,7 @@ void InGameMenu::draw(SpriteSink& sink) {
         drawVm(sink, vm, none);
         vm.position = at;
     };
+    if (captureReady_ && snapshot_.sprite) drawVm(sink, snapshot_, none);
     if (mode_ == Mode::Pause) {
         for (int i = 0; i <= 9; ++i) drawItem(i);
     } else {
