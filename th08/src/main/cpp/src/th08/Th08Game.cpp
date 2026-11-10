@@ -195,6 +195,25 @@ void Th08Game::applyScene() {
             flow_.practice = flow_.spellPractice = true;
             flow_.card = card;
         }
+        // A playback (spec_replays 3.1): the file read again and validated.
+        if (flow_.replayFlag) {
+            std::string why;
+            const auto bytes = flow_.readReplay ? flow_.readReplay(flow_.replayPath) : std::vector<std::uint8_t>{};
+            auto file = ReplayFile::parse(bytes, &why);
+            if (!file || !file->hasStage(flow_.replayStage)) {
+                log::warn("th08: {} cannot be played back: {}", flow_.replayPath, why.empty() ? "no such stage" : why);
+                gameplay_.reset();
+                active_ = requested_ = Scene::MainMenu;
+                applyScene();
+                return;
+            }
+            playback_ = std::move(*file);
+            setup = Gameplay::Setup{};
+            setup.replay = &playback_;
+            setup.stage = flow_.replayStage;
+            setup.playbackMode = flow_.replayMode;
+            setup.demo = flow_.demo;
+        }
         if (gameplay_->start(setup, &err)) return;
         log::warn("The game could not start: {}", err);
         gameplay_.reset();
@@ -330,6 +349,32 @@ bool Th08Game::start(const GameContext& ctx) {
         return r->summary.bytes;
     };
     flow_.saveReplay = [this](int slot, const std::string& name) { return saveReplay(std::format("replay/th8_{:02d}.rpy", slot), name); };
+    flow_.replayFiles = [this]() {
+        // replay/th8_01.rpy .. th8_15.rpy, then up to 45 th8_ud????.rpy (FLOW 4.8).
+        std::vector<std::string> out;
+        if (storage_.empty()) return out;
+        for (int i = 1; i <= kReplaySlots; ++i) {
+            const std::string p = std::format("replay/th8_{:02d}.rpy", i);
+            std::error_code ec;
+            if (std::filesystem::exists(storage_ + p, ec)) out.push_back(p);
+        }
+        std::error_code ec;
+        std::vector<std::string> user;
+        for (const auto& e : std::filesystem::directory_iterator(storage_ + "replay", ec)) {
+            const std::string n = e.path().filename().string();
+            if (n.size() == 15 && n.rfind("th8_ud", 0) == 0 && n.substr(10) == ".rpy") user.push_back("replay/" + n);
+        }
+        std::sort(user.begin(), user.end());
+        for (std::size_t i = 0; i < user.size() && i < static_cast<std::size_t>(kReplayUserFiles); ++i) out.push_back(user[i]);
+        return out;
+    };
+    flow_.readReplay = [this](const std::string& path) -> std::vector<std::uint8_t> {
+        if (flow_.demo && flow_.vfs) {  // the attract demo: from the archive
+            if (const auto b = flow_.vfs->read(path)) return *b;
+            return {};
+        }
+        return storage_.empty() ? std::vector<std::uint8_t>{} : readFile(storage_ + path);
+    };
     refreshUnlocks();
     menu_ = std::make_unique<MainMenu>(flow_);
     if (!menu_->create(&err)) {
@@ -473,6 +518,16 @@ void Th08Game::tick(const InputState& input) {
             }();
             if (devLives && gameplay_->world().state) gameplay_->world().state->lives = 8.0f;
             gameplay_->tick(input_);
+            // Playback speed: whole extra passes in the same frame (input re-sampled: no
+            // second press).
+            for (int k = 0; k < 8 && gameplay_->runAgain(); ++k) {
+                input_.sample(input_.current());
+                gameplay_->tick(input_);
+            }
+            // A demo ends on any new press (spec_replays 5.2).
+            if (flow_.demo && gameplay_->replaying() && input_.current() != 0 && input_.pressed(0xFFFF)) {
+                requested_ = Scene::MainMenu;
+            }
             const auto outcome = gameplay_->outcome();
             if (outcome == Gameplay::Outcome::Ending || outcome == Gameplay::Outcome::Results) {
                 // The run's recording goes on to the result screen's prompt (the GameManager's

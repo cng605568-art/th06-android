@@ -314,6 +314,13 @@ void Gameplay::recordPass(std::uint16_t raw) {
     ++recordFrames_;
 }
 
+bool Gameplay::runAgain() const {
+    if (!replay_ || !running_ || menu_.active() || stageEnd_ != 0 || outcome_ != Outcome::None) return false;
+    if (world_.mode & ModeResults) return false;
+    if (dialogue_.running() && dialogue_.skippable() && replayFrame_ % 3 != 2) return true;
+    return setup_.playbackMode == 2 && !enemies_->bossPresent() && replayFrame_ % 5 != 4;
+}
+
 void Gameplay::closeRecording() {
     if (recordValid_ && record_.hasStage(state_.stage)) record_.stages[static_cast<std::size_t>(state_.stage)].entries.push_back(0);
 }
@@ -709,8 +716,8 @@ void Gameplay::tick(const MenuInput& in) {
         menuDone(menu_.update(world_, pressed));
         return;
     }
-    // The pause check (step 4).
-    if (in.pressed(BtnMenu) || backPressed) {
+    // The pause check (step 4; never in a demo).
+    if ((in.pressed(BtnMenu) || backPressed) && !setup_.demo) {
         if (ctx_.music) ctx_.music->pause();
         menu_.openPause(world_);
         ++state_.pauses;

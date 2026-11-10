@@ -106,6 +106,13 @@ struct FlowContext {
     // Replays: the run just played (null when there is none to save), the summary of save
     // slot 1-15 (nullopt: empty), and SaveReplay into a slot under a name (spec_replays 4.1).
     bool replayToSave = false;
+    // Playback (title replay menu, attract demo): the file, the stage slot and the mode; the
+    // flag stays set after the playback so the title reopens the replay menu.
+    bool replayFlag = false, demo = false;
+    std::string replayPath;  // under the storage folder, or an archive member for a demo
+    int replayStage = 0, replayMode = 0;
+    std::function<std::vector<std::string>()> replayFiles;  // the files the replay menu lists
+    std::function<std::vector<std::uint8_t>(const std::string& path)> readReplay;
     std::function<std::optional<std::array<std::uint8_t, 0xCC>>(int slot)> replaySlot;
     std::function<bool(int slot, const std::string& name)> saveReplay;
     Scene previous = Scene::Init;        // the Supervisor's previous scene

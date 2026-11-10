@@ -93,6 +93,7 @@ class Th08Game final : public Game {
     std::unique_ptr<ResultScreen> result_;
     GameState lastGame_;  // the run as it ended (for the ending and the result screen)
     ReplayFile lastReplay_;  // its recording
+    ReplayFile playback_;    // the file being played back
     std::vector<MusicTrack> musicTracks_;  // musiccmt.txt: a played song's Music Room index
     Scene active_ = Scene::MainMenu, requested_ = Scene::MainMenu;
     bool quit_ = false;

@@ -63,6 +63,7 @@ InGameMenu::Request InGameMenu::update(const World& w, std::uint16_t pressed) {
     const bool select = (pressed & (BtnShoot | BtnEnter)) != 0;
     const bool up = (pressed & BtnUp) != 0, down = (pressed & BtnDown) != 0;
     const bool mainGame = !g.practice && !g.spellPractice && g.difficulty < 4;
+    const bool replay = (w.mode & ModeReplay) != 0;  // (no Restart row, no R key: spec_replays 3.6)
     if (mode_ == Mode::Pause) {
         bool hot = false;
         if ((pressed & BtnMenu) && state_ != State::ClosingResume) {
@@ -77,7 +78,7 @@ InGameMenu::Request InGameMenu::update(const World& w, std::uint16_t pressed) {
             setState(State::ClosingTitle);
             hot = true;
         }
-        if ((pressed & BtnR) && state_ != State::ClosingTitle && !hot) {
+        if ((pressed & BtnR) && state_ != State::ClosingTitle && !hot && !replay) {
             w.playSound(kSeSelect);
             interruptAll(2, 0, 9);
             setState(State::ClosingRestart);
@@ -92,9 +93,12 @@ InGameMenu::Request InGameMenu::update(const World& w, std::uint16_t pressed) {
                     visible_[static_cast<std::size_t>(i)] = true;
                 }
                 for (int i = 0; i < 4; ++i) vms_[static_cast<std::size_t>(i)].interrupt(1);
-                // (A spell-practice Last Word card shows sprite 288: the card number is not
-                // tracked yet.)
-                vms_[7].selectSprite(283 + std::clamp(g.difficulty, 0, 4));
+                if (replay) {
+                    vms_[3] = AnmVm{};
+                    visible_[3] = false;
+                }
+                // (a spell-practice Last Word shows sprite 288)
+                vms_[7].selectSprite(g.spellPractice && g.card >= 205 ? 288 : 283 + std::clamp(g.difficulty, 0, 4));
                 visible_[8] = g.practice;
                 visible_[9] = false;  // (the slow mode of the configuration copy: not ported)
                 setState(State::OnResume);
@@ -108,7 +112,8 @@ InGameMenu::Request InGameMenu::update(const World& w, std::uint16_t pressed) {
                 if (timer_ < 4) break;
                 if (up || down) {
                     w.playSound(kSeMove);
-                    if (state_ == State::OnResume) setState(up ? State::OnRestart : State::OnReturn);
+                    if (replay) setState(state_ == State::OnResume ? State::OnReturn : State::OnResume);
+                    else if (state_ == State::OnResume) setState(up ? State::OnRestart : State::OnReturn);
                     else if (state_ == State::OnReturn) setState(up ? State::OnResume : State::OnRestart);
                     else setState(up ? State::OnReturn : State::OnResume);
                 } else if (select) {
