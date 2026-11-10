@@ -8,6 +8,7 @@
 #include "gfx/SpriteSink.hpp"
 #include "io/Vfs.hpp"
 #include "th08/Bgm.hpp"
+#include "th08/SoundPlayer.hpp"
 
 namespace touhou::th08 {
 
@@ -22,19 +23,27 @@ const char* effectAnm(int stage) {
 
 }  // namespace
 
+void World::playSound(int id) const {
+    if (sound && id >= 0) sound->playSound(id);
+}
+
 Gameplay::~Gameplay() { end(); }
 
 void Gameplay::releaseStageFiles() {
     if (!ctx_.anm) return;
     background_.release(*ctx_.anm);
     if (effectsLoaded_) ctx_.anm->release(kSlotEffects);
-    effectsLoaded_ = false;
+    if (etamaLoaded_) ctx_.anm->release(kSlotEtama);
+    effectsLoaded_ = etamaLoaded_ = false;
 }
 
 void Gameplay::end() {
     if (!running_) return;
     releaseStageFiles();
-    if (ctx_.anm) gui_.release(*ctx_.anm);
+    if (ctx_.anm) {
+        gui_.release(*ctx_.anm);
+        player_->releaseAnm(*ctx_.anm);
+    }
     if (ctx_.music) ctx_.music->stop();
     running_ = false;
 }
@@ -72,12 +81,32 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
     stageFrame_ = 0;
     // Practice power (step 6): Stage 1 -> 0, Stage 2 -> 112, later -> 128.
     if (state_.practice && !state_.spellPractice) state_.power = state_.stage == 0 ? 0.0f : state_.stage == 1 ? 112.0f : 128.0f;
-    // Step 9: Stage, then (the bullet and enemy managers to come) the effect manager's file,
-    // then the Gui.
+    world_ = World{};
+    world_.state = &state_;
+    world_.rng = &rng;
+    world_.anm = &lib;
+    world_.tables = ctx_.tables;
+    world_.sound = ctx_.sound;
+    world_.effects = effects_.get();
+    world_.player = player_.get();
+    world_.background = &background_;
+    world_.mode = (state_.practice ? ModePractice : 0u) | (state_.spellPractice ? ModeSpellPractice : 0u);
+    // The player (registered before the stage: its shot files every stage, its ANM once).
+    if (!player_->load(*ctx_.vfs, *ctx_.textures, lib, state_.character, fresh, error)) return false;
+    // Step 9: Stage, the bullet manager's etama.anm, the effect manager's file, the Gui.
     background_.white = ctx_.ui ? &ctx_.ui->white : nullptr;
     if (!background_.load(*ctx_.vfs, *ctx_.textures, lib, rng, state_.stage, state_.spellPractice, error)) return false;
+    if (!lib.load(*ctx_.vfs, *ctx_.textures, "etama.anm", kSlotEtama, error)) return false;
+    etamaLoaded_ = true;
     if (!lib.load(*ctx_.vfs, *ctx_.textures, effectAnm(state_.stage), kSlotEffects, error)) return false;
     effectsLoaded_ = true;
+    effects_->reset();
+    player_->stageStart(world_);
+    background_.spawnGlow = [this](const Vec3f& point) {
+        Effect& e = effects_->spawn(world_, 62, point, 1, 0x20FFFFFFu);
+        if (!effects_->isSink(e)) e.layer = 4;
+    };
+    background_.drawEffectsB = [this](SpriteSink& sink, AnmDrawState& st) { effects_->drawListB(sink, st, background_); };
     if (!gui_.stageStart(ctx_, state_, fresh, error)) return false;
     // Step 11: the stage's songs into slots 0-2 (blank names skipped); step 13: start them
     // when play begins.
@@ -109,9 +138,14 @@ void Gameplay::tick(const MenuInput& in) {
         musicStart_ = 0;
     }
     ZunRng& rng = *ctx_.rng;
-    // Stage (8) ... Gui (15).
-    background_.update(*ctx_.anm, rng);
-    gui_.update(rng, state_, Vec3f{192.0f, 384.0f, 0.0f});
+    gameInput_ = in.current() & (BtnShoot | BtnBomb | BtnFocus | BtnUp | BtnDown | BtnLeft | BtnRight);
+    world_.stageFrame = static_cast<std::int32_t>(stageFrame_);
+    // Stage (8), Player (9), (enemies 11, spell cards 12,) effects (13), (bullets 14,) Gui (15).
+    background_.setYoukaiInFront(player_->youkaiInFront());
+    background_.update(*ctx_.anm, rng, (world_.mode & ModeSpellFreeze) != 0);
+    player_->update(world_, gameInput_);
+    effects_->update(world_);
+    gui_.update(rng, state_, player_->position(), world_.timeStop);
     ++stageFrame_;
 }
 
@@ -120,7 +154,13 @@ void Gameplay::draw(SpriteSink& sink) {
     drawState_ = AnmDrawState{};
     background_.stageFinished = false;
     background_.drawHigh(sink, drawState_);  // 6
-    background_.drawLow(sink, drawState_);   // 7
+    background_.drawLow(sink, drawState_);   // 7 (with effect list B)
+    sink.setClip(kPlayfieldX, kPlayfieldY, kPlayfieldW, kPlayfieldH);
+    player_->drawShots(sink, drawState_);     // 9
+    player_->drawPlayer(sink, drawState_);    // 10
+    effects_->draw(sink, drawState_, &background_);  // 12
+    effects_->drawListD(sink, drawState_);     // 13 (inside the bullet draw)
+    sink.clearClip();
     gui_.draw(sink, state_, ascii_);          // 17
     if (ctx_.anm) ascii_.draw(sink, *ctx_.anm);  // 20
 }

@@ -4,6 +4,7 @@
 // and a few members are checked against the spec's SHA-256 values (never in CI).
 
 #include <array>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -23,6 +24,7 @@
 #include "th08/Anm.hpp"
 #include "th08/Background.hpp"
 #include "th08/Gameplay.hpp"
+#include "th08/ShotData.hpp"
 #include "th08/ExeTables.hpp"
 #include "th08/Flow.hpp"
 #include "th08/MainMenu.hpp"
@@ -981,6 +983,115 @@ void testRealArchive() {
         in.sample(0);
         game.tick(in);
         CHECK(heard.empty());  // practice marks nothing heard
+    }
+    // The shot files: eight files, six levels (eight in ply02as), the shared thresholds.
+    {
+        Vfs vfs;
+        auto again = MappedFile::open(path, &err);
+        CHECK(again && vfs.mount(openArchive("th08.dat", std::move(again), &err)));
+        for (int c = 0; c < 12; ++c) {
+            for (int f = 0; f < 2; ++f) {
+                const auto bytes = vfs.read(th08::shotFileName(c, f != 0));
+                th08::ShotFile sf;
+                CHECK(bytes && sf.parse(*bytes, &err));
+                const bool remilia = th08::shotFileName(c, f != 0) == "ply02as.sht";
+                CHECK(sf.levels.size() == (remilia ? 8u : 6u));
+                if (sf.levels.size() >= 6) CHECK(sf.levels[0].threshold == 8 && sf.levels[4].threshold == 128 && sf.levels[5].threshold == 999);
+                CHECK(sf.bombsPerLife == 3.0f && sf.levelFor(0) == 0 && sf.levelFor(128) == 5);
+            }
+        }
+        CHECK(th08::shotFileName(9, false) == "ply02as.sht" && th08::shotFileName(8, true) == "ply02a.sht");
+        CHECK(th08::shotFileName(2, false) == "ply02a.sht" && th08::shotFileName(2, true) == "ply02as.sht");
+    }
+    // The player on the real files: direction priorities, the focused file's speeds, the
+    // clamps, the team switch with its 7-frame "youkai in front" lag, the familiars, the
+    // 20-frame fire cycle.
+    {
+        Vfs vfs;
+        auto again = MappedFile::open(path, &err);
+        CHECK(again && vfs.mount(openArchive("th08.dat", std::move(again), &err)));
+        TextureLibrary textures;
+        th08::AnmLibrary lib;
+        CHECK(lib.load(vfs, textures, "text.anm", th08::kSlotText, &err, true));
+        CHECK(lib.load(vfs, textures, "ascii.anm", th08::kSlotAscii, &err));
+        th08::ExeTables tables;
+        bool haveTables = false;
+        if (const char* exePath = std::getenv("TH08_REAL_EXE")) {
+            auto exe = MappedFile::open(exePath, &err);
+            haveTables = exe && th08::loadExeTables(exe->bytes(), tables, &err);
+        }
+        ZunRng rng(9);
+        th08::FlowContext ctx;
+        ctx.vfs = &vfs;
+        ctx.textures = &textures;
+        ctx.anm = &lib;
+        ctx.rng = &rng;
+        ctx.tables = haveTables ? &tables : nullptr;
+        auto game = std::make_unique<th08::Gameplay>(ctx);
+        th08::MenuInput in;
+        auto run = [&](std::uint16_t buttons, int frames) {
+            for (int i = 0; i < frames; ++i) {
+                in.sample(buttons);
+                game->tick(in);
+            }
+        };
+        th08::Gameplay::Setup setup;
+        setup.character = 3;  // Youmu & Yuyuko
+        CHECK(game->start(setup, &err));
+        const th08::Player& p = game->player();
+        run(0, 1);
+        CHECK(p.state() == th08::Player::State::Invulnerable);  // 120 >= 30: straight through the spawn-in
+        CHECK(p.familiar(2).kind == th08::Player::FamiliarKind::PhantomTeam);  // unfocused: Youmu's phantom
+        const Vec3f start = p.position();
+        run(th08::BtnUp | th08::BtnDown, 1);  // Down beats Up
+        CHECK(p.direction() == th08::Player::Direction::Down && p.position().y == start.y + 5.0f);
+        run(th08::BtnLeft | th08::BtnRight, 1);  // Left beats Right
+        CHECK(p.direction() == th08::Player::Direction::Left && p.position().x == start.x - 5.0f);
+        run(th08::BtnFocus | th08::BtnRight, 1);  // focused: the youkai file's 1.9
+        CHECK(p.focused() && std::fabs(p.position().x - (start.x - 5.0f + 1.9f)) < 1e-4f);
+        CHECK(p.familiar(2).kind == th08::Player::FamiliarKind::None && p.familiar(0).kind == th08::Player::FamiliarKind::Yuyuko);
+        CHECK(!p.youkaiInFront());
+        run(th08::BtnFocus, 6);
+        CHECK(!p.youkaiInFront());  // counter 6
+        run(th08::BtnFocus, 1);
+        CHECK(p.youkaiInFront());  // counter 7
+        run(th08::BtnUp | th08::BtnLeft, 1);  // unfocused: Yuyuko's familiars dismissed, the phantom back
+        CHECK(p.familiar(0).state == 3 && p.familiar(2).kind == th08::Player::FamiliarKind::PhantomTeam);
+        run(th08::BtnUp | th08::BtnLeft, 199);
+        CHECK(p.position().x == 8.0f && p.position().y == 16.0f);  // the clamps
+        CHECK(p.familiar(0).state == 0 && p.familiar(0).kind == th08::Player::FamiliarKind::None);  // gone after 18 updates
+        // The fire cycle: a tap fires one 20-frame cycle.
+        run(th08::BtnShoot, 1);
+        run(0, 1);
+        CHECK(p.firing() && p.liveShots() > 0);
+        run(0, 19);
+        CHECK(!p.firing());
+        // Solo Remilia: four permanent familiars, each spawning a trail effect (8 steps)
+        // every movement step, plus the player sprite and the rest.
+        setup.character = 9;
+        CHECK(game->start(setup, &err));
+        run(0, 2);
+        for (int k = 0; k < 4; ++k) CHECK(game->player().familiar(k).kind == th08::Player::FamiliarKind::RemiliaSolo);
+        if (haveTables) {
+            const std::uint32_t before = rng.generations();
+            run(0, 1);
+            CHECK(rng.generations() - before >= 32);
+            CHECK(game->effects().active() >= 4);
+        }
+        // Every character starts and shoots for a second at full power without trouble.
+        for (int c = 0; c < 12; ++c) {
+            setup.character = c;
+            setup.practice = true;
+            setup.stage = 5;
+            CHECK(game->start(setup, &err));
+            run(th08::BtnShoot, 60);
+            run(th08::BtnShoot | th08::BtnFocus, 60);
+            CHECK(game->state().power == 128.0f);
+            RecordingSink sink;
+            game->draw(sink);
+            CHECK(sink.items.size() > 40);
+        }
+        game->end();
     }
     // The player's score.dat backup (a fresh file) decodes, with this exe's VRSM; the port's
     // fresh image is the same size, and saving it again changes only the flags it sets.

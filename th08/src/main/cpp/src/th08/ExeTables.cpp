@@ -49,6 +49,15 @@ bool loadExeTables(std::span<const std::uint8_t> exe, ExeTables& t, std::string*
         !readTexts(pe, ExeTables::kKeyConfigTextTable, t.keyConfigText)) {
         return fail("menu text tables not in the file");
     }
+    at = pe.offsetOf(ExeTables::kEffectTable, 12 * ExeTables::kEffectTypes);
+    if (at < 0) return fail("effect table not in the file");
+    for (int i = 0; i < ExeTables::kEffectTypes; ++i) {
+        const std::size_t base = static_cast<std::size_t>(at) + 12 * static_cast<std::size_t>(i);
+        auto& e = t.effects[static_cast<std::size_t>(i)];
+        e.script = pe.i32(base);
+        e.update = pe.u32(base + 4);
+        e.init = pe.u32(base + 8);
+    }
     return true;
 }
 

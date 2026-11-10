@@ -12,6 +12,7 @@ add_library(th08_game STATIC
   ${TH08_SRC}/th08/Anm.cpp
   ${TH08_SRC}/th08/Background.cpp
   ${TH08_SRC}/th08/Bgm.cpp
+  ${TH08_SRC}/th08/Effects.cpp
   ${TH08_SRC}/th08/ExeTables.cpp
   ${TH08_SRC}/th08/FlowCommon.cpp
   ${TH08_SRC}/th08/GameConfig.cpp
@@ -20,7 +21,9 @@ add_library(th08_game STATIC
   ${TH08_SRC}/th08/Gui.cpp
   ${TH08_SRC}/th08/MainMenu.cpp
   ${TH08_SRC}/th08/MusicRoom.cpp
+  ${TH08_SRC}/th08/Player.cpp
   ${TH08_SRC}/th08/ScoreFile.cpp
+  ${TH08_SRC}/th08/ShotData.cpp
   ${TH08_SRC}/th08/SoundPlayer.cpp
   ${TH08_SRC}/th08/Version.cpp)
 target_include_directories(th08_game PUBLIC "${TH08_SRC}")

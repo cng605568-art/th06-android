@@ -33,6 +33,17 @@ struct ExeTables {
     std::array<MenuText, 9> titleText;       // the title rows' descriptions
     std::array<MenuText, 10> optionText;     // the Option rows'
     std::array<MenuText, 12> keyConfigText;  // the Key Config rows'
+
+    // The effect table (spec_stage_gui §4.5): each effect type's etama.anm script and the
+    // addresses of its update and init routines (0: none), which the effect manager maps to
+    // its own behaviours.
+    static constexpr int kEffectTypes = 66;
+    struct Effect {
+        std::int32_t script = 0;
+        std::uint32_t update = 0, init = 0;
+    };
+    std::array<Effect, kEffectTypes> effects{};
+    static constexpr std::uint32_t kEffectTable = 0x004C6D30;
     static constexpr std::uint32_t kSoundTable = 0x004C8040, kSampleNames = 0x004C81B0;
     static constexpr std::uint32_t kTitleTextTable = 0x004C8640, kOptionTextTable = 0x004C8664,
                                    kKeyConfigTextTable = 0x004C8690;

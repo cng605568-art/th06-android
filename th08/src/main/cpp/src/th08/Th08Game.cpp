@@ -252,6 +252,22 @@ void Th08Game::tick(const InputState& input) {
             input_.clear();  // the transition zeroes the raw input and the repeat flag
         }
         if (gameplay_) {
+            // Developer aid: TH08_DEV_HOLD="shoot+focus+left" holds those buttons in a game.
+            static const std::uint16_t devHold = [] {
+                std::uint16_t m = 0;
+                if (const char* h = std::getenv("TH08_DEV_HOLD")) {
+                    const std::string v(h);
+                    const std::pair<const char*, std::uint16_t> names[] = {{"shoot", BtnShoot}, {"bomb", BtnBomb}, {"focus", BtnFocus},
+                                                                           {"up", BtnUp},       {"down", BtnDown}, {"left", BtnLeft},
+                                                                           {"right", BtnRight}};
+                    for (const auto& [n, b] : names) m |= v.find(n) != std::string::npos ? b : 0;
+                }
+                return m;
+            }();
+            if (devHold) {
+                input_.clear();
+                input_.sample(static_cast<std::uint16_t>(buttonWord(input) | devHold));
+            }
             gameplay_->tick(input_);
             if (gameplay_->outcome() == Gameplay::Outcome::Title) requested_ = Scene::MainMenu;
         } else if (musicRoom_) {
