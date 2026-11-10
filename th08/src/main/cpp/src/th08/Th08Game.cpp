@@ -36,7 +36,7 @@ void Th08Game::render(SpriteSink& sink, float, const FrameInfo&) {
     const std::uint32_t good = rgba(140, 230, 140), bad = rgba(255, 140, 140);
     drawText(sink, *ui_, 128, 120, "IMPERISHABLE NIGHT", 3.0f, moon);
     drawText(sink, *ui_, 176, 168, "BEING PORTED", 3.0f, white);
-    drawText(sink, *ui_, 136, 240, folder_.archive ? "TH08.DAT: FOUND" : "TH08.DAT: MISSING", 2.0f,
+    drawText(sink, *ui_, 136, 240, folder_.archive ? "TH08.DAT 1.00D: FOUND" : "TH08.DAT 1.00D: MISSING", 2.0f,
              folder_.archive ? good : bad);
     drawText(sink, *ui_, 136, 272, folder_.thbgm ? "THBGM.DAT: FOUND" : "THBGM.DAT: MISSING", 2.0f,
              folder_.thbgm ? good : bad);

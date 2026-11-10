@@ -23,7 +23,7 @@ bool isExe100d(std::span<const std::uint8_t> exe, std::string* why = nullptr);
 
 struct FolderReport {
     std::size_t files = 0;      // files the Vfs can open (archive members and loose files)
-    bool archive = false;       // th08.dat mounted (one of its known members is readable)
+    bool archive = false;       // th08.dat 1.00d mounted (its th08_0100d.ver has the 1.00d line)
     bool exe = false;           // th08.exe 1.00d found
     bool thbgm = false;         // thbgm.dat found (ZWAV header)
     std::span<const std::uint8_t> exeBytes;  // the 1.00d exe, when found

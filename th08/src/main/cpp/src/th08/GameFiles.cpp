@@ -5,6 +5,7 @@
 
 #include "core/Sha256.hpp"
 #include "io/Vfs.hpp"
+#include "th08/Version.hpp"
 
 namespace touhou::th08 {
 
@@ -23,7 +24,9 @@ bool isExe100d(std::span<const std::uint8_t> exe, std::string* why) {
 FolderReport inspectFolder(const Vfs& vfs) {
     FolderReport r;
     r.files = vfs.fileCount();
-    r.archive = vfs.hasFormat("PBGZ");
+    if (vfs.hasFormat("PBGZ")) {
+        if (const auto ver = vfs.read(kVersionFile)) r.archive = !findVersionLines(*ver, kVersionTag).empty();
+    }
     for (const auto exe : vfs.executables()) {
         if (isExe100d(exe)) {
             r.exe = true;

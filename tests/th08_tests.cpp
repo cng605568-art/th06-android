@@ -17,7 +17,9 @@
 #include "io/MappedFile.hpp"
 #include "io/ThCrypt.hpp"
 #include "io/Vfs.hpp"
+#include "th08/GameConfig.hpp"
 #include "th08/GameFiles.hpp"
+#include "th08/Version.hpp"
 
 using namespace touhou;
 using Bytes = std::vector<std::uint8_t>;
@@ -216,6 +218,53 @@ void testExeCheck() {
     CHECK(!th08::isExe100d(Bytes(th08::kExeSize, 0), &why));
 }
 
+void testGameConfig() {
+    using th08::GameConfig;
+    GameConfig c;
+    CHECK(!c.load({}, true));  // no file: defaults
+    CHECK(c.music == GameConfig::MusicWav && c.lives == 2 && c.bombs == 3 && c.colourMode == 0 && c.shotSlow == 0);
+    CHECK(c.bgmVolume == 100 && c.seVolume == 80 && c.optionBits == 1 && c.version == 0x00080001);
+    CHECK(!c.load({}, false) && c.music == GameConfig::MusicMidi);
+    Bytes saved = c.save();
+    CHECK(saved.size() == 60);
+    // A valid file round-trips, including the volumes and the option bits (bit 7 forced off).
+    c.lives = 6;
+    c.bgmVolume = 48;
+    c.seVolume = 12;
+    c.optionBits = 0x4081;
+    c.unused[3] = 9;
+    saved = c.save();
+    GameConfig d;
+    CHECK(d.load(saved, true));
+    CHECK(d.lives == 6 && d.bgmVolume == 48 && d.seVolume == 12 && d.optionBits == 0x4001 && d.unused[3] == 9);
+    // Out of range (lives 7), the wrong version or size: zeroed and re-initialised.
+    saved[0x1C] = 7;
+    CHECK(!d.load(saved, true));
+    CHECK(d.lives == 2 && d.unused[3] == 0 && d.optionBits == 1 && d.bgmVolume == 100);
+    Bytes shortFile = c.save();
+    shortFile.pop_back();
+    CHECK(!d.load(shortFile, true));
+    Bytes oldVersion = c.save();
+    oldVersion[0x14] = 2;  // 0x00080002
+    CHECK(!d.load(oldVersion, true));
+    // The volumes are not validated.
+    Bytes loud = c.save();
+    loud[0x27] = 0x7F;
+    CHECK(d.load(loud, true) && d.bgmVolume == 127);
+}
+
+void testVersionFile() {
+    const std::string ver = "0009_ 100 1\n0100c 840704 1\n0100c 840704 2724749753\n0100d 840704 2724749753\n";
+    const Bytes b(ver.begin(), ver.end());
+    CHECK(th08::findVersionLines(b, "0100c").size() == 2);
+    CHECK(th08::versionMatches(b, "0100c", {840704, static_cast<std::int32_t>(2724749753u)}));  // the second line
+    CHECK(th08::versionMatches(b, "0100d", {840704, static_cast<std::int32_t>(2724749753u)}));
+    CHECK(!th08::versionMatches(b, "0100d", {840704, 1}));
+    Bytes exe(16, 0);
+    exe[0] = 1, exe[4] = 2, exe[8] = 3, exe[12] = 100;  // the last word is left out
+    CHECK(th08::exeChecksum(exe) == 6);
+}
+
 // The player's own th08.dat, when TH08_REAL_DAT names it (spec_files 1.9).
 void testRealArchive() {
     const char* path = std::getenv("TH08_REAL_DAT");
@@ -267,6 +316,18 @@ void testRealArchive() {
     }
     CHECK(decoded == 317);
     std::printf("  (the player's th08.dat: %zu members decoded)\n", decoded);
+    // The version file has the 1.00d line (and its exe checksum, when TH08_REAL_EXE names it).
+    for (std::size_t i = 0; i < archive->entries().size(); ++i) {
+        if (archive->entries()[i].name != th08::kVersionFile) continue;
+        Bytes ver;
+        CHECK(archive->extract(i, ver, &err));
+        CHECK(th08::versionMatches(ver, th08::kVersionTag, {840704, static_cast<std::int32_t>(2724749753u)}));
+        if (const char* exePath = std::getenv("TH08_REAL_EXE")) {
+            auto exe = MappedFile::open(exePath, &err);
+            CHECK(exe && th08::exeChecksum(exe->bytes()) == static_cast<std::int32_t>(2724749753u));
+            CHECK(exe && th08::isExe100d(exe->bytes()));
+        }
+    }
 }
 
 }  // namespace
@@ -280,6 +341,8 @@ int main() {
         {"block cipher: vectors, limits, round trips", testCipher},
         {"PBGZ archive (th08.dat)", testPbgz},
         {"th08.exe 1.00d check", testExeCheck},
+        {"th08.cfg: layout, validation, re-initialisation", testGameConfig},
+        {"version file: every matching line, exe checksum", testVersionFile},
         {"the player's th08.dat (TH08_REAL_DAT)", testRealArchive},
     };
     for (const Test& t : tests) {
