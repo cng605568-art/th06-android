@@ -96,6 +96,13 @@ struct ScoreData {
     // CLRD words: the stage bit or an ending bit, no-continue only while no continue was used.
     void markClear(int character, int difficulty, std::uint16_t bit, bool noContinue);
 
+    // Last Words (spec_flow_menus 5.3): the unlock bytes recomputed from the records (a met
+    // condition sets its byte for good); the unlock test (0x46FD5F); "ever attempted" (story or
+    // spell practice, all characters).
+    void updateLastWords(const std::vector<std::int32_t>& bossFinal, const std::vector<std::int32_t>& normalCards);
+    bool lastWordUnlocked(int card) const;
+    bool everAttempted(int card) const;
+
     // ---- high scores (spec_result_ending 1.4-1.6) ----
     // The 0-based rank `score` would take in list (difficulty, character) among the records and
     // the ten placeholders (100000 down to 10000), ties going to the newer entry.

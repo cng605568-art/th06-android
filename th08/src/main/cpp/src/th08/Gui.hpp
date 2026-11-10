@@ -29,6 +29,7 @@ struct GameState {
     int character = 0;   // 0-3 teams, 4-11 solo characters
     int difficulty = 1;  // 0 Easy .. 3 Lunatic, 4 Extra
     bool practice = false, spellPractice = false;
+    int card = -1;  // GM+0x3DBB0: the spell-practice card (0-based)
     // Scores in the internal unit (points / 10); the HUD prints them followed by the continue digit.
     std::uint32_t score = 0, guiScore = 0, hiScore = 100000, rollSpeed = 0;
     int continues = 0, hiScoreContinues = 0;
@@ -172,7 +173,8 @@ class Gui {
 
     // ---- the boss name label (spec_stage_gui 3.6): the stage's name image into sprite 10 ----
     void copyBossName(int k);
-    void bossNameForStage(int stage);  // at the music start (MSG script 0: 22 / 24 / 25)
+    void bossNameForStage(int stage);
+    void bossNameForCard(int stage, int card);  // spell practice  // at the music start (MSG script 0: 22 / 24 / 25)
 
     // ---- the boss HUD (spec_spellcard_hud §8): inputs from the enemy manager ----
     void setBossPresent(bool on) { bossPresent_ = on; }

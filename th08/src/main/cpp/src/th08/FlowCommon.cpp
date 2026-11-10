@@ -1,4 +1,6 @@
 #include <algorithm>
+#include <cstdarg>
+#include <cstdio>
 #include <cstring>
 
 #include "gfx/Image.hpp"
@@ -79,9 +81,18 @@ void Surface::blitRect(SpriteSink& sink, float x, float y, float left, float top
 
 // ---- ASCII strings --------------------------------------------------------------------------
 
-void AsciiText::add(float x, float y, std::string_view text, std::uint32_t color, float scale, float advance, float xScale) {
+void AsciiText::add(float x, float y, std::string_view text, std::uint32_t color, float scale, float advance, float xScale, bool selected) {
     if (items_.size() >= 256) return;
-    items_.push_back({x, y, std::string(text.substr(0, 63)), color, scale, advance, xScale < 0.0f ? scale : xScale});
+    items_.push_back({x, y, std::string(text.substr(0, 63)), color, scale, advance, xScale < 0.0f ? scale : xScale, selected});
+}
+
+std::string sjisPrintf(const char* format, ...) {
+    char buf[512];
+    va_list args;
+    va_start(args, format);
+    const int n = std::vsnprintf(buf, sizeof buf, format, args);
+    va_end(args);
+    return n > 0 ? std::string(buf, static_cast<std::size_t>(std::min(n, 511))) : std::string();
 }
 
 void AsciiText::draw(SpriteSink& sink, AnmLibrary& anm) {
@@ -96,9 +107,9 @@ void AsciiText::draw(SpriteSink& sink, AnmLibrary& anm) {
                 x = t.x;
                 continue;
             }
-            if (c != ' ' && c > 0 && glyph.selectSprite(c - 1)) {
+            if (c != ' ' && c > 0 && glyph.selectSprite(t.selected ? c + 138 : c - 1)) {
                 glyph.flags = AnmVm::Visible | AnmVm::Active | AnmVm::AnchorLeft | AnmVm::AnchorTop;
-                glyph.color = t.color;
+                glyph.color = t.selected ? 0xFFFFFFFFu : t.color;
                 glyph.scale = {t.xScale, t.scale};
                 glyph.position = {x, y, 0.0f};
                 drawVm(sink, glyph, none);

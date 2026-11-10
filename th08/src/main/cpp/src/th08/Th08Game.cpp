@@ -167,6 +167,10 @@ void Th08Game::applyScene() {
         setup.difficulty = config_.difficulty;
         setup.practice = flow_.practice;
         setup.spellPractice = flow_.spellPractice;
+        if (setup.spellPractice) {  // (the card's difficulty, not the remembered one)
+            setup.card = flow_.card;
+            setup.difficulty = flow_.spellDifficulty;
+        }
         setup.lives = config_.lives;
         // Developer aid: TH08_DEV_STAGE=<stage index 0-8> starts that stage instead.
         if (const char* dev = std::getenv("TH08_DEV_STAGE"); dev && *dev) setup.stage = std::clamp(std::atoi(dev), 0, kStageCount - 1);
@@ -174,6 +178,21 @@ void Th08Game::applyScene() {
         if (const char* dev = std::getenv("TH08_DEV_PRACTICE"); dev && *dev == '1') setup.practice = true;
         // TH08_DEV_CHARACTER=<0-11> plays that character (0-3 teams, 4-11 solos).
         if (const char* dev = std::getenv("TH08_DEV_CHARACTER"); dev && *dev) setup.character = std::clamp(std::atoi(dev), 0, 11);
+        // TH08_DEV_CARD=<0-221> plays that card in Spell Card Practice.
+        if (const char* dev = std::getenv("TH08_DEV_CARD"); dev && *dev && tablesLoaded_) {
+            const int card = std::clamp(std::atoi(dev), 0, 221);
+            setup.spellPractice = true;
+            setup.card = card;
+            const int d = MainMenu::cardDifficulty(&tables_, card);
+            setup.difficulty = d == 5 ? 1 : d;
+            for (int s = 0; s < 9; ++s) {
+                const auto& ids = tables_.stageCards[static_cast<std::size_t>(s)];
+                if (std::find(ids.begin(), ids.end(), card) != ids.end()) setup.stage = s;
+            }
+            if (d == 5) setup.stage = MainMenu::lastWordStage(card);
+            flow_.practice = flow_.spellPractice = true;
+            flow_.card = card;
+        }
         if (gameplay_->start(setup, &err)) return;
         log::warn("The game could not start: {}", err);
         gameplay_.reset();
@@ -356,7 +375,7 @@ void Th08Game::tick(const InputState& input) {
                 }
                 return m;
             }();
-            if (devHold) {
+            if (devHold && !gameplay_->menuOpen()) {  // (not in the pause / continue menu)
                 input_.clear();
                 input_.sample(static_cast<std::uint16_t>(buttonWord(input) | devHold));
             }

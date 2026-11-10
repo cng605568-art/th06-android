@@ -459,6 +459,74 @@ bool ScoreData::spellPracticeUnlocked() const {
     return false;
 }
 
+// ---- Last Words (spec_flow_menus 5.3, spec_spell_practice 4) ---------------------------------
+
+bool ScoreData::everAttempted(int card) const {
+    if (card < 0 || card >= kCardCount) return false;
+    const CardRecord& c = cards[static_cast<std::size_t>(card)];
+    return c.attempts[12] != 0 || c.practiceAttempts[12] != 0;
+}
+
+bool ScoreData::lastWordUnlocked(int card) const {
+    if (card >= 205 && card <= 221) return lastWords[static_cast<std::size_t>(card - 205)] == card;
+    // (below 205 the original compares a byte before FLSP's data, a padding 0 for card 204
+    // [QUIRK]: such a card opens once seen)
+    return everAttempted(card);
+}
+
+void ScoreData::updateLastWords(const std::vector<std::int32_t>& bossFinal, const std::vector<std::int32_t>& normalCards) {
+    auto captured = [&](int c) {
+        const CardRecord& r = cards[static_cast<std::size_t>(c)];
+        return r.captures[12] != 0 || r.practiceCaptures[12] != 0;
+    };
+    auto seen = [&](int c) { return everAttempted(c); };
+    int finalB = 0, extraClears = 0;
+    for (int c = 0; c < 12; ++c) {
+        const ClearRecord& r = clears[static_cast<std::size_t>(c)];
+        bool b = false;
+        for (int d = 0; d < 4; ++d) b = b || (r.noContinue[static_cast<std::size_t>(d)] & 0x4000) != 0;
+        finalB += b ? 1 : 0;
+        extraClears += (r.noContinue[4] & 0x100) != 0 ? 1 : 0;
+    }
+    int spellMode = 0;
+    for (const CardRecord& r : cards) spellMode += r.practiceCaptures[12] != 0 ? 1 : 0;
+    int lastSpells = 0;
+    for (const std::int32_t c : bossFinal) {
+        if (c >= 0 && c < kCardCount) lastSpells += cards[static_cast<std::size_t>(c)].practiceCaptures[12] != 0 ? 1 : 0;
+    }
+    bool marisaNormal = !normalCards.empty();
+    for (const std::int32_t c : normalCards) {
+        if (c < 0 || c >= kCardCount) continue;
+        const CardRecord& r = cards[static_cast<std::size_t>(c)];
+        marisaNormal = marisaNormal && (r.captures[6] != 0 || r.practiceCaptures[6] != 0);
+    }
+    const ClearRecord& reimu = clears[4];
+    bool allOthersSeen = true;
+    for (int c = 205; c <= 220; ++c) allOthersSeen = allOthersSeen && seen(c);
+    const bool met[17] = {
+        finalB >= 2,
+        finalB >= 3,
+        spellMode >= 50,
+        finalB >= 4,
+        captured(137),
+        lastSpells >= 15,
+        captured(195) && seen(204) && captured(145),
+        seen(208) && seen(209) && seen(210),
+        seen(205) && seen(206) && seen(207) && seen(211),
+        marisaNormal,
+        ((reimu.noContinue[2] | reimu.noContinue[3]) & 0x4000) != 0,
+        spellMode >= 120,
+        finalB >= 6,
+        extraClears >= 3,
+        lastSpells >= 30,
+        (clears[12].reached[3] & 0xC000) != 0,
+        allOthersSeen,
+    };
+    for (int k = 0; k < 17; ++k) {
+        if (met[k]) lastWords[static_cast<std::size_t>(k)] = static_cast<std::uint8_t>(205 + k);  // (never cleared)
+    }
+}
+
 bool ScoreData::solosUnlocked() const {
     for (int t = 0; t < 4; ++t) {
         if (!teamHasNoContinueFinalB(t)) return false;

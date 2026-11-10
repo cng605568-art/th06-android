@@ -61,6 +61,7 @@ struct World {
     mutable bool dialogue = false;   // a dialogue script is running (kept by the Dialogue)
     bool spellCardActive() const;    // Spellcard flag bit 0
     mutable bool timeStop = false;   // GM+0x2C (Sakuya's time stop)
+    mutable bool continueRequested = false;  // GM+0x3DBB3: timeline op 16 opens the continue menu
     // The screen-effect suppression counter (0x18B8A2C; ECL ex 30): while non-zero, shakes
     // (type 1), fades and flashes are removed. Counted down once a gameplay frame.
     mutable std::int32_t screenSuppress = 0;

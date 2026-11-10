@@ -95,7 +95,7 @@ bool ResultScreen::create(std::string* error) {
     AnmLibrary& lib = *ctx_.anm;
     background_.load(*ctx_.vfs, *ctx_.textures, "result.jpg");
     if (!lib.load(*ctx_.vfs, *ctx_.textures, "result00.anm", kSlotResult, error)) return false;
-    if (!lib.load(*ctx_.vfs, *ctx_.textures, "resulttext.anm", kSlotResultText, error)) return false;
+    if (!lib.load(*ctx_.vfs, *ctx_.textures, "resulttext.anm", kSlotResultText, error, true)) return false;  // (text is drawn into it)
     loaded_ = true;
     for (int i = 0; i < kVms; ++i) {
         AnmVm& v = vm_[static_cast<std::size_t>(i)];

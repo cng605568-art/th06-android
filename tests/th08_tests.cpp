@@ -1759,6 +1759,83 @@ void testRings() {
     CHECK(p == q && std::fabs(p[0] - (32.0f + 100.0f + 1.0012f)) < 0.01f);
 }
 
+// Spell Card Practice (spec_spell_practice): the exe's tables, the Last Word unlocks, a Last
+// Word game from its own files, the end through the continue menu.
+void testSpellPractice() {
+    const char* path = std::getenv("TH08_REAL_DAT");
+    const char* exePath = std::getenv("TH08_REAL_EXE");
+    if (!path || !*path || !exePath || !*exePath) return;
+    std::string err;
+    th08::ExeTables tables;
+    auto exe = MappedFile::open(exePath, &err);
+    CHECK(exe && th08::loadExeTables(exe->bytes(), tables, &err));
+    static constexpr std::size_t kCounts[10] = {13, 19, 22, 23, 23, 19, 28, 44, 14, 17};
+    for (std::size_t s = 0; s < 10; ++s) CHECK(tables.stageCards[s].size() == kCounts[s]);
+    CHECK(tables.stageCards[0][0] == 0 && tables.stageCards[9][0] == 205 && tables.stageCards[9][16] == 221);
+    CHECK(tables.bossFinal.size() == 43 && tables.bossFinal.back() == 204);
+    CHECK(tables.bossMusic.size() == 18 && tables.bossMusic[17].lastCard >= 221 && tables.bossMusic[17].track == 20 &&
+          tables.bossMusic[17].file.find("th08_20") != std::string::npos && tables.bossMusic[11].restart == 1);
+    CHECK(tables.stageLabels[9].rfind("Last Word", 0) == 0 && tables.lastWordEcl[11].find("ecldata_sk") != std::string::npos);
+    CHECK(tables.lastWordEffects[0].find("eff09sk") != std::string::npos && !tables.practiceText.welcome.empty());
+    CHECK(th08::MainMenu::cardDifficulty(&tables, 2) == 0 && th08::MainMenu::cardDifficulty(&tables, 3) == 1 &&
+          th08::MainMenu::cardDifficulty(&tables, 195) == 4 && th08::MainMenu::cardDifficulty(&tables, 210) == 5);
+    CHECK(th08::MainMenu::lastWordStage(208) == 5 && th08::MainMenu::lastWordStage(216) == 3);
+    // Last Words: two characters with a no-continue Final B open No.206; a card seen opens No.205's
+    // neighbours only through their own rules; nothing is ever locked again.
+    {
+        th08::ScoreData sd;
+        sd.clears[0].noContinue[1] |= 0x4000;
+        sd.updateLastWords(tables.bossFinal, tables.cardCategories[1]);
+        CHECK(!sd.lastWordUnlocked(205));
+        sd.clears[5].noContinue[3] |= 0x4000;
+        sd.updateLastWords(tables.bossFinal, tables.cardCategories[1]);
+        CHECK(sd.lastWordUnlocked(205) && !sd.lastWordUnlocked(206) && !sd.lastWordUnlocked(204));
+        sd.cards[204].attempts[12] = 1;
+        CHECK(sd.lastWordUnlocked(204));
+        sd.clears[5].noContinue[3] = 1;
+        sd.updateLastWords(tables.bossFinal, tables.cardCategories[1]);
+        CHECK(sd.lastWordUnlocked(205));
+    }
+    // A Last Word game: Sakuya's (No.217) from ecldata_sk, the card declared through ex 19.
+    Vfs vfs;
+    auto file = MappedFile::open(path, &err);
+    CHECK(file && vfs.mount(openArchive("th08.dat", std::move(file), &err)));
+    TextureLibrary textures;
+    th08::AnmLibrary lib;
+    CHECK(lib.load(vfs, textures, "text.anm", th08::kSlotText, &err, true));
+    CHECK(lib.load(vfs, textures, "ascii.anm", th08::kSlotAscii, &err));
+    ZunRng rng(9);
+    th08::FlowContext ctx;
+    ctx.vfs = &vfs;
+    ctx.textures = &textures;
+    ctx.anm = &lib;
+    ctx.rng = &rng;
+    ctx.tables = &tables;
+    th08::ScoreData records;
+    ctx.records = &records;
+    auto game = std::make_unique<th08::Gameplay>(ctx);
+    th08::Gameplay::Setup setup;
+    setup.spellPractice = true;
+    setup.card = 216;
+    setup.stage = th08::MainMenu::lastWordStage(216);
+    setup.difficulty = 1;
+    setup.character = 2;
+    CHECK(game->start(setup, &err));
+    if (!err.empty()) std::fprintf(stderr, "  %s\n", err.c_str());
+    CHECK(game->state().card == 216 && game->state().power == 128.0f && game->state().lives == 8.0f && game->state().nightSteps == 0);
+    CHECK(records.practice[2].plays[3 * 5 + 1] == 1 && records.totalPlays == 0);
+    th08::MenuInput in;
+    int declared = -1;
+    for (int f = 0; f < 600 && declared < 0; ++f) {
+        in.sample(0);
+        game->tick(in);
+        if (game->world().spellcard && game->world().spellcard->active()) declared = game->world().spellcard->id();
+    }
+    CHECK(declared == 216 && records.cards[216].practiceAttempts[2] == 1 && records.cards[216].attempts[2] == 0);
+    std::printf("  (spell practice No.217 declared: card %d)\n", declared);
+    game->end();
+}
+
 // The result screen and the endings on the player's files (spec_result_ending 3, 5, 7).
 void testResultAndEnding() {
     const char* path = std::getenv("TH08_REAL_DAT");
@@ -2039,6 +2116,7 @@ int main() {
         {"ring strip: flat, square, wavy and ellipse positions", testRings},
         {"the player's th08.dat (TH08_REAL_DAT)", testRealArchive},
         {"result screen and endings (TH08_REAL_DAT)", testResultAndEnding},
+        {"spell card practice: tables, Last Words, a Last Word game (TH08_REAL_DAT, TH08_REAL_EXE)", testSpellPractice},
     };
     for (const Test& t : tests) {
         const int before = g_failures;

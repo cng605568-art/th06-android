@@ -7,6 +7,8 @@
 // Start. A row or choice whose screen is not ported yet says so.
 
 #include <array>
+#include <string>
+#include <vector>
 #include <cstdint>
 
 #include "th08/Anm.hpp"
@@ -30,6 +32,7 @@ class MainMenu {
     enum class State : int {
         Title = 0, Options = 2, KeyConfigScreen = 3, Difficulty = 4, Character = 5, Replays = 7,
         PracticeDifficulty = 8, PracticeCharacter = 9, PracticeStage = 11, ExtraDifficulty = 12, ExtraCharacter = 13,
+        SpellCharacter = 15, SpellStage = 16, SpellCards = 17,
     };
 
     explicit MainMenu(FlowContext& ctx) : ctx_(ctx) {}
@@ -42,6 +45,13 @@ class MainMenu {
     State state() const { return state_; }
     int cursor() const { return cursor_; }
     int subState() const { return sub_; }
+    int page() const { return page_; }
+    const std::string& listLine(int i) const { return listLines_[static_cast<std::size_t>(i)]; }
+    const std::string& panelLine(int i) const { return panelLines_[static_cast<std::size_t>(i)]; }
+    // A card's difficulty for Spell Card Practice (0-4, 5 = Last Word; 0x4144D0).
+    static int cardDifficulty(const ExeTables* tables, int card);
+    // A Last Word's stage index (FLOW 4.6.3).
+    static int lastWordStage(int card);
 
   private:
     void setState(State s);
@@ -53,7 +63,22 @@ class MainMenu {
     void difficulty(const MenuInput& in);
     void highlightDifficulty();
     void character(const MenuInput& in);
-    void showCards(bool afterMove);
+    void showCards(bool afterMove, int character = -1);
+    // Spell Card Practice (spec_flow_menus 4.6, claude/th08-specs/spec_spell_practice.md §2).
+    void spellCharacter(const MenuInput& in);
+    void spellStage(const MenuInput& in);
+    void spellCards(const MenuInput& in);
+    bool spellCharacterAllowed(int character) const;
+    int spellStep(int character, int step) const;
+    const std::vector<std::int32_t>* spellList() const;
+    void renderText(AnmVm& vm, std::string& line, const std::string& sjis);
+    void renderSpellRows();
+    void spellCursorMoved();
+    void detailPanel(bool entry);
+    void drawSpellStage(SpriteSink& sink);
+    void drawSpellCards(SpriteSink& sink);
+    void drawPie(SpriteSink& sink, float cx, float cy, std::uint32_t argb, float fraction, float size);
+    void drawPercent(SpriteSink& sink, float x, float y, float value, std::uint32_t argb);
     void practiceStage(const MenuInput& in);
     bool stageSelectable(int stage) const;
     void drawStageList();
@@ -78,7 +103,18 @@ class MainMenu {
     AsciiText ascii_;
 
     State state_ = State::Title;
-    bool autoReturn_ = false;  // back from a practice game: straight to the stage list
+    int autoReturn_ = 0;  // MM+0x6C: back from a practice (1) or spell practice (2) game
+    // Spell Card Practice: 16 list-text VMs (resulttext.anm bands 2-17), the rate panel's
+    // decoration (title01 sprite 144), the 7 detail lines (text.anm sprites 21-27), the eased
+    // capture rates, the page and the detail counter.
+    std::array<AnmVm, 16> listText_{};
+    std::array<std::string, 16> listLines_{};
+    AnmVm rateDeco_;
+    std::array<AnmVm, 7> panel_{};
+    std::array<std::string, 7> panelLines_{};
+    std::array<float, 4> rates_{};
+    int page_ = 0, detail_ = 0;
+    bool resultTextLoaded_ = false;
     State prevState_ = State::Title;  // MM+0x68
     int sub_ = 0;          // MM+0xC
     int stateTimer_ = 0;   // MM+0x10

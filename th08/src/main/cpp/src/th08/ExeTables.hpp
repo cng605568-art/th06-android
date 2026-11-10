@@ -92,6 +92,35 @@ struct ExeTables {
         std::string running, playTime, playsHeader, playsRow, clears, continues, practice, spellHeader, unknownCard;
     } dataText;
     static constexpr std::uint32_t kFullNames = 0x004C7F4C, kCategoryTables = 0x004C67D0, kCategoryCounts = 0x004C67E8;
+    // Spell Card Practice (claude/th08-specs/spec_spell_practice.md §1): the card list of each
+    // stage index 0-9 (9 = Last Word), the boss-final ("Last") list, the stage labels, the
+    // difficulty names, the full-width digits, the Last Word conditions (cards 204-221), the
+    // boss music by card, the Last Words' ECL / enemy ANM / effect ANM files, and the texts.
+    std::array<std::vector<std::int32_t>, 10> stageCards;
+    std::vector<std::int32_t> bossFinal;
+    std::array<std::string, 10> stageLabels;
+    std::array<std::string, 6> difficultyNames;
+    std::array<std::string, 10> wideDigits;
+    struct Condition {
+        std::string format1, format2;
+        std::array<std::int32_t, 5> ids1{}, ids2{};
+    };
+    std::array<Condition, 18> lastWordConditions;
+    struct BossMusic {
+        std::int32_t lastCard = -1, track = 0, caption = 0, restart = 0;
+        std::string file;
+    };
+    std::vector<BossMusic> bossMusic;
+    std::array<std::string, 17> lastWordEcl, lastWordEnemyAnm;
+    std::array<std::string, 6> lastWordEffects;  // cards 216-221
+    struct PracticeText {
+        std::string statsHeader, rateHeader, listHeader, welcome, unknown8, unknown9;
+        std::string panelNumber, panelOwner, panelColumns, panelNote, statsUntried, statsCard, statsLastWord;
+    } practiceText;
+    static constexpr std::uint32_t kStageCardTables = 0x004C6C40, kStageCardCounts = 0x004C6C68, kBossFinal = 0x004C6B90,
+                                   kBossFinalCount = 0x004C6C3C, kStageLabels = 0x004C8274, kDifficultyNames = 0x004C8628,
+                                   kWideDigits = 0x004C829C, kLastWordConditions = 0x004C82C8, kBossMusic = 0x004C7670,
+                                   kLastWordEcl = 0x004C70E4, kLastWordEnemyAnm = 0x004C7054, kLastWordEffects = 0x004C7144;
     static constexpr std::uint32_t kTextRunning = 0x004B7A9C, kTextPlayTime = 0x004B7A80, kTextPlaysHeader = 0x004B7A44,
                                    kTextPlaysRow = 0x004B7A28, kTextClears = 0x004B79FC, kTextContinues = 0x004B79D0,
                                    kTextPractice = 0x004B79A4, kTextSpellHeader = 0x004B795C, kTextUnknownCard = 0x004B77D8;

@@ -390,8 +390,14 @@ bool EnemyManager::stageStart(const World& w, const Vfs& vfs, TextureLibrary& te
     release(*w.anm);
     stage_ = stage;
     if (!w.anm->load(vfs, textures, "enemy.anm", kSlotFile0, error)) return false;
-    if (!w.anm->load(vfs, textures, stageEnemyAnm(stage), kSlotFile1, error)) return false;
-    const std::string name = std::format("{}{}.ecl", stageEcl(stage), spellPractice ? "sp" : "");
+    // A Last Word in spell practice has its own ECL and enemy file (spec_spell_practice 3.3).
+    const int card = w.state ? w.state->card : -1;
+    const bool lastWord = spellPractice && card >= 205 && card <= 221 && w.tables &&
+                          !w.tables->lastWordEcl[static_cast<std::size_t>(card - 205)].empty();
+    const std::string enemyFile = lastWord ? w.tables->lastWordEnemyAnm[static_cast<std::size_t>(card - 205)] : std::string(stageEnemyAnm(stage));
+    if (!w.anm->load(vfs, textures, enemyFile, kSlotFile1, error)) return false;
+    const std::string name = lastWord ? w.tables->lastWordEcl[static_cast<std::size_t>(card - 205)]
+                                      : std::format("{}{}.ecl", stageEcl(stage), spellPractice ? "sp" : "");
     const auto bytes = vfs.read(name);
     if (!bytes) {
         if (error) *error = name + " is not in the archive";
@@ -1615,6 +1621,9 @@ void EnemyManager::runTimelines() {
                         }
                         break;
                     }
+                    case 16:  // the continue menu (GM+0x3DBB3; the end of every spell-practice game)
+                        w().continueRequested = true;
+                        break;
                     default: break;
                 }
                 if (stopped) break;
@@ -2639,7 +2648,7 @@ void EnemyManager::exRoutine(Enemy& e, int routine, const std::uint8_t* ins) {
         case 18:
             if (a != 0) g_timing.speed = 1.0f / static_cast<float>(a);  // (0 would be infinite; no data does it)
             break;
-        case 19: c.args.intA[0] = 0; break;  // the practice card (spell practice not ported)
+        case 19: c.args.intA[0] = wd.state ? static_cast<std::int16_t>(wd.state->card) : 0; break;  // the practice card (GM+0x3DBB0)
         case 24: c.args.intA[0] = wd.state ? wd.state->cardsCaptured : 0; break;  // cards captured this game
         case 22:  // the fake name (every caller ended the card first)
             if (wd.spellcard) wd.spellcard->fakeName(wd, wd.tables ? std::string_view(wd.tables->fakeCardName) : std::string_view{});

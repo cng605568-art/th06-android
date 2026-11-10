@@ -108,6 +108,68 @@ bool loadExeTables(std::span<const std::uint8_t> exe, ExeTables& t, std::string*
             }
         }
     }
+    // Spell Card Practice (optional as well).
+    {
+        std::array<std::uint32_t, 10> tables{}, counts{};
+        if (words(ExeTables::kStageCardTables, 10, [&](std::size_t i, std::uint32_t v) { tables[i] = v; }) &&
+            words(ExeTables::kStageCardCounts, 10, [&](std::size_t i, std::uint32_t v) { counts[i] = v; })) {
+            for (std::size_t k = 0; k < 10; ++k) {
+                if (counts[k] > 222) continue;
+                std::vector<std::int32_t> ids;
+                if (words(tables[k], counts[k], [&](std::size_t, std::uint32_t v) { ids.push_back(static_cast<std::int32_t>(v)); })) {
+                    t.stageCards[k] = std::move(ids);
+                }
+            }
+        }
+        std::uint32_t n = 0;
+        if (words(ExeTables::kBossFinalCount, 1, [&](std::size_t, std::uint32_t v) { n = v; }) && n <= 222) {
+            (void)words(ExeTables::kBossFinal, n, [&](std::size_t, std::uint32_t v) { t.bossFinal.push_back(static_cast<std::int32_t>(v)); });
+        }
+        (void)words(ExeTables::kStageLabels, 10, [&](std::size_t i, std::uint32_t va) { t.stageLabels[i] = pe.cString(va, 16); });
+        (void)words(ExeTables::kDifficultyNames, 6, [&](std::size_t i, std::uint32_t va) { t.difficultyNames[i] = pe.cString(va, 64); });
+        (void)words(ExeTables::kWideDigits, 10, [&](std::size_t i, std::uint32_t va) { t.wideDigits[i] = pe.cString(va, 4); });
+        (void)words(ExeTables::kLastWordConditions, 18 * 12, [&](std::size_t i, std::uint32_t v) {
+            ExeTables::Condition& c = t.lastWordConditions[i / 12];
+            const std::size_t f = i % 12;
+            if (f == 0) c.format1 = pe.cString(v, 128);
+            else if (f < 6) c.ids1[f - 1] = static_cast<std::int32_t>(v);
+            else if (f == 6) c.format2 = pe.cString(v, 128);
+            else c.ids2[f - 7] = static_cast<std::int32_t>(v);
+        });
+        for (std::uint32_t at = ExeTables::kBossMusic; t.bossMusic.size() < 32; at += 0x14) {
+            ExeTables::BossMusic m;
+            std::uint32_t file = 0;
+            if (!words(at, 5, [&](std::size_t i, std::uint32_t v) {
+                    if (i == 0) m.lastCard = static_cast<std::int32_t>(v);
+                    else if (i == 1) m.track = static_cast<std::int32_t>(v);
+                    else if (i == 2) file = v;
+                    else if (i == 3) m.caption = static_cast<std::int32_t>(v);
+                    else m.restart = static_cast<std::int32_t>(v);
+                }) ||
+                m.lastCard < 0) {
+                break;
+            }
+            m.file = pe.cString(file, 64);
+            t.bossMusic.push_back(std::move(m));
+        }
+        (void)words(ExeTables::kLastWordEcl + 4 * 205, 17, [&](std::size_t i, std::uint32_t va) { t.lastWordEcl[i] = pe.cString(va, 64); });
+        (void)words(ExeTables::kLastWordEnemyAnm + 4 * 205, 17, [&](std::size_t i, std::uint32_t va) { t.lastWordEnemyAnm[i] = pe.cString(va, 64); });
+        (void)words(ExeTables::kLastWordEffects + 4 * 216, 6, [&](std::size_t i, std::uint32_t va) { t.lastWordEffects[i] = pe.cString(va, 64); });
+        ExeTables::PracticeText& p = t.practiceText;
+        p.statsHeader = pe.cString(0x004B92C0, 96);
+        p.rateHeader = pe.cString(0x004B92A4, 64);
+        p.listHeader = pe.cString(0x004B92FC, 96);
+        p.welcome = pe.cString(0x004B9320, 32);
+        p.unknown8 = pe.cString(0x004B6EA0, 32);
+        p.unknown9 = pe.cString(0x004B9330, 32);
+        p.panelNumber = pe.cString(0x004B9448, 64);
+        p.panelOwner = pe.cString(0x004B942C, 64);
+        p.panelColumns = pe.cString(0x004B9404, 96);
+        p.panelNote = pe.cString(0x004B9344, 32);
+        p.statsUntried = pe.cString(0x004B93C4, 128);
+        p.statsCard = pe.cString(0x004B938C, 128);
+        p.statsLastWord = pe.cString(0x004B9354, 128);
+    }
     {
         ExeTables::DataText& d = t.dataText;
         d.running = pe.cString(ExeTables::kTextRunning, 64);

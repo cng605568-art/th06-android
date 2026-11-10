@@ -5,6 +5,7 @@
 #include "gfx/SpriteSink.hpp"
 #include "th08/Flow.hpp"
 #include "th08/Gui.hpp"
+#include "th08/Spellcard.hpp"
 #include "th08/World.hpp"
 
 namespace touhou::th08 {
@@ -180,7 +181,7 @@ InGameMenu::Request InGameMenu::update(const World& w, std::uint16_t pressed) {
                     visible_[static_cast<std::size_t>(10 + i)] = true;
                 }
                 vms_[13] = AnmVm{};
-                if (lib.loaded(kSlotTimes)) {
+                if (mainGame && lib.loaded(kSlotTimes)) {  // (the clock only in the main game)
                     vms_[13].startFresh(lib, rng, kSlotTimes, 1);
                     vms_[13].selectSprite(g.nightSteps);
                     visible_[13] = true;
@@ -189,7 +190,11 @@ InGameMenu::Request InGameMenu::update(const World& w, std::uint16_t pressed) {
                 break;
             case State::Waiting:
                 if (timer_ < 8) break;
-                setState(mainGame || g.difficulty >= 4 ? State::OnNo : State::OnYes);
+                if (g.spellPractice) {  // No after a capture (Spellcard bit 9), else Yes
+                    setState(w.spellcard && w.spellcard->has(Spellcard::LastCaptured) ? State::OnNo : State::OnYes);
+                } else {
+                    setState(mainGame || g.difficulty >= 4 ? State::OnNo : State::OnYes);
+                }
                 [[fallthrough]];
             case State::OnYes:
             case State::OnNo: {

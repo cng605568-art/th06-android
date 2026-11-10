@@ -59,7 +59,7 @@ bool Gui::stageStart(const FlowContext& ctx, const GameState& g, bool firstStage
         lastSpellMarker_.start(lib, rng, kSlotAscii, 26);
         difficultyLabel_ = AnmVm{};
         difficultyLabel_.start(lib, rng, kSlotAscii, 25);
-        difficultyLabel_.selectSprite(283 + std::clamp(g.difficulty, 0, 4));
+        difficultyLabel_.selectSprite(g.spellPractice && g.card >= 205 ? 288 : 283 + std::clamp(g.difficulty, 0, 4));
     }
     loaded_ = true;
     // The clocks: the in-stage one starts hidden (ECL starts it); the title one shows the night.
@@ -68,7 +68,9 @@ bool Gui::stageStart(const FlowContext& ctx, const GameState& g, bool firstStage
     titleClock_ = AnmVm{};
     titleClock_.startFresh(lib, rng, kSlotTimes, 0);
     titleClock_.selectSprite(g.nightSteps);
-    if (!lib.load(*ctx.vfs, *ctx.textures, stageTextAnm(g.stage), kSlotStageText, error)) return false;
+    // (a Last Word in spell practice uses stg8txt.anm whatever its stage)
+    const bool lastWord = g.spellPractice && g.card >= 205;
+    if (!lib.load(*ctx.vfs, *ctx.textures, stageTextAnm(lastWord ? 8 : g.stage), kSlotStageText, error)) return false;
     if (firstStage) {
         for (int i = 0; i < kFrontVms; ++i) {
             front_[static_cast<std::size_t>(i)] = AnmVm{};
@@ -617,6 +619,23 @@ void Gui::copyBossName(int k) {
 void Gui::bossNameForStage(int stage) {
     static constexpr int kName[9] = {16, 17, 18, 19, 20, 21, 23, 23, 32};
     copyBossName(kName[std::clamp(stage, 0, 8)]);
+}
+
+// In spell practice (spec_spell_practice 3.5): Last Words get their own labels; ordinary 4A
+// cards copy nothing [QUIRK].
+void Gui::bossNameForCard(int stage, int card) {
+    static constexpr int kLastWord[17] = {16, 17, 18, 22, 23, 24, 25, 21, 32, 19, 20, 26, 27, 28, 29, 30, 31};
+    if (card >= 205 && card <= 221) {
+        copyBossName(kLastWord[card - 205]);
+        return;
+    }
+    switch (stage) {
+        case 3: break;
+        case 5: copyBossName(22); break;
+        case 7: copyBossName(card >= 147 && card <= 150 ? 23 : 24); break;
+        case 8: copyBossName((card >= 191 && card <= 193) ? 32 : 25); break;
+        default: bossNameForStage(stage); break;
+    }
 }
 
 void Gui::setBossSegment(int i, float start, float end, std::uint32_t color) {

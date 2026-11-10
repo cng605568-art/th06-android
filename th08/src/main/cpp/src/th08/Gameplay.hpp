@@ -14,6 +14,7 @@
 #include "th08/Bullets.hpp"
 #include "th08/Effects.hpp"
 #include "th08/Enemies.hpp"
+#include "th08/ExeTables.hpp"
 #include "th08/Flow.hpp"
 #include "th08/Gui.hpp"
 #include "th08/InGameMenu.hpp"
@@ -41,6 +42,7 @@ class Gameplay {
         bool practice = false, spellPractice = false;
         int lives = 2;  // the configured lives (the set-up applies the Extra and practice rules)
         bool restart = false;  // scene 10: the main game restarted from the pause menu
+        int card = -1;         // spell practice: the card (0-based)
     };
     // What the game hands over: the title, the ending (scene 9) or the result screen (6).
     enum class Outcome : std::uint8_t { None, Title, Ending, Results };
@@ -56,6 +58,7 @@ class Gameplay {
     void draw(SpriteSink& sink);
 
     Outcome outcome() const { return outcome_; }
+    bool menuOpen() const { return menu_.active(); }
     void requestTitle() { outcome_ = Outcome::Title; }
     // The stage end (spec 6.3), raised by the stage-clear sequence (stages 1-5) or the
     // dialogue (6A, 6B, Extra).
@@ -126,6 +129,8 @@ class Gameplay {
     bool running_ = false;
     bool effectsLoaded_ = false, etamaLoaded_ = false;
     int musicStart_ = 0;  // GM+0x3DE28: 1 = play slot 0 when play begins
+    bool keepMusic_ = false;  // a spell-practice retry whose boss music keeps playing
+    const ExeTables::BossMusic* bossMusic() const;  // spell practice: the card's record
     std::uint32_t stageFrame_ = 0;
     Outcome outcome_ = Outcome::None;
 };

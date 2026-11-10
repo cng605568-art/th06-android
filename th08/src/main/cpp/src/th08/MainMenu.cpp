@@ -72,9 +72,20 @@ bool MainMenu::create(std::string* error) {
         case Scene::ResultAfterGame: titleCursor_ = ctx_.config && ctx_.config->difficulty >= 4 ? ExtraStart : GameStart; break;
         default: titleCursor_ = GameStart; break;
     }
+    // Step 9: after a practice or spell-practice game (finished or quit) the menus walk back to
+    // the stage list or the card list (spec 4.7); the flags are cleared until then.
+    autoReturn_ = ctx_.practice ? (ctx_.spellPractice ? 2 : 1) : 0;
+    if (autoReturn_ != 0) {
+        titleCursor_ = autoReturn_ == 2 ? SpellPractice : PracticeStart;
+        ctx_.practice = ctx_.spellPractice = false;
+    }
     cursor_ = titleCursor_;
-    // After a practice game the menus walk back to the stage list (spec 4.7).
-    autoReturn_ = ctx_.previous == Scene::ResultAfterGame && ctx_.practice && !ctx_.spellPractice;
+    // Step 6: the Last Word unlocks; step 11.2: resulttext.anm (the spell practice lists).
+    if (ctx_.records && ctx_.tables) ctx_.records->updateLastWords(ctx_.tables->bossFinal, ctx_.tables->cardCategories[1]);
+    {
+        std::string ignored;
+        resultTextLoaded_ = lib.load(*ctx_.vfs, *ctx_.textures, "resulttext.anm", kSlotResultText, &ignored, true);
+    }
     if (ctx_.music && ctx_.previous != Scene::ResultViewer) ctx_.music->load(8, "bgm/th08_01.mid");
     fade_ = kFadeFrames;  // the white fade-in (screen effect type 0, 70 frames)
     state_ = prevState_ = State::Title;
@@ -146,7 +157,8 @@ void MainMenu::enterTitle() {
         ctx_.notePlayed("bgm/th08_01.mid");
     }
     // A screen that changed the background (or the first entry) brings title00.png back.
-    if (prevState_ == State::Title || isDifficultyState(prevState_) || prevState_ == State::Replays) {
+    if (prevState_ == State::Title || isDifficultyState(prevState_) || prevState_ == State::Replays || prevState_ == State::SpellCharacter ||
+        prevState_ == State::SpellStage) {
         loadBackground("title/title00.png");
     }
     if (!instancesMade_) {
@@ -171,9 +183,15 @@ void MainMenu::enterTitle() {
 void MainMenu::title(const MenuInput& in) {
     if (sub_ == 0) {
         if (inputTimer_ == 0) enterTitle();
-        if (autoReturn_) {  // state 8 next (difficulty, one pass)
-            titleCursor_ = PracticeStart;
+        if (autoReturn_ == 1) {  // state 8 next (difficulty, one pass)
             setState(State::PracticeDifficulty);
+            sendAll(5);
+            return;
+        }
+        if (autoReturn_ == 2) {  // state 15 (character, one pass)
+            ctx_.spellPractice = true;
+            setState(State::SpellCharacter);
+            sendAll(5);
             return;
         }
         // One description per pass, rows 0..8 (TH07 rendered them all at once).
@@ -249,6 +267,14 @@ void MainMenu::title(const MenuInput& in) {
                 sendAll(5);
                 hideDescription();
                 break;
+            case SpellPractice:
+                ctx_.practice = ctx_.spellPractice = true;
+                titleCursor_ = SpellPractice;
+                setState(State::SpellStage);
+                cursor_ = ctx_.character;
+                sendAll(5);
+                hideDescription();
+                break;
             case PracticeStart:
                 ctx_.practice = true;
                 ctx_.spellPractice = false;
@@ -278,7 +304,7 @@ void MainMenu::title(const MenuInput& in) {
                 if (ctx_.request) ctx_.request(Scene::ResultViewer);
                 break;
             default:
-                notPorted();  // Spell Card Practice, Replay
+                notPorted();  // Replay
                 break;
         }
         return;
@@ -517,8 +543,8 @@ void MainMenu::difficulty(const MenuInput& in) {
 
 // ---- character select (states 5, 9, 13) -------------------------------------------------------
 
-void MainMenu::showCards(bool afterMove) {
-    const Cards& c = kCards[std::clamp(cursor_, 0, 11)];
+void MainMenu::showCards(bool afterMove, int character) {
+    const Cards& c = kCards[std::clamp(character >= 0 ? character : cursor_, 0, 11)];
     for (int i = 111; i <= 130; ++i) {
         const auto k = static_cast<std::size_t>(i);
         if (!has_[k]) continue;
@@ -686,6 +712,9 @@ void MainMenu::update(const MenuInput& in) {
         case State::PracticeCharacter:
         case State::ExtraCharacter: character(in); break;
         case State::PracticeStage: practiceStage(in); break;
+        case State::SpellCharacter: spellCharacter(in); break;
+        case State::SpellStage: spellStage(in); break;
+        case State::SpellCards: spellCards(in); break;
         default: setState(State::Title); break;
     }
     // After the state handler: all 142 VMs and the current description advance.
@@ -711,6 +740,8 @@ void MainMenu::draw(SpriteSink& sink) {
     }
     if (descShown_) drawVm(sink, desc_[static_cast<std::size_t>(currentDesc_)], none);
     if (state_ == State::PracticeStage) drawStageList();
+    if (state_ == State::SpellStage) drawSpellStage(sink);
+    if (state_ == State::SpellCards) drawSpellCards(sink);
     if (notice_ > 0) {
         const std::uint32_t a = static_cast<std::uint32_t>(std::min(255, notice_ * 8)) << 24;
         ascii_.add(160, 448, "NOT PORTED YET", a | 0x00FFE0A0u);

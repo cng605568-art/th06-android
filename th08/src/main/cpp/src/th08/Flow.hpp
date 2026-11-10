@@ -110,8 +110,12 @@ struct FlowContext {
 
     // Remembered selections (spec 1.5, 6.1): the difficulty lives in the configuration.
     int character = 0;   // 0-3 teams, 4-11 solo characters
-    int stage = 0;       // stage index 0-8
+    int stage = 0;       // stage index 0-8 (the spell practice menus: 0-9, 9 = Last Word)
     bool practice = false, spellPractice = false;
+    // Spell Card Practice: the card last chosen (GM+0x3DBB0, 0-based) and its difficulty (the
+    // game's, not the remembered one; Last Words play on Normal).
+    int card = 0;
+    int spellDifficulty = 1;
 
     void playSound(int id) const;
     void notePlayed(std::string_view path) const {
@@ -143,8 +147,9 @@ class Surface {
 class AsciiText {
   public:
     // `xScale` < 0: the same as `scale` (the glyphs' horizontal scale; the advance uses `scale`).
+    // `selected`: the highlighted glyph set (sprite c + 138), drawn white.
     void add(float x, float y, std::string_view text, std::uint32_t color = 0xFFFFFFFFu, float scale = 1.0f, float advance = 13.0f,
-             float xScale = -1.0f);
+             float xScale = -1.0f, bool selected = false);
     void draw(SpriteSink& sink, AnmLibrary& anm);
     void clear() { items_.clear(); }
 
@@ -154,6 +159,7 @@ class AsciiText {
         std::string text;
         std::uint32_t color;
         float scale, advance, xScale;
+        bool selected;
     };
     std::vector<Item> items_;
 };
@@ -162,6 +168,9 @@ class AsciiText {
 // the VM visible (spec_anm_text §6.2). `colorRef` is a GDI colour (0x00BBGGRR).
 void renderSpriteText(TextureLibrary* textures, TextRenderer* text, AnmVm& vm, std::string_view sjis, std::uint32_t colorRef,
                       TextAlign align = TextAlign::Left);
+
+// printf into a string with a format read from the exe (Shift-JIS trail bytes are never '%').
+std::string sjisPrintf(const char* format, ...);
 
 // A full-screen colour overlay (fades), colour 0xAARRGGBB.
 void fillScreen(SpriteSink& sink, const UiArt* ui, std::uint32_t argb);

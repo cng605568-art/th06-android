@@ -21,6 +21,33 @@ const char* effectAnm(int stage) {
     return kNames[std::clamp(stage, 0, kStageCount - 1)];
 }
 
+// The boss music table names its files without the folder.
+std::string bossMusicPath(const ExeTables::BossMusic& m) { return m.file.find('/') == std::string::npos ? "bgm/" + m.file : m.file; }
+
+// Spell practice's boss face (spec_spell_practice 3.3).
+const char* spellFace(int stage, int card) {
+    switch (stage) {
+        case 0: return "face_st01sp.anm";
+        case 1: return "face_st02sp.anm";
+        case 2: return "face_st03sp.anm";
+        case 3:
+            switch (card) {
+                case 216: return "face_sksp.anm";
+                case 217: return "face_ymsp.anm";
+                case 218: return "face_alsp.anm";
+                case 219: return "face_rssp.anm";
+                case 220: return "face_yysp.anm";
+                case 221: return "face_yksp.anm";
+                default: return "face_st04asp.anm";
+            }
+        case 4: return "face_st04bsp.anm";
+        case 5: return card == 212 ? "face_st05msp.anm" : "face_st05sp.anm";
+        case 6: return "face_st06sp.anm";
+        case 7: return card >= 147 && card <= 150 ? "face_st06sp.anm" : "face_st07sp.anm";
+        default: return (card >= 191 && card <= 193) || card == 213 ? "face_st08msp.anm" : "face_st08sp.anm";
+    }
+}
+
 }  // namespace
 
 void World::playSound(int id) const {
@@ -79,7 +106,10 @@ bool Gameplay::loadFaces(bool fresh, std::string* error) {
         }
         facesLoaded_ = true;
     }
-    if (!state_.spellPractice) {
+    if (state_.spellPractice) {
+        if (!lib.load(*ctx_.vfs, *ctx_.textures, spellFace(state_.stage, state_.card), Dialogue::kSlotFaceBoss, error)) return false;
+        bossFacesLoaded_ = true;
+    } else {
         static const char* const kBoss[9] = {"face_st01.anm", "face_st02.anm", "face_st03.anm", "face_st04a.anm", "face_st04b.anm",
                                              "face_st05.anm", "face_st06.anm", "face_st06.anm", "face_st08m.anm"};
         if (!lib.load(*ctx_.vfs, *ctx_.textures, kBoss[state_.stage], Dialogue::kSlotFaceBoss, error)) return false;
@@ -116,8 +146,16 @@ void Gameplay::end() {
             facesLoaded_ = false;
         }
     }
-    if (ctx_.music) ctx_.music->stop();
+    if (ctx_.music && !keepMusic_) ctx_.music->stop();
     running_ = false;
+}
+
+const ExeTables::BossMusic* Gameplay::bossMusic() const {
+    if (!ctx_.tables || !state_.spellPractice) return nullptr;
+    for (const ExeTables::BossMusic& m : ctx_.tables->bossMusic) {
+        if (m.lastCard >= state_.card) return &m;
+    }
+    return nullptr;
 }
 
 bool Gameplay::start(const Setup& setup, std::string* error) {
@@ -133,8 +171,9 @@ bool Gameplay::start(const Setup& setup, std::string* error) {
     state_.difficulty = std::clamp(setup.difficulty, 0, 4);
     state_.practice = setup.practice || setup.spellPractice;
     state_.spellPractice = setup.spellPractice;
-    state_.nightSteps = state_.difficulty >= 4 ? 6 : 0;
-    state_.lives = state_.difficulty >= 4 ? 2.0f : state_.practice ? 8.0f : static_cast<float>(setup.lives);
+    state_.card = setup.spellPractice ? std::clamp(setup.card, 0, 221) : -1;
+    state_.nightSteps = state_.stage == 8 ? 6 : 0;  // (keyed on the stage index, spec_spell_practice 8.5)
+    state_.lives = state_.practice ? 8.0f : state_.difficulty >= 4 ? 2.0f : static_cast<float>(setup.lives);
     state_.bombs = 3.0f;
     state_.hiScore = 100000;
     static constexpr std::int32_t kRankStart[5] = {10, 10, 8, 8, 16};
@@ -182,6 +221,7 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
     stageFrame_ = 0;
     // Practice power (step 6): Stage 1 -> 0, Stage 2 -> 112, later -> 128.
     if (state_.practice && !state_.spellPractice) state_.power = state_.stage == 0 ? 0.0f : state_.stage == 1 ? 112.0f : 128.0f;
+    if (state_.spellPractice) state_.power = state_.card <= 1 ? 30.0f : state_.card <= 12 ? 80.0f : 128.0f;
     // Per-stage counters: time points and their quota (spec_player 12.1), subrank, the
     // gauge frame counters, the next extend threshold.
     state_.timePoints = 0;
@@ -225,7 +265,13 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
     if (!lib.load(*ctx_.vfs, *ctx_.textures, "etama.anm", kSlotEtama, error)) return false;
     etamaLoaded_ = true;
     if (!enemies_->stageStart(world_, *ctx_.vfs, *ctx_.textures, state_.stage, state_.spellPractice, error)) return false;
-    if (!lib.load(*ctx_.vfs, *ctx_.textures, effectAnm(state_.stage), kSlotEffects, error)) return false;
+    {
+        std::string eff = effectAnm(state_.stage);
+        if (state_.spellPractice && state_.card >= 216 && ctx_.tables && !ctx_.tables->lastWordEffects[static_cast<std::size_t>(state_.card - 216)].empty()) {
+            eff = ctx_.tables->lastWordEffects[static_cast<std::size_t>(state_.card - 216)];
+        }
+        if (!lib.load(*ctx_.vfs, *ctx_.textures, eff, kSlotEffects, error)) return false;
+    }
     effectsLoaded_ = true;
     effects_->reset();
     bullets_->stageStart(world_);
@@ -320,13 +366,28 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
     dialogue_.onSound = [this](int id) { world_.playSound(id); };
     // Step 11: the stage's songs into slots 0-2 (blank names skipped); step 13: start them
     // when play begins.
-    if (ctx_.music) {
+    musicStart_ = 1;
+    if (const ExeTables::BossMusic* m = bossMusic()) {
+        // Spell practice (spec_spell_practice 3.4): the card's boss music in slot 0, kept
+        // playing over a retry unless the record says otherwise.
+        if (keepMusic_) {
+            if (ctx_.music) ctx_.music->resume();
+            musicStart_ = 2;
+        } else if (ctx_.music) {
+            ctx_.music->load(0, bossMusicPath(*m));
+        }
+        // The spell-background base of 6A / 6B / Extra (spec 3.2).
+        const int c = state_.card;
+        if (state_.stage >= 6 && !(c >= 119 && c <= 122) && !(c >= 147 && c <= 150) && !(c >= 191 && c <= 193) && c != 213) {
+            background_.setSpellBackgrounds(2, 2);
+        }
+    } else if (ctx_.music) {
         for (int k = 0; k < 3; ++k) {
             const std::string& song = background_.songPath(k);
             if (!song.empty() && song[0] != ' ') ctx_.music->load(k, song);
         }
     }
-    musicStart_ = 1;
+    keepMusic_ = false;
     log::info("th08: stage index {} for character {} on difficulty {}{}", state_.stage, state_.character, state_.difficulty,
               state_.practice ? " (practice)" : "");
     return true;
@@ -358,6 +419,7 @@ void Gameplay::menuDone(InGameMenu::Request request) {
             break;
         }
         case R::Retry: {  // the same stage again, under the old frame's tiles
+            if (const ExeTables::BossMusic* m = bossMusic()) keepMusic_ = m->restart == 0;
             std::string err;
             if (!start(setup_, &err)) outcome_ = Outcome::Title;
             else if (ctx_.rng) gui_.startTransition(*ctx_.rng);
@@ -494,11 +556,16 @@ void Gameplay::tick(const MenuInput& in) {
     }
     // GameManager (priority 4): the music starts when play begins (spec 6.6 step 3).
     if (musicStart_ != 0) {
-        gui_.bossNameForStage(state_.stage);  // (the GUI start hook 0x438046)
+        // (the GUI start hook 0x438046)
+        if (state_.spellPractice) gui_.bossNameForCard(state_.stage, state_.card);
+        else gui_.bossNameForStage(state_.stage);
+        const ExeTables::BossMusic* m = bossMusic();
         if (musicStart_ == 1) {
             if (ctx_.music) ctx_.music->playLoaded(0);
-            if (!state_.practice) ctx_.notePlayed(background_.songPath(0));
+            if (m) ctx_.notePlayed(bossMusicPath(*m));  // (practice sets the Music Room byte too)
+            else if (!state_.practice) ctx_.notePlayed(background_.songPath(0));
         }
+        if (m && (musicStart_ == 1 || m->restart != 0) && ctx_.rng) gui_.musicCaption(*ctx_.rng, m->caption);
         musicStart_ = 0;
     }
     state_.rollScore();  // (step 9)
@@ -530,7 +597,8 @@ void Gameplay::tick(const MenuInput& in) {
         dialogue_.run(world_, gameInput_, prevGameInput_);
     }
     // Out of lives: the continue menu (spec_flow 7.3).
-    if (player_->continueRequested() && !menu_.active()) {
+    if ((player_->continueRequested() || world_.continueRequested) && !menu_.active()) {
+        world_.continueRequested = false;
         if (ctx_.music) ctx_.music->pause();
         menu_.openContinue(world_);
     }
