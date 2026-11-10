@@ -30,6 +30,9 @@ struct GameState {
     int difficulty = 1;  // 0 Easy .. 3 Lunatic, 4 Extra
     bool practice = false, spellPractice = false;
     int card = -1;  // GM+0x3DBB0: the spell-practice card (0-based)
+    // The configuration copy's slow mode (forced off for Extra, practice, spell practice and
+    // playback): passes are skipped with many bullets (spec_flow 6.6 step 10).
+    bool slowMode = false;
     // Scores in the internal unit (points / 10); the HUD prints them followed by the continue digit.
     std::uint32_t score = 0, guiScore = 0, hiScore = 100000, rollSpeed = 0;
     int continues = 0, hiScoreContinues = 0;

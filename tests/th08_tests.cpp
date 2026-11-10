@@ -2613,6 +2613,39 @@ void testReplayMenu() {
     CHECK(back.create(&err));
     CHECK(!ctx.demo && !ctx.replayFlag && ctx.character == 0);
     ctx.attractDemo = false;
+    // Slow mode (the Option setting): a Lunatic Stage 5 opening skips passes once the bullets
+    // pile up; the same run without it does not.
+    {
+        th08::GameConfig cfg;
+        ctx.config = &cfg;
+        std::size_t stageFrames[2] = {};
+        int skipped[2] = {};
+        th08::Player::devNoDeath = true;
+        for (int slow = 0; slow < 2; ++slow) {
+            cfg.slowMode = static_cast<std::uint8_t>(slow);
+            rng.seed(4321);
+            auto g = std::make_unique<th08::Gameplay>(ctx);
+            th08::Gameplay::Setup ls;
+            ls.stage = 5;
+            ls.difficulty = 3;
+            ls.character = 0;
+            CHECK(g->start(ls, &err));
+            CHECK(g->state().slowMode == (slow == 1));
+            th08::MenuInput gi;
+            for (int f = 0; f < 900 && g->outcome() == th08::Gameplay::Outcome::None; ++f) {
+                gi.sample(th08::BtnShoot);
+                const auto before = g->stageFrame();
+                g->tick(gi);
+                if (g->stageFrame() == before && f > 200) ++skipped[slow];
+            }
+            stageFrames[slow] = g->stageFrame();
+            g->end();
+        }
+        th08::Player::devNoDeath = false;
+        ctx.config = nullptr;
+        std::printf("  (slow mode: stage frame %zu after 900 passes (%d held), %zu without (%d))\n", stageFrames[1], skipped[1], stageFrames[0], skipped[0]);
+        CHECK(skipped[0] == 0 && skipped[1] > 10 && stageFrames[1] < stageFrames[0]);
+    }
 }
 
 int main() {
@@ -2637,7 +2670,7 @@ int main() {
         {"spell card practice: tables, Last Words, a Last Word game (TH08_REAL_DAT, TH08_REAL_EXE)", testSpellPractice},
         {"the four demo replays played back (TH08_REAL_DAT, TH08_REAL_EXE)", testDemoReplays},
         {"a recorded run played back frame for frame (TH08_REAL_DAT, TH08_REAL_EXE)", testReplayRoundTrip},
-        {"the replay menu: scan, timing, lists, modes, start, return, pages (TH08_REAL_DAT, TH08_REAL_EXE)", testReplayMenu},
+        {"the replay menu, playback mode 1, the attract demo, slow mode (TH08_REAL_DAT, TH08_REAL_EXE)", testReplayMenu},
     };
     for (const Test& t : tests) {
         const int before = g_failures;

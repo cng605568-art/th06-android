@@ -171,6 +171,10 @@ class Gameplay {
     AnmVm demoVm_;
     bool demoVmOn_ = false;
     int demoCounter_ = 0;  // GM+0x3DBB8
+    // Slow mode (spec_flow 6.6 step 10, TH07's rule): the lag counter, and the skip flag that
+    // stays raised into the next pass (no pause check then).
+    std::uint32_t slowLag_ = 0;
+    bool slowSkip_ = false;
     bool inputDelay_ = true;
     ReplayFile record_;
     bool recordValid_ = false, retrying_ = false;

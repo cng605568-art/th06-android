@@ -100,7 +100,7 @@ InGameMenu::Request InGameMenu::update(const World& w, std::uint16_t pressed) {
                 // (a spell-practice Last Word shows sprite 288)
                 vms_[7].selectSprite(g.spellPractice && g.card >= 205 ? 288 : 283 + std::clamp(g.difficulty, 0, 4));
                 visible_[8] = g.practice;
-                visible_[9] = false;  // (the slow mode of the configuration copy: not ported)
+                visible_[9] = g.slowMode;  // (the configuration copy's slow mode)
                 setState(State::OnResume);
                 [[fallthrough]];
             case State::OnResume:

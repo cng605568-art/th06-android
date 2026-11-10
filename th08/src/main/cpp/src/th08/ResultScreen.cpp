@@ -148,7 +148,7 @@ bool ResultScreen::create(std::string* error) {
     name_[8] = 0;
     for (int k = 0; k < 8; ++k) name_[static_cast<std::size_t>(k)] = name_[static_cast<std::size_t>(k)] == 0 ? ' ' : name_[static_cast<std::size_t>(k)];
     if (mode_ == Mode::PracticeEnd) {
-        // The practice best (spec 1.3 step 7), then the replay prompt: not ported, so leave.
+        // The practice best (spec 1.3 step 7), then the replay prompt (or leave).
         const auto slot = static_cast<std::size_t>(game_.stage * 5 + difficulty_);
         PracticeRecord& p = records_.practice[static_cast<std::size_t>(character_)];
         if (slot < p.best.size() && p.best[slot] < game_.score) {

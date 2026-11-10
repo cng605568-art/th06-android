@@ -172,6 +172,8 @@ bool Gameplay::start(const Setup& setup, std::string* error) {
     demoVm_ = AnmVm{};
     demoVmOn_ = false;
     demoCounter_ = 0;
+    slowLag_ = 0;
+    slowSkip_ = false;
     if (replay_) {  // (character, difficulty and card from the file; the practice flag clear)
         const ReplaySummary& sm = replay_->summary;
         setup_.character = std::clamp(sm.character(), 0, 11);
@@ -199,6 +201,7 @@ bool Gameplay::start(const Setup& setup, std::string* error) {
     state_.character = std::clamp(s0.character, 0, 11);
     state_.difficulty = std::clamp(s0.difficulty, 0, 4);
     state_.practice = !replay_ && (s0.practice || s0.spellPractice);  // (clear in every playback)
+    state_.slowMode = !replay_ && !state_.practice && state_.difficulty < 4 && ctx_.config && ctx_.config->slowMode != 0;
     state_.spellPractice = s0.spellPractice;
     state_.card = s0.spellPractice ? std::clamp(s0.card, 0, 221) : -1;
     state_.nightSteps = state_.stage == 8 ? 6 : 0;  // (keyed on the stage index, spec_spell_practice 8.5)
@@ -736,7 +739,7 @@ void Gameplay::tick(const MenuInput& in) {
         return;
     }
     // The pause check (step 4; never in a demo).
-    if ((in.pressed(BtnMenu) || backPressed) && !setup_.demo) {
+    if ((in.pressed(BtnMenu) || backPressed) && !setup_.demo && !slowSkip_) {
         if (ctx_.music) ctx_.music->pause();
         menu_.openPause(world_);
         ++state_.pauses;
@@ -780,6 +783,17 @@ void Gameplay::tick(const MenuInput& in) {
         }
     }
     state_.rollScore();  // (step 9)
+    // Step 10: slow mode skips one pass in 3, 4 or 5 with 320, 224 or 128 bullets or more.
+    slowSkip_ = false;
+    if (state_.slowMode) {
+        ++slowLag_;
+        const int n = bullets_->liveBullets();
+        if ((n >= 320 && slowLag_ % 3 == 0) || (n >= 224 && n < 320 && slowLag_ % 4 == 0) || (n >= 128 && n < 224 && slowLag_ % 5 == 0)) {
+            slowSkip_ = true;
+            return;
+        }
+        if (n < 128) slowLag_ = 0;
+    }
     // The Supervisor (calc priority 0) counts the screen-effect suppression down.
     if (world_.screenSuppress != 0) --world_.screenSuppress;
     ZunRng& rng = *ctx_.rng;

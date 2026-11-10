@@ -733,7 +733,7 @@ void Player::spawnShots(const World& w, int cycle) {
 void Player::fireCycle(const World& w, std::uint16_t input) {
     if (w.stageFrame < 20) return;
     if (fireCycle_.current < 0) return;
-    // (The Dissolve spell stops it here: not ported yet.)
+    if (bombActive_ && bomb_.spell == Spell::Dissolve) return;  // (no tick either)
     if (ticked(fireCycle_) && !(bombActive_ && (character_ == 1 || character_ == 6 || character_ == 7))) {
         spawnShots(w, fireCycle_.current);
     }
@@ -1193,7 +1193,7 @@ bool Player::deathStep(const World& w) {
     const bool youkaiSprite = isSolo(character_) ? isYoukaiSolo(character_) : focus_ == 1;
     setSpriteScript(w, youkaiSprite ? 5 : 0);
     if (g.lives < 1.0f) {
-        continueRequested_ = true;  // (the continue menu is not ported yet)
+        continueRequested_ = true;  // (the GameManager opens the continue menu)
         return false;
     }
     g.lives -= 1.0f;
