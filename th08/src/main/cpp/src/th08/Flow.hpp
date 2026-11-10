@@ -9,6 +9,7 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -102,6 +103,11 @@ struct FlowContext {
     // game's RNG (the write at a fresh set-up).
     ScoreData* records = nullptr;
     std::function<void(bool gameRng)> saveScores;
+    // Replays: the run just played (null when there is none to save), the summary of save
+    // slot 1-15 (nullopt: empty), and SaveReplay into a slot under a name (spec_replays 4.1).
+    bool replayToSave = false;
+    std::function<std::optional<std::array<std::uint8_t, 0xCC>>(int slot)> replaySlot;
+    std::function<bool(int slot, const std::string& name)> saveReplay;
     Scene previous = Scene::Init;        // the Supervisor's previous scene
 
     // Unlocks (spec 5.1), from score.dat once it is ported.

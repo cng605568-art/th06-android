@@ -1963,13 +1963,19 @@ void testReplayRoundTrip() {
         return Snap{g.state().score, g.player().position().x, g.player().position().y, g.state().lives, g.state().bombs, g.state().power,
                     rng.currentSeed(), g.enemies().liveCount(), g.bullets().liveBullets()};
     };
-    for (const int stage : {0, 3}) {
-        // The live run.
+    struct Run {
+        int stage, character, card;
+    };
+    for (const Run run : {Run{0, 0, -1}, Run{3, 6, -1}, Run{0, 1, 3}, Run{3, 2, 216}}) {
+        const int stage = run.stage;
+        // The live run (a practice stage, or a spell practice card).
         auto live = std::make_unique<th08::Gameplay>(ctx);
         th08::Gameplay::Setup setup;
-        setup.character = stage == 0 ? 0 : 6;
-        setup.difficulty = 2;
-        setup.practice = true;
+        setup.character = run.character;
+        setup.difficulty = run.card >= 205 ? 1 : 2;
+        setup.practice = run.card < 0;
+        setup.spellPractice = run.card >= 0;
+        setup.card = run.card;
         setup.stage = stage;
         CHECK(live->start(setup, &err));
         th08::MenuInput in;
@@ -1995,7 +2001,7 @@ void testReplayRoundTrip() {
         live->closeRecording();
         th08::ReplayFile rec = live->recorded();
         live->end();
-        CHECK(rec.hasStage(stage) && rec.stages[static_cast<std::size_t>(stage)].entries.size() == want.size() + 2);
+        CHECK(rec.hasStage(stage) && rec.stages[static_cast<std::size_t>(stage)].entries.size() <= want.size() + 2);  // (menus are not recorded)
         ZunRng writer(3);
         const auto bytes = rec.serialize(writer, "user");
         const auto back = th08::ReplayFile::parse(bytes, &err);
@@ -2014,7 +2020,7 @@ void testReplayRoundTrip() {
             play->tick(in);
             if (firstDiff == want.size() && !(snap(*play) == want[f])) firstDiff = f;
         }
-        std::printf("  (stage %d: %zu frames recorded, first difference at %zu)\n", stage, want.size(), firstDiff);
+        std::printf("  (stage %d card %d: %zu frames recorded, first difference at %zu)\n", stage, run.card, want.size(), firstDiff);
         CHECK(firstDiff == want.size());
         play->end();
     }
@@ -2226,6 +2232,45 @@ void testResultAndEnding() {
         for (int i = 0; i < 30 && !rs.done(); ++i) pass(0);
         CHECK(rs.done() && saves == 1 && asked == th08::Scene::MainMenu);
         ctx.tables = nullptr;
+    }
+    // The replay prompt after a practice game (spec 4): Yes, slot 1 (empty), the name grid's
+    // END, and the replay is written under the remembered name.
+    {
+        th08::ScoreData records;
+        std::memcpy(records.lastName.data(), "ME      ", 8);
+        records.hasLastName = true;
+        th08::GameState p = g;
+        p.practice = true;
+        int savedSlot = 0;
+        std::string savedName;
+        ctx.replayToSave = true;
+        ctx.replaySlot = [](int) { return std::optional<std::array<std::uint8_t, 0xCC>>{}; };
+        ctx.saveReplay = [&](int slot, const std::string& name) {
+            savedSlot = slot;
+            savedName = name;
+            return true;
+        };
+        saves = 0;
+        th08::ResultScreen rs(ctx, th08::ResultScreen::Mode::PracticeEnd, p, records);
+        CHECK(rs.create(&err) && rs.state() == th08::ResultScreen::State::ReplaySave);
+        auto pass = [&](std::uint16_t b) {
+            in.sample(b);
+            rs.update(in);
+        };
+        for (int i = 0; i < 13; ++i) pass(0);
+        pass(th08::BtnShoot);  // Yes
+        CHECK(rs.state() == th08::ResultScreen::State::ReplaySlots);
+        for (int i = 0; i < 21; ++i) pass(0);
+        pass(th08::BtnShoot);  // slot 1
+        CHECK(rs.state() == th08::ResultScreen::State::ReplayName && rs.keyCursor() == th08::ResultScreen::kKeyEnd);
+        for (int i = 0; i < 31; ++i) pass(0);
+        pass(th08::BtnShoot);  // END (the remembered name)
+        CHECK(savedSlot == 1 && savedName == "ME      " && rs.state() == th08::ResultScreen::State::Leave);
+        for (int i = 0; i < 25 && !rs.done(); ++i) pass(0);
+        CHECK(rs.done() && saves == 1);
+        ctx.replayToSave = false;
+        ctx.replaySlot = nullptr;
+        ctx.saveReplay = nullptr;
     }
     // An ending script: lines into the text VMs, @w waits, @r clears, @z ends.
     {

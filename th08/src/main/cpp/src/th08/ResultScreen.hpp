@@ -10,6 +10,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 
 #include "th08/Anm.hpp"
@@ -30,6 +31,7 @@ class ResultScreen {
         Menu, Leave, Difficulty, Character, Table, SpellCategory, SpellColumn, SpellList,  // the viewer (1-8)
         NameEntry, Statistics, StatisticsOut,                                             // after a game (9, 15, 16)
         DataIn, DataShown, DataOut,                                                       // play statistics (19-21)
+        ReplaySave, ReplayCannot, ReplaySlots, ReplayName, ReplayOverwrite,               // the replay prompt (10-14)
     };
     static constexpr int kTextVms = 30;
     static constexpr int kVms = 72;
@@ -85,6 +87,12 @@ class ResultScreen {
     void drawTable(int difficulty, int character);
     void drawGrid();
     void drawStatistics();
+    // The replay prompt (spec 4).
+    void replayPrompt(const MenuInput& in);
+    void enterSlots();
+    void drawSlots();
+    // The name grid's input on `name` (spec 3.4): 0 nothing, 1 END chosen, 2 Menu pressed.
+    int gridInput(const MenuInput& in, std::array<char, 9>& name, int& cursor);
     HighScoreRecord* runRecord();
 
     FlowContext& ctx_;
@@ -109,6 +117,11 @@ class ResultScreen {
     bool animating_ = false, leaving_ = false;
     int cheatStep_ = 0;
     std::array<std::array<int, 13>, 6> counts_{};
+    int yesNo_ = 0, slot_ = 0, replayNameCursor_ = 0;
+    std::array<char, 9> replayName_{' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 0};
+    std::array<std::optional<std::array<std::uint8_t, 0xCC>>, 15> slots_{};
+    std::string replayDate_;
+    bool lastNameFound_ = false;
     int difficulty_ = 1, character_ = 0;
     int rank_ = -1;
     int nameCursor_ = 0, keyCursor_ = 0;

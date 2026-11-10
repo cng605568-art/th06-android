@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstdlib>
 #include <format>
+#include <ctime>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <random>
@@ -206,6 +208,7 @@ void Th08Game::applyScene() {
         musicRoom_.reset();
         active_ = requested_ = Scene::MainMenu;  // as Init
     }
+    if (to == Scene::ReplayEnd) active_ = Scene::MainMenu;  // (scene 7: the title, which opens the replay menu)
     if (active_ == Scene::MainMenu) {
         musicRoom_.reset();
         gameplay_.reset();
@@ -318,6 +321,15 @@ bool Th08Game::start(const GameContext& ctx) {
     };
     flow_.records = &scores_;
     flow_.saveScores = [this](bool gameRng) { saveScores(gameRng); };
+    flow_.replaySlot = [this](int slot) -> std::optional<std::array<std::uint8_t, 0xCC>> {
+        if (storage_.empty()) return std::nullopt;
+        const auto bytes = readFile(storage_ + std::format("replay/th8_{:02d}.rpy", slot));
+        if (bytes.empty()) return std::nullopt;
+        const auto r = ReplayFile::parse(bytes, nullptr, true);
+        if (!r) return std::nullopt;
+        return r->summary.bytes;
+    };
+    flow_.saveReplay = [this](int slot, const std::string& name) { return saveReplay(std::format("replay/th8_{:02d}.rpy", slot), name); };
     refreshUnlocks();
     menu_ = std::make_unique<MainMenu>(flow_);
     if (!menu_->create(&err)) {
@@ -337,6 +349,79 @@ bool Th08Game::start(const GameContext& ctx) {
         requested_ = v == "result" ? Scene::ResultAfterGame : Scene::Ending;
     }
     return true;
+}
+
+std::string Th08Game::replayUserText(const std::string& name) const {
+    if (!tablesLoaded_) return {};
+    const ExeTables::UserText& u = tables_.userText;
+    const GameState& g = lastGame_;
+    std::string t;
+    char when[32] = {};
+    const std::time_t now = std::time(nullptr);
+    std::tm tm{};
+#if defined(_WIN32)
+    localtime_s(&tm, &now);
+#else
+    localtime_r(&now, &tm);
+#endif
+    std::strftime(when, sizeof when, u.timeFormat.c_str(), &tm);
+    t += sjisPrintf(u.name.c_str(), name.c_str());
+    t += sjisPrintf(u.time.c_str(), when);
+    t += sjisPrintf(u.character.c_str(), tables_.fullNames[static_cast<std::size_t>(std::clamp(g.character, 0, 11))].c_str());
+    t += sjisPrintf(u.score.c_str(), static_cast<int>(g.guiScore));
+    t += sjisPrintf(u.difficulty.c_str(), u.difficulties[static_cast<std::size_t>(std::clamp(g.difficulty, 0, 4))].c_str());
+    if (g.spellPractice && g.card >= 0) {
+        t += sjisPrintf(u.card.c_str(), g.card + 1, lastReplay_.summary.cardName().c_str());
+    } else {
+        t += sjisPrintf(u.lastStage.c_str(), g.finished || g.stage >= 9 ? u.clear.c_str() : u.stages[static_cast<std::size_t>(g.stage)].c_str());
+    }
+    t += sjisPrintf(u.misses.c_str(), static_cast<int>(g.misses));
+    t += sjisPrintf(u.bombs.c_str(), static_cast<int>(g.bombsUsedGame));
+    t += sjisPrintf(u.slowdown.c_str(), 0.0);
+    const int h = g.countedFrames != 0 ? static_cast<int>(static_cast<float>(g.humanFrames) / static_cast<float>(g.countedFrames) * 10000.0f) : 0;
+    t += sjisPrintf(u.humanRate.c_str(), static_cast<double>(h) / 100.0);
+    t += sjisPrintf(u.version.c_str(), 1, 0, 'd');
+    return t;
+}
+
+bool Th08Game::saveReplay(const std::string& path, const std::string& name) {
+    if (!flow_.replayToSave || storage_.empty()) return false;
+    ReplayFile r = lastReplay_;
+    if (r.summary.slowModeRecorded()) return false;
+    // Step 6: the stage closed again, its end pointer 6 bytes on (two unwritten entries); the
+    // final score into its block.
+    const int s = std::clamp(lastGame_.stage, 0, kReplayStages - 1);
+    if (r.hasStage(s)) {
+        ReplayStage& b = r.stages[static_cast<std::size_t>(s)];
+        b.entries.insert(b.entries.end(), {0, 0, 0});
+        b.carriedScore = lastGame_.score;
+    }
+    // Step 7: the summary.
+    ReplaySummary& sm = r.summary;
+    sm.setScore(lastGame_.guiScore);
+    if (lastGame_.spellPractice && lastGame_.card >= 0 && lastGame_.card < kCardCount) {
+        sm.setCardName(scores_.cards[static_cast<std::size_t>(lastGame_.card)].name);
+    }
+    sm.setSlowdown(0.0f);
+    sm.setName(name);
+    {
+        const std::time_t now = std::time(nullptr);
+        std::tm tm{};
+#if defined(_WIN32)
+        localtime_s(&tm, &now);
+#else
+        localtime_r(&now, &tm);
+#endif
+        sm.setDate(std::format("{:02d}/{:02d}", tm.tm_mon + 1, tm.tm_mday));
+    }
+    const std::vector<std::uint8_t> bytes = r.serialize(rng_, replayUserText(name));
+    std::error_code ec;
+    std::filesystem::create_directories(storage_ + "replay", ec);
+    std::ofstream f(storage_ + path, std::ios::binary | std::ios::trunc);
+    if (!f) return false;
+    f.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    log::info("th08: replay written to {} ({} bytes)", path, bytes.size());
+    return static_cast<bool>(f);
 }
 
 void Th08Game::refreshUnlocks() {
@@ -388,16 +473,25 @@ void Th08Game::tick(const InputState& input) {
             }();
             if (devLives && gameplay_->world().state) gameplay_->world().state->lives = 8.0f;
             gameplay_->tick(input_);
-            switch (gameplay_->outcome()) {
-                case Gameplay::Outcome::Title: requested_ = Scene::MainMenu; break;
-                case Gameplay::Outcome::Ending:
-                    lastGame_ = gameplay_->state();
-                    requested_ = Scene::Ending;
+            const auto outcome = gameplay_->outcome();
+            if (outcome == Gameplay::Outcome::Ending || outcome == Gameplay::Outcome::Results) {
+                // The run's recording goes on to the result screen's prompt (the GameManager's
+                // removal closes the stage being played, spec_replays 2.3).
+                lastGame_ = gameplay_->state();
+                flow_.replayToSave = gameplay_->recording() && !gameplay_->replaying();
+                if (flow_.replayToSave) {
+                    gameplay_->closeRecording();
+                    lastReplay_ = gameplay_->recorded();
+                }
+            }
+            switch (outcome) {
+                case Gameplay::Outcome::Title:
+                    flow_.replayToSave = false;  // (a quit drops the recording)
+                    requested_ = Scene::MainMenu;
                     break;
-                case Gameplay::Outcome::Results:
-                    lastGame_ = gameplay_->state();
-                    requested_ = Scene::ResultAfterGame;
-                    break;
+                case Gameplay::Outcome::ReplayEnd: requested_ = Scene::ReplayEnd; break;
+                case Gameplay::Outcome::Ending: requested_ = Scene::Ending; break;
+                case Gameplay::Outcome::Results: requested_ = Scene::ResultAfterGame; break;
                 case Gameplay::Outcome::None: break;
             }
         } else if (ending_) {

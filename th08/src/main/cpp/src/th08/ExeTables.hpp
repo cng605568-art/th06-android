@@ -117,6 +117,16 @@ struct ExeTables {
         std::string statsHeader, rateHeader, listHeader, welcome, unknown8, unknown9;
         std::string panelNumber, panelOwner, panelColumns, panelNote, statsUntried, statsCard, statsLastWord;
     } practiceText;
+    // Replays: the short character names of the slot lists (0x4C8010), and the USER
+    // section's lines (spec_replays 4.3): the label formats, the time format, the difficulty
+    // and stage names, "Clear".
+    std::array<std::string, 12> shortNames;
+    struct UserText {
+        std::string name, time, timeFormat, character, score, difficulty, card, lastStage, clear, misses, bombs, slowdown, humanRate, version;
+        std::array<std::string, 5> difficulties;
+        std::array<std::string, 9> stages;
+    } userText;
+    static constexpr std::uint32_t kShortNames = 0x004C8010, kUserDifficulties = 0x004C7F30, kUserStages = 0x004C7FAC;
     static constexpr std::uint32_t kStageCardTables = 0x004C6C40, kStageCardCounts = 0x004C6C68, kBossFinal = 0x004C6B90,
                                    kBossFinalCount = 0x004C6C3C, kStageLabels = 0x004C8274, kDifficultyNames = 0x004C8628,
                                    kWideDigits = 0x004C829C, kLastWordConditions = 0x004C82C8, kBossMusic = 0x004C7670,

@@ -20,6 +20,7 @@
 #include "th08/Gameplay.hpp"
 #include "th08/MainMenu.hpp"
 #include "th08/MusicRoom.hpp"
+#include "th08/Replay.hpp"
 #include "th08/ResultScreen.hpp"
 #include "th08/ScoreFile.hpp"
 #include "th08/SoundPlayer.hpp"
@@ -61,6 +62,10 @@ class Th08Game final : public Game {
     void saveScores(bool gameRng = false);
     bool anyScene() const { return menu_ || musicRoom_ || gameplay_ || ending_ || result_; }
     void refreshUnlocks();
+    // SaveReplay (spec_replays 4.1): the last run's recording closed, named, dated, with its
+    // USER text, written under the storage folder. False when there is nothing to write.
+    bool saveReplay(const std::string& path, const std::string& name);
+    std::string replayUserText(const std::string& name) const;
     void applyScene();
 
     const UiArt* ui_ = nullptr;
@@ -87,6 +92,7 @@ class Th08Game final : public Game {
     std::unique_ptr<Ending> ending_;
     std::unique_ptr<ResultScreen> result_;
     GameState lastGame_;  // the run as it ended (for the ending and the result screen)
+    ReplayFile lastReplay_;  // its recording
     std::vector<MusicTrack> musicTracks_;  // musiccmt.txt: a played song's Music Room index
     Scene active_ = Scene::MainMenu, requested_ = Scene::MainMenu;
     bool quit_ = false;

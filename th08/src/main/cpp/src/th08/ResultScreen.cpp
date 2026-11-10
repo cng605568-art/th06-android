@@ -141,6 +141,7 @@ bool ResultScreen::create(std::string* error) {
         setState(State::Menu);
         return true;
     }
+    lastNameFound_ = records_.hasLastName;
     // The LSNM name (8 spaces when the file has none).
     if (records_.hasLastName) std::memcpy(name_.data(), records_.lastName.data(), 8);
     else std::memset(name_.data(), ' ', 8);
@@ -154,9 +155,11 @@ bool ResultScreen::create(std::string* error) {
             p.best[slot] = game_.score;
             p.hasData = true;
         }
-        setState(State::Leave);
+        replayName_ = name_;
+        setState(ctx_.replayToSave ? State::ReplaySave : State::Leave);  // (the prompt decides on pass 10)
     } else if (mode_ == Mode::SpellPracticeEnd) {
-        setState(State::Leave);  // (no PSCR update; the cards were counted in play)
+        replayName_ = name_;  // (no PSCR update; the cards were counted in play)
+        setState(ctx_.replayToSave ? State::ReplaySave : State::Leave);
     } else {
         setState(State::NameEntry);
     }
@@ -216,6 +219,16 @@ void ResultScreen::nameEntry(const MenuInput& in) {
         return;
     }
     if (pass_ < 10) return;
+    const int r = gridInput(in, name_, nameCursor_);
+    if (HighScoreRecord* rec = runRecord()) std::memcpy(rec->data() + 0x17, name_.data(), 8);
+    if (r == 1) {
+        finishName();
+    } else if (r == 2) {
+        finishName();  // Esc backspaces, then finishes [QUIRK]
+    }
+}
+
+int ResultScreen::gridInput(const MenuInput& in, std::array<char, 9>& name, int& cursor) {
     auto step = [&](int delta, bool inRow) {
         for (int guard = 0; guard < kKeys; ++guard) {
             if (inRow) {
@@ -233,27 +246,26 @@ void ResultScreen::nameEntry(const MenuInput& in) {
     else if (in.pressedOrRepeat(BtnLeft)) step(-1, true);
     else if (in.pressedOrRepeat(BtnRight)) step(1, true);
     if (in.pressedOrRepeat(kSelect)) {
-        const int at = std::min(nameCursor_, 7);
+        const int at = std::min(cursor, 7);
         if (keyCursor_ == kKeyEnd) {
             ctx_.playSound(kSndBack);
-            finishName();
-            return;
+            return 1;
         }
-        name_[static_cast<std::size_t>(at)] = keyCursor_ == kKeySp ? ' ' : kKeyTable[keyCursor_];
-        if (nameCursor_ < 8 && ++nameCursor_ == 8) keyCursor_ = kKeyEnd;
+        name[static_cast<std::size_t>(at)] = keyCursor_ == kKeySp ? ' ' : kKeyTable[keyCursor_];
+        if (cursor < 8 && ++cursor == 8) keyCursor_ = kKeyEnd;
         ctx_.playSound(kSndSelect);
     }
-    if (in.pressedOrRepeat(kCancel) && nameCursor_ > 0) {
-        name_[static_cast<std::size_t>(std::min(nameCursor_, 7))] = ' ';
-        --nameCursor_;
-        name_[static_cast<std::size_t>(nameCursor_)] = ' ';
+    if (in.pressedOrRepeat(kCancel) && cursor > 0) {
+        name[static_cast<std::size_t>(std::min(cursor, 7))] = ' ';
+        --cursor;
+        name[static_cast<std::size_t>(cursor)] = ' ';
         ctx_.playSound(kSndBack);
     }
-    if (HighScoreRecord* r = runRecord()) std::memcpy(r->data() + 0x17, name_.data(), 8);
     if (in.pressed(BtnMenu)) {
         ctx_.playSound(kSndBack);
-        finishName();  // Esc backspaces, then finishes [QUIRK]
+        return 2;
     }
+    return 0;
 }
 
 void ResultScreen::finishName() {
@@ -262,6 +274,7 @@ void ResultScreen::finishName() {
         std::memcpy(r->data() + 0x17, name_.data(), 8);
         (*r)[9] = 0;
     }
+    replayName_ = name_;  // (the replay's name starts as the entry's)
     // The name becomes the remembered one (LSNM), saved when the screen leaves.
     std::memcpy(records_.lastName.data(), name_.data(), 8);
     records_.lastName[8] = 0;
@@ -291,8 +304,20 @@ void ResultScreen::update(const MenuInput& in) {
             }
             break;
         case State::StatisticsOut:
-            if (pass_ >= 30) setState(State::Leave);  // (the replay prompt: not ported)
+            if (pass_ >= 30) {
+                if (ctx_.replayToSave) {
+                    setState(State::ReplaySave);
+                    pass_ = 9;  // (the prompt decides on the next pass)
+                } else {
+                    setState(State::Leave);
+                }
+            }
             break;
+        case State::ReplaySave:
+        case State::ReplayCannot:
+        case State::ReplaySlots:
+        case State::ReplayName:
+        case State::ReplayOverwrite: replayPrompt(in); break;
         case State::Leave:
             if (pass_ == 1) sendAll(2);
             if (pass_ >= 20) {
@@ -619,6 +644,154 @@ void ResultScreen::cheatCode(const MenuInput& in) {
     else if (in.pressed(0x160B)) cheatStep_ = 0;
 }
 
+// ---- the replay prompt (spec 4) ----------------------------------------------------------------
+
+void ResultScreen::enterSlots() {
+    for (int i = 0; i < 15; ++i) slots_[static_cast<std::size_t>(i)] = ctx_.replaySlot ? ctx_.replaySlot(i + 1) : std::nullopt;
+}
+
+void ResultScreen::replayPrompt(const MenuInput& in) {
+    auto yesNoColours = [&] {
+        for (int i = 0; i < 2; ++i) {
+            AnmVm& v = vm_[static_cast<std::size_t>(50 + i)];
+            v.color = (v.color & 0xFF000000u) | (i == yesNo_ ? 0xFF6060u : 0x606060u);
+        }
+    };
+    auto leave = [&] { setState(State::Leave); };
+    auto toSlots = [&] {
+        ctx_.playSound(kSndSelect);
+        setState(State::ReplaySlots);
+        sendAll(12);
+        enterSlots();
+    };
+    switch (state_) {
+        case State::ReplaySave: {
+            if (pass_ == 10) {
+                // Slow mode -> 19 ("cannot: slow"), continues -> 14 ("cannot: continued"), else
+                // 11; the interrupt reaches VMs 4 on [QUIRK].
+                const int k = ctx_.config && ctx_.config->slowMode != 0 && mode_ == Mode::AfterGame ? 19 : game_.continues > 0 ? 14 : 11;
+                for (int i = 4; i < kVms; ++i) vm_[static_cast<std::size_t>(i)].interrupt(k);
+                yesNo_ = 0;
+                if (k != 11) {
+                    setState(State::ReplayCannot);
+                    return;
+                }
+            }
+            yesNoColours();
+            if (pass_ < 12) return;
+            if (in.pressedOrRepeat(BtnLeft) || in.pressedOrRepeat(BtnRight)) {
+                yesNo_ ^= 1;
+                ctx_.playSound(kSndMove);
+            }
+            if (in.pressed(kCancel)) {
+                leave();
+                return;
+            }
+            if (in.pressed(kSelect)) {
+                if (yesNo_ == 0) toSlots();
+                else leave();
+            }
+            return;
+        }
+        case State::ReplayCannot:
+            if (pass_ >= 20 && in.pressed(kSelect | kCancel)) leave();
+            return;
+        case State::ReplaySlots:
+            if (pass_ < 20) return;
+            if (in.pressedOrRepeat(BtnUp)) {
+                slot_ = (slot_ + 14) % 15;
+                ctx_.playSound(kSndMove);
+            } else if (in.pressedOrRepeat(BtnDown)) {
+                slot_ = (slot_ + 1) % 15;
+                ctx_.playSound(kSndMove);
+            }
+            if (in.pressed(kCancel)) {
+                ctx_.playSound(kSndBack);
+                setState(State::ReplaySave);
+                sendAll(2);
+                return;
+            }
+            if (in.pressed(kSelect)) {
+                ctx_.playSound(kSndSelect);
+                replayDate_ = todayDate();
+                const bool filled = slots_[static_cast<std::size_t>(slot_)].has_value();
+                sendAll(filled ? 13 : 17);
+                vm_[static_cast<std::size_t>(56 + slot_)].interrupt(16);
+                setState(filled ? State::ReplayOverwrite : State::ReplayName);
+                yesNo_ = 0;
+                replayNameCursor_ = 0;
+                keyCursor_ = lastNameFound_ ? kKeyEnd : 0;
+            }
+            return;
+        case State::ReplayOverwrite:
+            yesNoColours();
+            if (pass_ < 20) return;
+            if (in.pressedOrRepeat(BtnLeft) || in.pressedOrRepeat(BtnRight)) {
+                yesNo_ ^= 1;
+                ctx_.playSound(kSndMove);
+            }
+            if (in.pressed(kSelect) && yesNo_ == 0) {
+                ctx_.playSound(kSndSelect);
+                sendAll(17);
+                vm_[static_cast<std::size_t>(56 + slot_)].interrupt(16);
+                setState(State::ReplayName);
+            } else if (in.pressed(kSelect | kCancel)) {
+                toSlots();  // (SE 10 even on No [QUIRK])
+            }
+            return;
+        case State::ReplayName: {
+            if (pass_ < 30) return;
+            const int r = gridInput(in, replayName_, replayNameCursor_);
+            if (r == 1) {
+                const std::string name(replayName_.data(), 8);
+                if (ctx_.saveReplay && !ctx_.saveReplay(slot_ + 1, name)) log::warn("th08: the replay could not be written");
+                std::memcpy(records_.lastName.data(), replayName_.data(), 8);
+                records_.lastName[8] = 0;
+                records_.hasLastName = true;
+                sendAll(2);
+                setState(State::Leave);
+            } else if (r == 2) {
+                toSlots();
+            }
+            return;
+        }
+        default: return;
+    }
+}
+
+// The slot list (states 10-14): VM 55's header, VMs 56-70's rows.
+void ResultScreen::drawSlots() {
+    const AnmVm& head = vm_[55];
+    ascii_.add(head.position.x, head.position.y, "No.   Name     Date   Player Score", head.color);
+    const ExeTables* tb = ctx_.tables;
+    auto shortName = [&](int c) { return tb ? tb->shortNames[static_cast<std::size_t>(std::clamp(c, 0, 11))] : std::string("       "); };
+    for (int i = 0; i < 15; ++i) {
+        const AnmVm& row = vm_[static_cast<std::size_t>(56 + i)];
+        if (!row.has(AnmVm::Visible) || (row.color >> 24) == 0) continue;
+        const std::uint32_t colour = i == slot_ ? 0xFFFF8080u : 0xFF808080u;
+        std::string line;
+        if (state_ == State::ReplayName) {
+            line = std::format("No.{:02d} {:>8} {:>5}  {:>7} {:9d}0", i + 1, std::string(replayName_.data(), 8), replayDate_, shortName(character_), game_.score);
+            std::string marks(8, ' ');
+            marks[static_cast<std::size_t>(std::min(replayNameCursor_, 7))] = '_';
+            ascii_.add(row.position.x, row.position.y, "      " + marks, 0xFFF0F0FFu);
+        } else if (const auto& s = slots_[static_cast<std::size_t>(i)]) {
+            const auto& b = *s;
+            auto text = [&](std::size_t at, std::size_t n) {
+                std::string t;
+                for (std::size_t k = at; k < at + n && b[k] != 0; ++k) t.push_back(static_cast<char>(b[k]));
+                return t;
+            };
+            const std::uint32_t score = static_cast<std::uint32_t>(b[0x48]) | static_cast<std::uint32_t>(b[0x49]) << 8 |
+                                        static_cast<std::uint32_t>(b[0x4A]) << 16 | static_cast<std::uint32_t>(b[0x4B]) << 24;
+            line = std::format("No.{:02d} {:>8} {:>5}  {:>7} {:9d}0", i + 1, text(0x0A, 8), text(0x04, 5), shortName(b[0x02]), score);
+        } else {
+            line = std::format("No.{:02d} -------- --/--  -------          0", i + 1);
+        }
+        ascii_.add(row.position.x, row.position.y, line, colour);
+    }
+}
+
 // ---- drawing ------------------------------------------------------------------------------------
 
 void ResultScreen::drawTable(int difficulty, int character) {
@@ -759,7 +932,11 @@ void ResultScreen::draw(SpriteSink& sink) {
     }
     if (state_ == State::SpellList) drawSpellList(sink);
     else if (shownCharacter_ >= 0) drawTable(difficulty_, shownCharacter_);
-    if (state_ == State::NameEntry && rank_ >= 0) drawGrid();
+    if ((state_ == State::NameEntry && rank_ >= 0) || state_ == State::ReplayName) drawGrid();
+    if (state_ >= State::ReplaySave && state_ <= State::ReplayOverwrite) {
+        for (int i = 46; i <= 51; ++i) drawVm(sink, vm_[static_cast<std::size_t>(i)], none);
+        drawSlots();
+    }
     if (state_ == State::Statistics || state_ == State::StatisticsOut) drawStatistics();
     if (state_ == State::DataIn || state_ == State::DataShown || state_ == State::DataOut) {
         for (int i = 0; i < 20; ++i) drawVm(sink, text_[static_cast<std::size_t>(i)], none);
