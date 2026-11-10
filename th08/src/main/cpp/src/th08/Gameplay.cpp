@@ -153,6 +153,35 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
     };
     background_.drawEffectsB = [this](SpriteSink& sink, AnmDrawState& st) { effects_->drawListB(sink, st, background_); };
     background_.onWeatherShift = [this](const Vec3f& delta) { effects_->shiftWeather(delta); };
+    // The 6B moon (spec_stage_gui 1.7): special effect 64 in slot 12 running the stage ANM's
+    // scripts 11 and 12; labels 2-4 interrupt it while keeping its movement and colour.
+    moon_ = nullptr;
+    background_.moonStep = [this](std::int32_t label) {
+        AnmLibrary& lib = *ctx_.anm;
+        ZunRng& rng = *ctx_.rng;
+        if (!moon_) {
+            moon_ = &effects_->spawnSpecial(world_, 64, {}, 12, 1, 0xFFFFFFFFu);
+            moon_->vm.start(lib, rng, Background::kSlotBackground, 11);
+            return;
+        }
+        AnmVm& vm = moon_->vm;
+        if (label == 1) {
+            vm.start(lib, rng, Background::kSlotBackground, 11);
+        } else if (label >= 2 && label <= 4) {
+            const AnmVm keep = vm;
+            if (label == 2) vm.start(lib, rng, Background::kSlotBackground, 12);
+            vm.interrupt(label);
+            vm.posStart = keep.posStart;
+            vm.posEnd = keep.posEnd;
+            vm.progress[AnmVm::Position] = keep.progress[AnmVm::Position];
+            vm.duration[AnmVm::Position] = keep.duration[AnmVm::Position];
+            vm.ease[AnmVm::Position] = keep.ease[AnmVm::Position];
+            vm.color = keep.color;
+        }
+    };
+    background_.drawMoon = [this](SpriteSink& sink, AnmDrawState& st) {
+        if (moon_ && moon_->inUse) Effects::drawRing(sink, *moon_, st);
+    };
     if (!gui_.stageStart(ctx_, state_, fresh, error)) return false;
     // Step 11: the stage's songs into slots 0-2 (blank names skipped); step 13: start them
     // when play begins.

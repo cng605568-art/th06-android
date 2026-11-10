@@ -86,6 +86,7 @@ class Gameplay {
     std::unique_ptr<EnemyManager> enemies_ = std::make_unique<EnemyManager>();
     ScreenEffects screen_;
     InGameMenu menu_;
+    Effect* moon_ = nullptr;  // the 6B moon (special effect slot 12)
     bool pauseRequested_ = false;
     Gui gui_;
     std::uint16_t gameInput_ = 0;

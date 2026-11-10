@@ -73,6 +73,8 @@ class Effects {
     // List B (layers 1 and >= 3: weather, glows), inside the stage's low pass.
     void drawListB(SpriteSink& sink, const AnmDrawState& state, Background& bg);
     int active() const { return active_; }
+    // The ring/strip drawer (spec_effects 4.5); also the 6B moon's draw callback.
+    static void drawRing(SpriteSink& sink, const Effect& e, const AnmDrawState& state);
     std::uint32_t frames() const { return frames_; }
     void setQuality(int quality) { quality_ = quality; }
 
@@ -82,7 +84,6 @@ class Effects {
     Effect& fill(const World& w, int type, const Vec3f& pos, const Vec3f* custom, int count, std::uint32_t color, bool zwriteOff);
     bool runInit(const World& w, Effect& e);    // false: the init refused (slot freed)
     bool runUpdate(const World& w, Effect& e);  // false: free it
-    static void drawRing(SpriteSink& sink, const Effect& e, const AnmDrawState& state);
 
     std::array<Effect, kSlots> slots_{};
     Effect sink_;

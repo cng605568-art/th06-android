@@ -73,6 +73,9 @@ class Background {
     std::function<void(SpriteSink&, AnmDrawState&)> drawEffectsB;
     // The 6B moon effect's draw callback, drawn in the high pass after the backdrops.
     std::function<void(SpriteSink&, AnmDrawState&)> drawMoon;
+    // The 6B moon's step (spec 1.7), every update of stage index 7 before the resume pass,
+    // with the pending resume label.
+    std::function<void(std::int32_t label)> moonStep;
     // The spell-background draw callback (stage 4A's "window", ECL ex 3/6/20), after the
     // spell VMs in the low pass.
     std::function<void(SpriteSink&, AnmDrawState&)> spellDrawCallback;

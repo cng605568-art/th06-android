@@ -326,7 +326,8 @@ void Background::setSpellBackgrounds(int base, int count) {
 
 void Background::update(AnmLibrary& anm, ZunRng& rng, bool frozen) {
     if (!loaded_ || frozen) return;
-    // (Step 2, the 6B moon, belongs to the effect manager's special slot 12: not yet.)
+    // 2. The 6B moon (an effect in special slot 12, driven by the resume labels).
+    if (stage_ == 7 && moonStep) moonStep(resumeLabel_);
     // 3. Resume at the label the ECL asked for (not found: index 0, label kept [QUIRK]).
     if (resumeLabel_ != 0) {
         index_ = 0;
