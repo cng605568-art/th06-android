@@ -12,7 +12,9 @@ add_library(th08_game STATIC
   ${TH08_SRC}/th08/Anm.cpp
   ${TH08_SRC}/th08/Background.cpp
   ${TH08_SRC}/th08/Bgm.cpp
+  ${TH08_SRC}/th08/Bullets.cpp
   ${TH08_SRC}/th08/Effects.cpp
+  ${TH08_SRC}/th08/Enemies.cpp
   ${TH08_SRC}/th08/ExeTables.cpp
   ${TH08_SRC}/th08/FlowCommon.cpp
   ${TH08_SRC}/th08/GameConfig.cpp

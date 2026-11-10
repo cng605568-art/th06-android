@@ -58,6 +58,17 @@ bool loadExeTables(std::span<const std::uint8_t> exe, ExeTables& t, std::string*
         e.update = pe.u32(base + 4);
         e.init = pe.u32(base + 8);
     }
+    at = pe.offsetOf(ExeTables::kBulletScripts, 20 * ExeTables::kBulletTypes);
+    if (at < 0) return fail("bullet type table not in the file");
+    for (int i = 0; i < ExeTables::kBulletTypes; ++i) {
+        for (int k = 0; k < 5; ++k) {
+            t.bulletScripts[static_cast<std::size_t>(i)][static_cast<std::size_t>(k)] =
+                pe.i32(static_cast<std::size_t>(at) + 20 * static_cast<std::size_t>(i) + 4 * static_cast<std::size_t>(k));
+        }
+    }
+    at = pe.offsetOf(ExeTables::kDropCycle, 32);
+    if (at < 0) return fail("drop table not in the file");
+    for (int i = 0; i < 32; ++i) t.dropCycle[static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(pe.u16(static_cast<std::size_t>(at) + static_cast<std::size_t>(i)) & 0xFF);
     return true;
 }
 

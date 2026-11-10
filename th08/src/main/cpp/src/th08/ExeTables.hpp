@@ -44,6 +44,14 @@ struct ExeTables {
     };
     std::array<Effect, kEffectTypes> effects{};
     static constexpr std::uint32_t kEffectTable = 0x004C6D30;
+
+    // The 21 bullet types' etama.anm scripts: bullet, fast / normal / slow spawn, cancel
+    // (spec_player_bullets_items §15.2), and the enemies' 32-entry random drop cycle (item
+    // types, spec_ecl_enemies §8.8a).
+    static constexpr int kBulletTypes = 21;
+    std::array<std::array<std::int32_t, 5>, kBulletTypes> bulletScripts{};
+    std::array<std::uint8_t, 32> dropCycle{};
+    static constexpr std::uint32_t kBulletScripts = 0x004B4AD8, kDropCycle = 0x004C70D8;
     static constexpr std::uint32_t kSoundTable = 0x004C8040, kSampleNames = 0x004C81B0;
     static constexpr std::uint32_t kTitleTextTable = 0x004C8640, kOptionTextTable = 0x004C8664,
                                    kKeyConfigTextTable = 0x004C8690;

@@ -925,7 +925,7 @@ void testRealArchive() {
                     }
                 }
                 CHECK(bg.frames() == 3000);
-                if (!spell) CHECK(glows == 12 * 234);  // every third frame below 700
+                CHECK(glows == 12 * (spell ? 1000 : 766));  // every third frame from 700 (spell practice: all)
                 bg.update(lib, rng, true);  // frozen: nothing runs
                 CHECK(bg.frames() == 3000);
                 // 4A: op 34 at frame 0 drives the clear colour; sway mode 1 from frame 290.
@@ -1091,6 +1091,64 @@ void testRealArchive() {
             game->draw(sink);
             CHECK(sink.items.size() > 40);
         }
+        game->end();
+    }
+    // Every stage's ECL (normal and spell practice) loads and runs 2400 frames of play: the
+    // timelines spawn enemies, the enemies shoot, nothing runs away.
+    if (const char* exePath = std::getenv("TH08_REAL_EXE")) {
+        Vfs vfs;
+        auto again = MappedFile::open(path, &err);
+        CHECK(again && vfs.mount(openArchive("th08.dat", std::move(again), &err)));
+        TextureLibrary textures;
+        th08::AnmLibrary lib;
+        CHECK(lib.load(vfs, textures, "text.anm", th08::kSlotText, &err, true));
+        CHECK(lib.load(vfs, textures, "ascii.anm", th08::kSlotAscii, &err));
+        th08::ExeTables tables;
+        auto exe = MappedFile::open(exePath, &err);
+        CHECK(exe && th08::loadExeTables(exe->bytes(), tables, &err));
+        CHECK(tables.bulletScripts[0][0] == 0 && tables.bulletScripts[0][1] == 18 && tables.bulletScripts[10][0] == 25 &&
+              tables.bulletScripts[20][0] == 115 && tables.bulletScripts[20][4] == 17);
+        ZunRng rng(1);
+        th08::FlowContext ctx;
+        ctx.vfs = &vfs;
+        ctx.textures = &textures;
+        ctx.anm = &lib;
+        ctx.rng = &rng;
+        ctx.tables = &tables;
+        auto game = std::make_unique<th08::Gameplay>(ctx);
+        th08::MenuInput in;
+        int stagesWithEnemies = 0, stagesWithBullets = 0;
+        for (int sp = 0; sp < 2; ++sp) {
+            for (int st = 0; st < th08::kStageCount; ++st) {
+                th08::Gameplay::Setup setup;
+                setup.stage = st;
+                setup.practice = true;  // eight lives
+                setup.spellPractice = sp != 0;
+                setup.difficulty = st == 8 ? 4 : 2;
+                setup.character = st % 12;
+                const bool ok = game->start(setup, &err);
+                CHECK(ok);
+                if (!ok) {
+                    std::fprintf(stderr, "  stage %d sp %d: %s\n", st, sp, err.c_str());
+                    continue;
+                }
+                int maxEnemies = 0, maxBullets = 0;
+                for (int f = 0; f < 2400 && game->outcome() == th08::Gameplay::Outcome::None; ++f) {
+                    in.sample(f % 2 ? th08::BtnShoot : th08::BtnShoot | th08::BtnLeft);
+                    game->tick(in);
+                    maxEnemies = std::max(maxEnemies, game->enemies().liveCount());
+                    maxBullets = std::max(maxBullets, game->bullets().liveBullets());
+                }
+                if (!sp) {
+                    stagesWithEnemies += maxEnemies > 0 ? 1 : 0;
+                    stagesWithBullets += maxBullets > 0 ? 1 : 0;
+                }
+                RecordingSink sink;
+                game->draw(sink);
+            }
+        }
+        CHECK(stagesWithEnemies == 9 && stagesWithBullets >= 8);
+        std::printf("  (ECL: %d of 9 stages spawned enemies, %d fired bullets in 2400 frames)\n", stagesWithEnemies, stagesWithBullets);
         game->end();
     }
     // The player's score.dat backup (a fresh file) decodes, with this exe's VRSM; the port's

@@ -36,6 +36,9 @@ struct GameState {
     std::int32_t pointItems = 0, nextExtend = 50, stagePointItems = 0;
     std::int32_t timePoints = 0, timeQuota = 0;
     int nightSteps = 0;  // 23:00 + 30 minutes per step
+    std::int32_t pointValue = 100000;  // globals+0x24: the maximum point-item value
+    std::int32_t rank = 10;             // GM+0x3DE2C
+    float misses = 0, bombsUsed = 0;
     int livesI() const { return static_cast<int>(lives); }
     int bombsI() const { return static_cast<int>(bombs); }
     int powerI() const { return static_cast<int>(power); }

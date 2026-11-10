@@ -12,6 +12,8 @@ namespace touhou::th08 {
 
 class AnmLibrary;
 class Background;
+class BulletManager;
+class EnemyManager;
 class Effects;
 class Player;
 class SoundPlayer;
@@ -40,6 +42,8 @@ struct World {
     Effects* effects = nullptr;
     Player* player = nullptr;
     Background* background = nullptr;
+    BulletManager* bullets = nullptr;
+    EnemyManager* enemies = nullptr;
 
     std::uint32_t mode = 0;          // ModeFlag bits
     std::int32_t stageFrame = 0;     // GM+0x3DDC0
@@ -49,5 +53,12 @@ struct World {
 
     void playSound(int id) const;
 };
+
+// The anti-tamper regeneration (spec_player 18.1 "R"): two u32 draws (4 steps) whenever a
+// guarded value (lives, bombs, power, misses, bombs used, time points) changes.
+inline void antiTamper(ZunRng& rng) {
+    (void)rng.u32();
+    (void)rng.u32();
+}
 
 }  // namespace touhou::th08

@@ -76,8 +76,8 @@ class Background {
     // The spell-background draw callback (stage 4A's "window", ECL ex 3/6/20), after the
     // spell VMs in the low pass.
     std::function<void(SpriteSink&, AnmDrawState&)> spellDrawCallback;
-    // The glow particles (spec 1.4 step 13): twelve type-62 effects every third frame at the
-    // recorded lantern points (or (0, 0, 0)); the effect manager hooks in.
+    // The glow particles (spec 1.4 step 13): twelve type-62 effects every third frame from
+    // stage frame 700, at the recorded lantern points (or (0, 0, 0)); the effects hook in.
     std::function<void(const Vec3f& point)> spawnGlow;
     // A jump's teleport shifts the weather particles by this much (the effect manager hooks in).
     std::function<void(const Vec3f&)> onWeatherShift;
@@ -93,7 +93,7 @@ class Background {
 
     const SpriteRegion* white = nullptr;  // for filled rectangles (translucent clears, card fade)
     bool stageFinished = false;  // set by the game before drawing: the stage-clear picture stopped
-    bool spellPractice = false;  // glow spawns continue past frame 700
+    bool spellPractice = false;  // glow spawns from the first frame
 
     // ECL: resume the script at the matching label (opcode 31).
     void setResumeLabel(std::int32_t label) { resumeLabel_ = label; }

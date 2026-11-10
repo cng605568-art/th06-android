@@ -39,6 +39,19 @@ class Player {
     // The movement direction code (Player+0xE2A98), chosen by the first matching test.
     enum class Direction : std::uint8_t { None, Up, Down, Left, Right, UpLeft, UpRight, DownLeft, DownRight };
     enum class FamiliarKind : std::uint8_t { None, Yukari, AliceDoll, RemiliaTeam, RemiliaSolo, PhantomTeam, PhantomSolo, Yuyuko };
+    enum class HitResult : std::uint8_t { None, Cancelled, Hit, Grazed };
+    static constexpr int kRegions = 384;  // 0-191 damage, 192-383 cancel (spec 10.1)
+
+    struct Region {
+        Vec3f centre;
+        float radius = 0, growth = 0;
+        float w = 0, h = 0, wGrowth = 0, hGrowth = 0;
+        float angle = 0;
+        std::int32_t lifetime = 0;
+        std::int32_t itemType = 6;
+        std::int32_t damage = 0, dealt = 0, cap = 0, interval = 1;
+        bool active = false, noSpark = false;
+    };
 
     struct Familiar {
         AnmVm vm;
@@ -89,13 +102,29 @@ class Player {
     // The damage the shots deal to an enemy box this frame (spec 6.5, shots part); `bomb` is
     // set when a bomb region hit.
     int damageQuery(const World& w, const Vec3f& centre, const Vec3f& size, std::int32_t& accumulator, bool& bomb);
-    // Homing targets, offered by the enemy pass (reset at the end of the player pass).
-    void offerTarget(const Vec3f& pos) { target_ = pos; }
-    void setTargetEnemy(bool present, const Vec3f& pos, const Vec3f& aim) {
-        targetEnemy_ = present;
-        targetEnemyPos_ = pos;
-        targetEnemyAim_ = aim;
-    }
+    // Homing targets, written by the enemy pass (spec_ecl 8.5): the generic target and its
+    // lock (reset at the end of the player pass) and the target enemy's slot (-1: none; not
+    // reset there - Yukari's familiar clears it).
+    Vec3f& homingTarget() { return target_; }
+    bool& targetLock() { return targetLock_; }
+    int& targetEnemySlot() { return targetEnemy_; }
+
+    // The tests the bullets, lasers and enemies make against the player (spec 3.7).
+    HitResult bulletHit(const World& w, const Vec3f& centre, const Vec3f& size);
+    HitResult bulletGraze(const World& w, const Vec3f& centre, const Vec3f& size, bool laser);
+    int laserTest(const World& w, const Vec3f& origin, float angle, const Vec3f& boxCentre, const Vec3f& boxSize, bool grazeAllowed);
+    HitResult enemyContact(const World& w, const Vec3f& centre, const Vec3f& box);
+    // The cancel-region test on a bullet centre (sets the cancel item type on a hit).
+    bool cancelTest(const Vec3f& centre);
+    int cancelItemType() const { return cancelItemType_; }
+    void scoreGraze(const World& w, const Vec3f& at, bool laser);
+    bool canPickUp() const { return state_ == State::Alive || state_ == State::Invulnerable; }
+    bool pickupBoxTouches(const Vec3f& item) const;
+    // Regions (spec 10.2).
+    void cancelRect(const Vec3f& centre, float w, float h, int itemType, std::int32_t lifetime);
+    void cancelCircle(const Vec3f& centre, float r, float growth, std::int32_t lifetime, int itemType);
+    void makeInvulnerable(std::int32_t frames);
+    bool continueRequested() const { return continueRequested_; }
 
     const Vec3f& position() const { return pos_; }
     Vec3f& scriptPosition() { return pos_; }  // ECL can move the player
@@ -117,6 +146,11 @@ class Player {
     const AnmVm& sprite() const { return vm_; }
 
   private:
+    void regionUpkeep();
+    void die(const World& w);
+    bool deathStep(const World& w);  // true: moved to the respawn point
+    void commitDeath(const World& w);
+    int freeRegion(int first) const;
     void spawnInStep(const World& w);
     void stateStep(const World& w);
     void movementStep(const World& w, std::uint16_t input);
@@ -166,9 +200,14 @@ class Player {
     Timer fireCycle_;  // current < 0: idle
 
     Vec3f target_{-999, -999, 0};
-    bool targetEnemy_ = false;
-    Vec3f targetEnemyPos_, targetEnemyAim_;
+    bool targetLock_ = false;
+    int targetEnemy_ = -1;
     std::uint8_t sparkCounter_ = 0;  // Player+0xE2A94 (shared with the region sparks)
+    std::array<Region, kRegions> regions_{};
+    int cancelItemType_ = 6;
+    bool lastSpellArmed_ = false;     // byte+4
+    bool continueRequested_ = false;  // no spare life at the respawn move
+    bool committed_ = false;
 
     // The bomb (spec 9): not ported yet; the shots and familiars read these.
     bool bombActive_ = false;

@@ -6,7 +6,9 @@
 #include "core/Log.hpp"
 #include "gfx/SpriteSink.hpp"
 #include "io/Vfs.hpp"
+#include "th08/Bullets.hpp"
 #include "th08/Effects.hpp"
+#include "th08/Enemies.hpp"
 #include "th08/Gui.hpp"
 #include "th08/World.hpp"
 
@@ -199,16 +201,16 @@ void Player::updateFamiliar(const World& w, Familiar& f, const Vec3f& oldest) {
                 f.vm.start(lib, rng, kSlotPlayer, 18);
                 f.pos = home;
                 f.state = 2;
-                targetEnemy_ = false;
+                targetEnemy_ = -1;
                 return;
             }
             auto spring = [&]() {
                 yukariSpring(w, f, home);
-                if (fireCycle_.current >= 0 && targetEnemy_ && f.timer.current >= 10) {
+                if (fireCycle_.current >= 0 && targetEnemy_ >= 0 && f.timer.current >= 10) {
                     f.vm.interrupt(3);
                     f.mode = 3;
                 } else {
-                    targetEnemy_ = false;  // Yukari's familiar is what clears the pointer [QUIRK]
+                    targetEnemy_ = -1;  // Yukari's familiar is what clears the pointer [QUIRK]
                 }
             };
             auto flip = [&](bool left) { f.vm.scale.x = left ? std::fabs(f.vm.scale.x) : -std::fabs(f.vm.scale.x); };
@@ -238,9 +240,12 @@ void Player::updateFamiliar(const World& w, Familiar& f, const Vec3f& oldest) {
                     }
                     break;
                 case 3:
-                    if (targetEnemy_) yukariSpring(w, f, {targetEnemyPos_.x, std::max(targetEnemyPos_.y + 32.0f, 32.0f), targetEnemyPos_.z});
-                    if ((fireCycle_.current < 0 && !shootHeld_) || !targetEnemy_) {
-                        targetEnemy_ = false;
+                    if (targetEnemy_ >= 0 && w.enemies) {
+                        const Vec3f a = w.enemies->enemy(targetEnemy_).abs;
+                        yukariSpring(w, f, {a.x, std::max(a.y + 32.0f, 32.0f), a.z});
+                    }
+                    if ((fireCycle_.current < 0 && !shootHeld_) || targetEnemy_ < 0) {
+                        targetEnemy_ = -1;
                         f.vm.interrupt(1);
                         f.mode = 0;
                     }
@@ -347,9 +352,12 @@ void Player::update(const World& w, std::uint16_t input) {
         return;
     }
     if (focusEffect_) focusEffect_->vm.set(AnmVm::Frozen, false);
-    // 1-3. Regions, the bomb and death: to come.
-    // 4. Spawn-in.
-    if (state_ == State::Spawning) spawnInStep(w);
+    // 1. Regions. (2. The bomb: to come.)
+    regionUpkeep();
+    // 3. Death; 4. spawn-in (also in the frame of the respawn move).
+    bool spawnIn = state_ == State::Spawning;
+    if (state_ == State::Dead && deathStep(w)) spawnIn = true;
+    if (spawnIn && !continueRequested_) spawnInStep(w);
     // 5. The state step.
     stateStep(w);
     // 6. Movement, focus, familiars, the shot trigger.
@@ -359,8 +367,9 @@ void Player::update(const World& w, std::uint16_t input) {
     // 8-9. Shots and the fire cycle.
     shotUpdate(w);
     fireCycle(w, input);
-    // 10. End of pass: the generic homing target is reset (the enemy pointer is not).
+    // 10. End of pass: the generic homing target and its lock are reset (the enemy pointer is not).
     target_ = kNoTarget;
+    targetLock_ = false;
 }
 
 void Player::spawnInStep(const World& w) {
@@ -385,8 +394,12 @@ void Player::spawnInStep(const World& w) {
 
 void Player::stateStep(const World& w) {
     (void)w;
-    if (bulletClear_ != 0) --bulletClear_;  // (its full-field cancel rectangle comes with the regions)
+    if (bulletClear_ != 0) {
+        --bulletClear_;
+        cancelRect(pos_, 768.0f, 896.0f, -1, 0);  // one frame, no item
+    }
     if (state_ == State::Invulnerable) {
+        lastSpellArmed_ = false;
         stateTimer_.decrement(1);
         if (stateTimer_.current <= 0) {
             state_ = State::Alive;
@@ -554,9 +567,9 @@ bool Player::fire(const World& w, Shot& s, int slot, const ShotEntry& e, int cyc
         case 5: {
             if (!periodic()) return false;
             shotInit(w, s, e);
-            const bool aim = e.fireKind == 1 ? targetEnemy_ : target_.x > -100.0f;
+            const bool aim = e.fireKind == 1 ? targetEnemy_ >= 0 && w.enemies : target_.x > -100.0f;
             if (aim) {
-                const Vec3f t = e.fireKind == 1 ? targetEnemyAim_ : target_;
+                const Vec3f t = e.fireKind == 1 ? w.enemies->enemy(targetEnemy_).pos : target_;
                 s.angle = addNormalizeAngle(std::atan2(t.y - s.pos.y, t.x - s.pos.x), e.angle + kZunPi / 2.0f);
                 s.velocity = polarOnce(s.angle, 1.5f * e.speed);
             }
@@ -765,6 +778,247 @@ int Player::damageQuery(const World& w, const Vec3f& centre, const Vec3f& size, 
     }
     accumulator += std::min(sum, 50);
     return sum;
+}
+
+// ---- regions and the tests against the player ---------------------------------------------
+
+void Player::regionUpkeep() {
+    for (Region& r : regions_) {
+        if (r.lifetime < 0) continue;
+        --r.lifetime;
+        r.radius += r.growth;
+        r.w += r.wGrowth;
+        r.h += r.hGrowth;
+        if (r.lifetime <= 0) r.active = false;
+    }
+}
+
+// The first inactive slot among the group's first 191, else the group's last (spec 10.2).
+int Player::freeRegion(int first) const {
+    for (int i = first; i < first + 191; ++i) {
+        if (!regions_[static_cast<std::size_t>(i)].active) return i;
+    }
+    return first + 191;
+}
+
+void Player::cancelRect(const Vec3f& centre, float w, float h, int itemType, std::int32_t lifetime) {
+    Region& r = regions_[static_cast<std::size_t>(freeRegion(192))];
+    r = Region{};
+    r.centre = centre, r.w = w, r.h = h, r.itemType = itemType, r.lifetime = lifetime, r.active = true;
+}
+
+void Player::cancelCircle(const Vec3f& centre, float radius, float growth, std::int32_t lifetime, int itemType) {
+    Region& r = regions_[static_cast<std::size_t>(freeRegion(192))];
+    r = Region{};
+    r.centre = centre, r.radius = radius, r.growth = growth, r.lifetime = lifetime, r.itemType = itemType, r.active = true;
+}
+
+bool Player::cancelTest(const Vec3f& c) {
+    for (int i = 192; i < kRegions; ++i) {
+        Region& r = regions_[static_cast<std::size_t>(i)];
+        if (!r.active) continue;
+        bool hit;
+        if (r.radius != 0.0f) {
+            const float dx = c.x - r.centre.x, dy = c.y - r.centre.y;
+            hit = dx * dx + dy * dy < r.radius * r.radius;
+        } else if (r.angle != 0.0f) {
+            const float s = std::sin(-r.angle), co = std::cos(-r.angle);
+            const float dx = c.x - r.centre.x, dy = c.y - r.centre.y;
+            const float x = dx * co - dy * s, y = dx * s + dy * co;
+            hit = std::fabs(x) <= r.w / 2.0f && std::fabs(y) <= r.h / 2.0f;
+        } else {
+            hit = c.x >= r.centre.x - r.w / 2.0f && c.x <= r.centre.x + r.w / 2.0f && c.y >= r.centre.y - r.h / 2.0f &&
+                  c.y <= r.centre.y + r.h / 2.0f;
+        }
+        if (hit) {
+            cancelItemType_ = r.itemType;
+            ++r.dealt;
+            return true;
+        }
+    }
+    return false;
+}
+
+Player::HitResult Player::bulletHit(const World& w, const Vec3f& centre, const Vec3f& size) {
+    cancelItemType_ = 6;
+    if (cancelTest(centre)) return HitResult::Cancelled;
+    const float hw = size.x / 2.0f, hh = size.y / 2.0f;
+    if (centre.x + hw < hitMin_.x || centre.x - hw > hitMax_.x || centre.y + hh < hitMin_.y || centre.y - hh > hitMax_.y) {
+        return HitResult::None;
+    }
+    if (state_ != State::Alive) return HitResult::Hit;  // absorbed
+    for (int k = 0; k < 8; ++k) (void)w.rng->u16();  // (the 16-step reroll: 5 u32 and 3 floats)
+    for (int k = 0; k < 8; ++k) (void)w.rng->u16();
+    die(w);
+    return HitResult::Hit;
+}
+
+Player::HitResult Player::bulletGraze(const World& w, const Vec3f& centre, const Vec3f& size, bool laser) {
+    cancelItemType_ = 6;
+    if (cancelTest(centre)) return HitResult::Cancelled;
+    const float hw = size.x / 2.0f + 20.0f, hh = size.y / 2.0f + 20.0f;
+    if (dead()) return HitResult::None;
+    if (centre.x + hw < grazeMin_.x || centre.x - hw > grazeMax_.x || centre.y + hh < grazeMin_.y || centre.y - hh > grazeMax_.y) {
+        return HitResult::None;
+    }
+    scoreGraze(w, centre, laser);
+    return HitResult::Grazed;
+}
+
+int Player::laserTest(const World& w, const Vec3f& origin, float angle, const Vec3f& c, const Vec3f& size, bool grazeAllowed) {
+    // The player point rotated into the laser's frame about its origin.
+    const float s = std::sin(-angle), co = std::cos(-angle);
+    const float dx = pos_.x - origin.x, dy = pos_.y - origin.y;
+    const Vec3f p{dx * co - dy * s + origin.x, dx * s + dy * co + origin.y, 0.0f};
+    const float hb = header().hitbox / 2.0f;
+    const float hw = size.x / 2.0f, hh = size.y / 2.0f;
+    if (!(p.x + hb < c.x - hw || p.x - hb > c.x + hw || p.y + hb < c.y - hh || p.y - hb > c.y + hh)) {
+        if (state_ != State::Alive) return 0;
+        for (int k = 0; k < 16; ++k) (void)w.rng->u16();
+        die(w);
+        return 1;
+    }
+    if (!grazeAllowed) return 0;
+    const float gw = hw + 48.0f, gh = hh + 48.0f;
+    if (!(p.x + hb < c.x - gw || p.x - hb > c.x + gw || p.y + hb < c.y - gh || p.y - hb > c.y + gh) && !dead()) {
+        scoreGraze(w, pos_, true);
+        return 2;
+    }
+    return 0;
+}
+
+Player::HitResult Player::enemyContact(const World& w, const Vec3f& centre, const Vec3f& box) {
+    const float hw = box.x / 1.5f / 2.0f, hh = box.y / 1.5f / 2.0f;
+    if (centre.x + hw < hitMin_.x || centre.x - hw > hitMax_.x || centre.y + hh < hitMin_.y || centre.y - hh > hitMax_.y) {
+        return HitResult::None;
+    }
+    if (state_ == State::Alive) {
+        for (int k = 0; k < 16; ++k) (void)w.rng->u16();
+        die(w);
+    }
+    return HitResult::Hit;
+}
+
+void Player::scoreGraze(const World& w, const Vec3f& at, bool laser) {
+    (void)laser;
+    GameState& g = *w.state;
+    if (!bombActive_) {
+        if (g.stageGraze < 99999) ++g.stageGraze;
+        if (g.graze < 999999) ++g.graze;
+    }
+    if (w.effects) w.effects->spawn(w, 8, (pos_ + at) * 0.5f, 1, 0xFFFFFFFFu);
+    w.playSound(30);
+    g.score += 200;  // 2000 points
+}
+
+bool Player::pickupBoxTouches(const Vec3f& item) const {
+    const float half = header().itemBox / 2.0f;
+    return !(item.x + half < itemMin_.x || item.x - half > itemMax_.x || item.y + half < itemMin_.y || item.y - half > itemMax_.y);
+}
+
+void Player::makeInvulnerable(std::int32_t frames) {
+    if (state_ != State::Alive) return;
+    state_ = State::Invulnerable;
+    stateTimer_.assign(frames);
+}
+
+// ---- death (spec 8) -----------------------------------------------------------------------
+
+void Player::die(const World& w) {
+    GameState& g = *w.state;
+    antiTamper(*w.rng);
+    if (w.effects) w.effects->spawn(w, 6, pos_, 16, 0xFFFFFFFFu);
+    state_ = State::Dead;
+    stateTimer_.assign(0);
+    w.playSound(4);
+    committed_ = false;
+    // The deathbomb countdown: bombs x 6, +7 with the time quota met, at most 15 (twice in a
+    // card, at most 30); x 9 / 5 for Reimu's characters.
+    const int bombs = g.bombsI();
+    if (bombs >= 1) {
+        countdown_ = bombs * 6;
+        if (g.timePoints >= g.timeQuota) countdown_ += 7;
+        countdown_ = std::min(countdown_, 15);
+        if (w.spellCardActive) countdown_ = std::min(countdown_ * 2, 30);
+        if (character_ == 0 || character_ == 4 || character_ == 5) countdown_ = countdown_ * 9 / 5;
+    } else {
+        countdown_ = 2;
+    }
+    if (w.bullets) w.bullets->stopHoming();
+}
+
+void Player::commitDeath(const World& w) {
+    GameState& g = *w.state;
+    if (w.effects) {
+        w.effects->spawnSpecial(w, 12, pos_, 3, 1, 0xFF4040FFu);
+        w.effects->spawn(w, 6, pos_, 16, 0xFFFFFFFFu);
+    }
+    w.playSound(15);
+    lastSpellArmed_ = false;
+    g.misses += 1.0f;
+    antiTamper(*w.rng);
+    const std::int32_t loss = g.timePoints > 5000 ? 500 : g.timePoints / 10;
+    g.timePoints = std::max(0, g.timePoints - loss);
+    antiTamper(*w.rng);
+    if (g.lives >= 1.0f) {
+        g.power = g.power <= 16.0f ? 0.0f : g.power - 16.0f;
+        antiTamper(*w.rng);
+        if (w.bullets) {
+            w.bullets->spawnItem(w, pos_, BulletManager::BigPower, BulletManager::Scatter);
+            for (int k = 0; k < 5; ++k) w.bullets->spawnItem(w, pos_, BulletManager::SmallPower, BulletManager::Scatter);
+            if (g.bombsI() >= 1 && (character_ == 2 || character_ == 8 || character_ == 9)) {
+                w.bullets->spawnItem(w, pos_, BulletManager::Bomb, BulletManager::Scatter);
+            }
+            w.bullets->stopHoming();
+        }
+    } else {
+        g.power = 0.0f;
+        antiTamper(*w.rng);
+        if (w.bullets) {
+            for (int k = 0; k < 5; ++k) w.bullets->spawnItem(w, pos_, BulletManager::FullPower, BulletManager::Scatter);
+        }
+    }
+}
+
+bool Player::deathStep(const World& w) {
+    GameState& g = *w.state;
+    if (countdown_ != 0) {
+        if (g.timePoints < 15) {
+            g.timePoints = 0;
+        } else {
+            g.timePoints -= 15;
+            antiTamper(*w.rng);
+        }
+        --countdown_;
+        lastSpellArmed_ = true;
+        if (countdown_ == 0) {
+            commitDeath(w);
+            committed_ = true;
+        }
+        return false;
+    }
+    // Fade out, then the respawn move.
+    const float t = static_cast<float>(stateTimer_.current);
+    vm_.scale = {1.0f - t / 30.0f, 1.0f + 3.0f * t / 30.0f};
+    vm_.set(AnmVm::ScaleDirty, true);
+    vm_.color = withAlpha(0xFFFFFFFFu, static_cast<std::int32_t>(255.0f - 255.0f * t / 30.0f));
+    vm_.setBlend(1);
+    prevVx_ = 0.0f;
+    if (stateTimer_.current < 30) return false;
+    state_ = State::Spawning;
+    pos_ = {192.0f, 384.0f, 0.2f};
+    stateTimer_.assign(0);
+    vm_.scale = {3.0f, 3.0f};
+    const bool youkaiSprite = isSolo(character_) ? isYoukaiSolo(character_) : focus_ == 1;
+    setSpriteScript(w, youkaiSprite ? 5 : 0);
+    if (g.lives < 1.0f) {
+        continueRequested_ = true;  // (the continue menu is not ported yet)
+        return false;
+    }
+    g.lives -= 1.0f;
+    antiTamper(*w.rng);
+    g.bombs = static_cast<float>(static_cast<int>(header().bombsPerLife));
+    return true;
 }
 
 // ---- drawing ----------------------------------------------------------------------------

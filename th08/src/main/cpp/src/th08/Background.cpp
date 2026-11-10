@@ -466,8 +466,9 @@ void Background::update(AnmLibrary& anm, ZunRng& rng, bool frozen) {
         backdropC_.tick(rng);
         clearColor_ = backdropC_.color;
     }
-    // 13. Glow particles: twelve spawns every third frame (always twelve, recorded or not).
-    if (frames_ % 3 == 0 && (frames_ < 700 || spellPractice) && spellState_ != SpellState::Active) {
+    // 13. Glow particles: twelve spawns every third frame from stage frame 700 (always in spell
+    // practice), always twelve, recorded or not (spec_effects §9 corrects spec_stage_gui 1.4).
+    if (frames_ % 3 == 0 && (frames_ >= 700 || spellPractice) && spellState_ != SpellState::Active) {
         for (int i = 0; i < 12; ++i) {
             if (spawnGlow) spawnGlow(glow_[static_cast<std::size_t>(i)]);
         }

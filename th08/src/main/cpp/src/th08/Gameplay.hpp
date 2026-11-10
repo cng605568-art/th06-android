@@ -12,7 +12,9 @@
 
 #include "th08/Anm.hpp"
 #include "th08/Background.hpp"
+#include "th08/Bullets.hpp"
 #include "th08/Effects.hpp"
+#include "th08/Enemies.hpp"
 #include "th08/Flow.hpp"
 #include "th08/Gui.hpp"
 #include "th08/Player.hpp"
@@ -55,6 +57,9 @@ class Gameplay {
     const Gui& gui() const { return gui_; }
     const Player& player() const { return *player_; }
     const Effects& effects() const { return *effects_; }
+    BulletManager& bullets() { return *bullets_; }
+    EnemyManager& enemies() { return *enemies_; }
+    const World& world() const { return world_; }
     // The game input word (spec_player 2.1): the raw buttons the game reads.
     std::uint16_t gameInput() const { return gameInput_; }
     std::uint32_t stageFrame() const { return stageFrame_; }
@@ -70,6 +75,8 @@ class Gameplay {
     Background background_;
     std::unique_ptr<Player> player_ = std::make_unique<Player>();
     std::unique_ptr<Effects> effects_ = std::make_unique<Effects>();
+    std::unique_ptr<BulletManager> bullets_ = std::make_unique<BulletManager>();
+    std::unique_ptr<EnemyManager> enemies_ = std::make_unique<EnemyManager>();
     Gui gui_;
     std::uint16_t gameInput_ = 0;
     AsciiText ascii_;

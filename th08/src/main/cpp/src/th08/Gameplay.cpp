@@ -34,6 +34,7 @@ void Gameplay::releaseStageFiles() {
     background_.release(*ctx_.anm);
     if (effectsLoaded_) ctx_.anm->release(kSlotEffects);
     if (etamaLoaded_) ctx_.anm->release(kSlotEtama);
+    enemies_->release(*ctx_.anm);
     effectsLoaded_ = etamaLoaded_ = false;
 }
 
@@ -63,6 +64,10 @@ bool Gameplay::start(const Setup& setup, std::string* error) {
     state_.lives = state_.difficulty >= 4 ? 2.0f : state_.practice ? 8.0f : static_cast<float>(setup.lives);
     state_.bombs = 3.0f;
     state_.hiScore = 100000;
+    static constexpr std::int32_t kRankStart[5] = {10, 10, 8, 8, 16};
+    static constexpr std::int32_t kPointValue[5] = {60000, 100000, 200000, 300000, 300000};
+    state_.rank = kRankStart[state_.difficulty];
+    state_.pointValue = kPointValue[state_.difficulty];
     if (!setUpStage(true, error)) {
         end();
         return false;
@@ -90,6 +95,8 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
     world_.effects = effects_.get();
     world_.player = player_.get();
     world_.background = &background_;
+    world_.bullets = bullets_.get();
+    world_.enemies = enemies_.get();
     world_.mode = (state_.practice ? ModePractice : 0u) | (state_.spellPractice ? ModeSpellPractice : 0u);
     // The player (registered before the stage: its shot files every stage, its ANM once).
     if (!player_->load(*ctx_.vfs, *ctx_.textures, lib, state_.character, fresh, error)) return false;
@@ -98,9 +105,11 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
     if (!background_.load(*ctx_.vfs, *ctx_.textures, lib, rng, state_.stage, state_.spellPractice, error)) return false;
     if (!lib.load(*ctx_.vfs, *ctx_.textures, "etama.anm", kSlotEtama, error)) return false;
     etamaLoaded_ = true;
+    if (!enemies_->stageStart(world_, *ctx_.vfs, *ctx_.textures, state_.stage, state_.spellPractice, error)) return false;
     if (!lib.load(*ctx_.vfs, *ctx_.textures, effectAnm(state_.stage), kSlotEffects, error)) return false;
     effectsLoaded_ = true;
     effects_->reset();
+    bullets_->stageStart(world_);
     player_->stageStart(world_);
     background_.spawnGlow = [this](const Vec3f& point) {
         Effect& e = effects_->spawn(world_, 62, point, 1, 0x20FFFFFFu);
@@ -143,9 +152,16 @@ void Gameplay::tick(const MenuInput& in) {
     // Stage (8), Player (9), (enemies 11, spell cards 12,) effects (13), (bullets 14,) Gui (15).
     background_.setYoukaiInFront(player_->youkaiInFront());
     background_.update(*ctx_.anm, rng, (world_.mode & ModeSpellFreeze) != 0);
+    world_.spellCardActive = enemies_->spellCard().active;
     player_->update(world_, gameInput_);
+    enemies_->update(world_);
+    world_.spellCardActive = enemies_->spellCard().active;
     effects_->update(world_);
+    bullets_->update(world_);
     gui_.update(rng, state_, player_->position(), world_.timeStop);
+    state_.guiScore = std::max(state_.guiScore, state_.score * 10);
+    // (The continue menu is not ported yet: out of lives goes back to the title.)
+    if (player_->continueRequested()) outcome_ = Outcome::Title;
     ++stageFrame_;
 }
 
@@ -156,10 +172,13 @@ void Gameplay::draw(SpriteSink& sink) {
     background_.drawHigh(sink, drawState_);  // 6
     background_.drawLow(sink, drawState_);   // 7 (with effect list B)
     sink.setClip(kPlayfieldX, kPlayfieldY, kPlayfieldW, kPlayfieldH);
+    enemies_->drawLayers(sink, drawState_, 0, 1);  // 8
     player_->drawShots(sink, drawState_);     // 9
     player_->drawPlayer(sink, drawState_);    // 10
+    enemies_->drawLayers(sink, drawState_, 2, 3);  // 11
     effects_->draw(sink, drawState_, &background_);  // 12
-    effects_->drawListD(sink, drawState_);     // 13 (inside the bullet draw)
+    bullets_->draw(sink, drawState_);         // 13: lasers, items, bullets
+    effects_->drawListD(sink, drawState_);     // (inside the bullet draw)
     sink.clearClip();
     gui_.draw(sink, state_, ascii_);          // 17
     if (ctx_.anm) ascii_.draw(sink, *ctx_.anm);  // 20
