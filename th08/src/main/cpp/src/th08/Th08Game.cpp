@@ -323,6 +323,31 @@ void Th08Game::render(SpriteSink& sink, float, const FrameInfo&) {
 }
 
 // Android Back: in a game, what Menu does (the pause menu).
+// The Gui's playfield captures (the results' snapshot, the next stage's tiles), into
+// capture.anm's texture at the snapshot sprite's rectangle.
+bool Th08Game::takeCaptureRequest() { return gameplay_ && gameplay_->gui().takeCaptureRequest(); }
+
+int Th08Game::captureTexture() const {
+    const AnmFile* f = anm_.file(kSlotCapture);
+    if (!f || !f->loaded() || f->textures.empty()) return -1;
+    const CaptureRect r = captureRect();
+    return r.w > 0 && r.h > 0 ? f->textures[0] : -1;  // (an empty rectangle would fill the whole texture)
+}
+
+void Th08Game::setCaptureReady(bool ready) {
+    if (gameplay_) gameplay_->gui().setCaptureReady(ready);
+}
+
+Game::CaptureRect Th08Game::captureRect() const {
+    CaptureRect r;
+    if (gameplay_) gameplay_->gui().captureRect(r.x, r.y, r.w, r.h);
+    return r;
+}
+
+// The "Press Shot Button" wait between stages draws over the last frame (the original copies
+// a capture of it back every frame).
+bool Th08Game::keepsPreviousFrame() const { return gameplay_ && gameplay_->stageEndState() == 1; }
+
 bool Th08Game::back() {
     if (!gameplay_) return false;
     gameplay_->requestPause();

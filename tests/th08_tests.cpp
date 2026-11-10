@@ -1286,9 +1286,13 @@ void testRealArchive() {
                 CHECK(tally && game->stageEndState() == 1 && game->state().stage == 1);
                 // No time points: the quota is missed and the night moves on an hour.
                 CHECK(game->state().score > before && game->state().nightSteps == 2);
+                // The next stage starts under the old frame's 168 tiles (a capture is asked for).
+                CHECK(game->gui().transitionActive() && game->gui().takeCaptureRequest());
                 run(th08::BtnShoot, 1);
                 run(0, 5);
                 CHECK(game->stageEndState() == 0 && game->state().stage == 1 && game->stageFrame() == 5);
+                run(0, 200);
+                CHECK(!game->gui().transitionActive());
             }
         }
         // ECL ex routines (claude/th08-specs/spec_ecl_ex_routines.md) on Stage 4A.

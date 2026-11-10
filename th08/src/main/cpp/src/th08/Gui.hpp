@@ -108,6 +108,7 @@ struct GameState {
 };
 
 struct World;
+class Background;
 
 class Gui {
   public:
@@ -149,6 +150,23 @@ class Gui {
     std::int32_t clockTarget() const { return target_; }
     // The stage-clear picture has stopped: the stage layers are not drawn (spec 3.11).
     bool stagePictureFinished() const;
+
+    // ---- the playfield captures (spec_stage_gui 3.2, 3.10-3.11): the results' snapshot and
+    // afterimages, then at the next stage the old frame broken into 168 tiles. The host copies
+    // the last frame's playfield into capture.anm's texture at the snapshot sprite's rectangle.
+    bool takeCaptureRequest() {
+        const bool r = captureRequest_;
+        captureRequest_ = false;
+        return r;
+    }
+    void setCaptureReady(bool ready) { captureReady_ = ready; }
+    void captureRect(int& x, int& y, int& w, int& h) const;
+    bool transitionActive() const { return tilesActive_; }
+    void setBackground(Background* bg) { background_ = bg; }
+
+    // ---- the boss name label (spec_stage_gui 3.6): the stage's name image into sprite 10 ----
+    void copyBossName(int k);
+    void bossNameForStage(int stage);  // at the music start (MSG script 0: 22 / 24 / 25)
 
     // ---- the boss HUD (spec_spellcard_hud §8): inputs from the enemy manager ----
     void setBossPresent(bool on) { bossPresent_ = on; }
@@ -224,6 +242,7 @@ class Gui {
     void sendHudInterrupt(int k);
 
     AnmLibrary* anm_ = nullptr;
+    TextureLibrary* textures_ = nullptr;
     const UiArt* ui_ = nullptr;
     bool loaded_ = false;
     bool spellPractice_ = false;
@@ -241,6 +260,16 @@ class Gui {
                  delay_ = 0, total_ = 0;
     AnmVm picture_;
     bool hasPicture_ = false;
+    // The snapshot (capture script 1), the 8 afterimages (script 2) and the 168 tiles (3, 4).
+    AnmVm snapshot_;
+    bool snapshotLive_ = false;
+    std::array<AnmVm, 8> afterimages_{};
+    bool afterimagesLive_ = false;
+    std::array<AnmVm, 168> tiles_{};
+    std::array<bool, 168> tileLive_{};
+    bool tilesActive_ = false;
+    bool captureRequest_ = false, captureReady_ = false;
+    Background* background_ = nullptr;
     std::array<int, 6> refresh_{};  // lives, bombs, power, graze, point items, time points
 };
 

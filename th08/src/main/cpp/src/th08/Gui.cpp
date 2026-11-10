@@ -2,12 +2,17 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <format>
+#include <vector>
 
 #include "core/Log.hpp"
 #include "gfx/SpriteSink.hpp"
+#include "gfx/Image.hpp"
+#include "gfx/TextureLibrary.hpp"
 #include "gfx/ProceduralArt.hpp"
 #include "io/Vfs.hpp"
+#include "th08/Background.hpp"
 #include "th08/ExeTables.hpp"
 #include "th08/World.hpp"
 
@@ -42,9 +47,11 @@ bool Gui::stageStart(const FlowContext& ctx, const GameState& g, bool firstStage
     ZunRng& rng = *ctx.rng;
     anm_ = &lib;
     ui_ = ctx.ui;
+    textures_ = ctx.textures;
     spellPractice_ = g.spellPractice;
     if (firstStage) {
-        if (!lib.load(*ctx.vfs, *ctx.textures, "front.anm", kSlotFront, error)) return false;
+        // (CPU-side: the boss name images are copied into sprite 10's texels)
+        if (!lib.load(*ctx.vfs, *ctx.textures, "front.anm", kSlotFront, error, true)) return false;
         if (!lib.load(*ctx.vfs, *ctx.textures, "times.anm", kSlotTimes, error)) return false;
         if (!lib.load(*ctx.vfs, *ctx.textures, loadingAnm(g.character), kSlotLoading, error)) return false;
         lastSpellMarker_ = AnmVm{};
@@ -79,6 +86,7 @@ bool Gui::stageStart(const FlowContext& ctx, const GameState& g, bool firstStage
     }
     nightCaption_ = AnmVm{};
     nightCaption_.start(lib, rng, kSlotAscii, 3);
+    for (Message& m : messages_) m.on = false;  // (messages A/B/C hidden, spec 3.2 step 7)
     refresh_.fill(2);
     fullRedraw_ = 16;
     // The results of the previous stage go (the total is kept: frame F shows it [QUIRK]).
@@ -89,7 +97,46 @@ bool Gui::stageStart(const FlowContext& ctx, const GameState& g, bool firstStage
     picture_ = AnmVm{};
     hasPicture_ = false;
     clockShown_ = false;
+    afterimagesLive_ = false;
+    tilesActive_ = false;
+    tileLive_.fill(false);
+    if (!firstStage) {
+        // The next stage (or a retry): the last frame shown, captured, turns away in 14 x 12
+        // tiles over the new stage. The snapshot restarts with interrupt 1.
+        snapshot_ = AnmVm{};
+        snapshot_.start(lib, rng, kSlotCapture, 1);
+        snapshot_.interrupt(1);
+        snapshotLive_ = true;
+        captureRequest_ = true;
+        captureReady_ = false;
+        for (int i = 0; i < 14; ++i) {
+            for (int j = 0; j < 12; ++j) {
+                const auto n = static_cast<std::size_t>(i * 12 + j);
+                AnmVm& t = tiles_[n];
+                t = AnmVm{};
+                t.start(lib, rng, kSlotCapture, 3 + ((i + j) & 1));
+                t.intRegs2[0] = i + 2 * j;  // J0: the stagger the script waits on at t = 1
+                t.position = {32.0f * static_cast<float>(j) - 0.5f + 16.0f, 32.0f * static_cast<float>(i) - 0.5f + 16.0f, 0.0f};
+                t.uvScroll = {32.0f * static_cast<float>(j) / 512.0f, 32.0f * static_cast<float>(i) / 512.0f};
+                tileLive_[n] = true;
+            }
+        }
+        tilesActive_ = true;
+    } else {
+        snapshotLive_ = false;
+        captureReady_ = false;
+    }
     return true;
+}
+
+void Gui::captureRect(int& x, int& y, int& w, int& h) const {
+    x = y = w = h = 0;
+    if (!snapshot_.sprite) return;
+    const AnmSprite& sp = *snapshot_.sprite;
+    x = static_cast<int>(sp.startX);
+    y = static_cast<int>(sp.startY);
+    w = static_cast<int>(sp.endX - sp.startX);
+    h = static_cast<int>(sp.endY - sp.startY);
 }
 
 // ---- the night clock and the music caption ---------------------------------------------------
@@ -149,6 +196,20 @@ void Gui::stageResults(const World& w, GameState& g) {
             picture_ = AnmVm{};
             picture_.start(*anm_, *w.rng, kSlotLoading, 0);
             hasPicture_ = true;
+            // The frozen playfield and its 8 fading afterimages over the picture.
+            snapshot_ = AnmVm{};
+            snapshot_.start(*anm_, *w.rng, kSlotCapture, 1);
+            snapshotLive_ = true;
+            captureRequest_ = true;
+            captureReady_ = false;
+            for (int k = 0; k < 8; ++k) {
+                AnmVm& a = afterimages_[static_cast<std::size_t>(k)];
+                a = AnmVm{};
+                a.start(*anm_, *w.rng, kSlotCapture, 2);
+                a.intRegs2[0] = 4 * k + 3;  // (J0, waited on at t = 1)
+                a.color = (a.color & 0x00FFFFFFu) | (static_cast<std::uint32_t>(64 - 2 * k) << 24);
+            }
+            afterimagesLive_ = true;
         } else {
             nightCaption_.current = nullptr;
         }
@@ -330,7 +391,24 @@ void Gui::update(ZunRng& rng, const GameState& g, const Vec3f& playerPos, bool f
     if (!spellPractice_ && hasStageText_[0] && (stageText_[0].color >> 24) != 0) titleClock_.tick(rng);
     nightCaption_.tick(rng);
     stageClock_.tick(rng);
-    if (hasPicture_ && picture_.tick(rng)) hasPicture_ = false;
+    if (hasPicture_) {
+        if (picture_.tick(rng)) hasPicture_ = false;
+        if (snapshotLive_ && snapshot_.tick(rng)) snapshotLive_ = false;
+        if (afterimagesLive_) {
+            for (AnmVm& a : afterimages_) a.tick(rng);
+        }
+    } else if (snapshotLive_ && snapshot_.tick(rng)) {
+        snapshotLive_ = false;
+    }
+    if (tilesActive_) {
+        bool any = false;
+        for (std::size_t n = 0; n < tiles_.size(); ++n) {
+            if (!tileLive_[n]) continue;
+            if (tiles_[n].tick(rng)) tileLive_[n] = false;
+            else any = true;
+        }
+        tilesActive_ = any;
+    }
     // The in-stage clock fades to 64 while the player is under it.
     std::uint32_t a = stageClock_.color >> 24;
     if (playerPos.x >= 64.0f && playerPos.y < 128.0f) {
@@ -472,6 +550,37 @@ void Gui::drawBossMarkers(SpriteSink& sink, const Vec3f& player) {
 
 // ---- the boss HUD and the messages (spec_spellcard_hud §8-§9) -------------------------------
 
+// The boss name (0x437F5C, spec_stage_gui 3.6): front sprite k's rectangle copied over sprite
+// 10's, the label's image.
+void Gui::copyBossName(int k) {
+    if (!anm_ || !textures_) return;
+    const AnmFile* f = anm_->file(kSlotFront);
+    if (!f) return;
+    const AnmSprite* src = f->sprite(k);
+    const AnmSprite* dst = f->sprite(10);
+    if (!src || !dst) return;
+    Image* from = textures_->pixels(src->texture);
+    Image* to = textures_->pixels(dst->texture);
+    if (!from || !to) return;
+    const int w = static_cast<int>(std::min(src->endX - src->startX, dst->endX - dst->startX));
+    const int h = static_cast<int>(std::min(src->endY - src->startY, dst->endY - dst->startY));
+    const int sx = static_cast<int>(src->startX), sy = static_cast<int>(src->startY);
+    const int dx = static_cast<int>(dst->startX), dy = static_cast<int>(dst->startY);
+    std::vector<std::uint8_t> row(static_cast<std::size_t>(std::max(w, 0)) * 4);
+    for (int y = 0; y < h; ++y) {
+        if (sy + y < 0 || sy + y >= from->height || dy + y < 0 || dy + y >= to->height) continue;
+        if (sx < 0 || dx < 0 || sx + w > from->width || dx + w > to->width) continue;
+        std::memcpy(row.data(), from->pixel(sx, sy + y), row.size());
+        std::memcpy(to->pixel(dx, dy + y), row.data(), row.size());
+    }
+    textures_->touch(dst->texture);
+}
+
+void Gui::bossNameForStage(int stage) {
+    static constexpr int kName[9] = {16, 17, 18, 19, 20, 21, 23, 23, 32};
+    copyBossName(kName[std::clamp(stage, 0, 8)]);
+}
+
 void Gui::setBossSegment(int i, float start, float end, std::uint32_t color) {
     if (i < 0 || i >= 8) return;
     segStart_[static_cast<std::size_t>(i)] = start;
@@ -562,7 +671,22 @@ void Gui::drawMessages(SpriteSink& sink, AnmLibrary& anm) {
 void Gui::draw(SpriteSink& sink, const GameState& g, AsciiText& ascii) {
     if (!loaded_) return;
     const AnmDrawState none;
-    if (hasPicture_) drawVm(sink, picture_, none);
+    if (hasPicture_) {
+        drawVm(sink, picture_, none);
+        if (captureReady_ && background_) {
+            AnmDrawState st;
+            if (snapshotLive_) background_->drawProjected(sink, snapshot_, st);
+            if (afterimagesLive_) {
+                for (AnmVm& a : afterimages_) background_->drawProjected(sink, a, st);
+            }
+        }
+    }
+    if (tilesActive_ && captureReady_ && background_) {
+        AnmDrawState st;
+        for (std::size_t n = 0; n < tiles_.size(); ++n) {
+            if (tileLive_[n]) background_->drawProjected(sink, tiles_[n], st);
+        }
+    }
     if (resultsState_ != 0) drawResults(g, ascii);
     for (int i = 0; i < 4; ++i) {
         if (hasStageText_[static_cast<std::size_t>(i)]) drawVm(sink, stageText_[static_cast<std::size_t>(i)], none);

@@ -176,6 +176,7 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
     world_.msg = &dialogue_;
     world_.gui = &gui_;
     world_.spellcard = &spellcard_;
+    gui_.setBackground(&background_);
     world_.mode = (state_.practice ? ModePractice : 0u) | (state_.spellPractice ? ModeSpellPractice : 0u);
     // The player (registered before the stage: its shot files every stage, its ANM once).
     if (!player_->load(*ctx_.vfs, *ctx_.textures, lib, state_.character, fresh, error)) return false;
@@ -260,6 +261,10 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
     spellcard_.stageStart(world_, sc);
     dialogue_.onScriptZero = [this](int) {
         if (state_.stage >= 6) background_.setSpellBackgrounds(2, 2);
+        // The second boss's name (spec_stage_gui 3.6): Stage 5, 6B and Extra.
+        if (state_.stage == 5) gui_.copyBossName(22);
+        else if (state_.stage == 7) gui_.copyBossName(24);
+        else if (state_.stage == 8) gui_.copyBossName(25);
     };
     dialogue_.onMusic = [this](int track) {
         if (!ctx_.music) return;
@@ -427,6 +432,7 @@ void Gameplay::tick(const MenuInput& in) {
     }
     // GameManager (priority 4): the music starts when play begins (spec 6.6 step 3).
     if (musicStart_ != 0) {
+        gui_.bossNameForStage(state_.stage);  // (the GUI start hook 0x438046)
         if (musicStart_ == 1) {
             if (ctx_.music) ctx_.music->playLoaded(0);
             if (!state_.practice) ctx_.notePlayed(background_.songPath(0));
@@ -471,12 +477,17 @@ void Gameplay::tick(const MenuInput& in) {
 
 void Gameplay::draw(SpriteSink& sink) {
     if (!running_) return;
-    if (stageEnd_ == 1) {  // the next stage is loaded: "Press Shot Button"
-        if (ctx_.ui) sink.fillRect(ctx_.ui->white, 0.0f, 0.0f, 640.0f, 480.0f, rgba(0, 0, 0));
-        ascii_.add(384.0f, 440.0f, "Press Shot Button", 0xFFFFFFFFu);
+    if (stageEnd_ == 1) {
+        // The next stage is loaded: "Press Shot Button" at half size over the last frame, its
+        // alpha pulsing 255 -> 127 -> 255 over 60 frames (spec_spellcard_hud 11.3).
+        const int phase = 5 + static_cast<int>(pressShotFrames_ % 60);
+        const int alpha = phase < 35 ? 255 - (phase - 5) * 128 / 30 : 255 - (65 - phase) * 128 / 30;
+        ++pressShotFrames_;
+        ascii_.add(288.0f, 454.0f, "Press Shot Button", (static_cast<std::uint32_t>(alpha) << 24) | 0xFFFFFFu, 0.5f);
         if (ctx_.anm) ascii_.draw(sink, *ctx_.anm);
         return;
     }
+    pressShotFrames_ = 0;
     drawState_ = AnmDrawState{};
     // The shake moves everything up to the popups; the HUD stays put (spec_anm_text 4.2).
     drawState_.offsetX = screen_.offsetX();

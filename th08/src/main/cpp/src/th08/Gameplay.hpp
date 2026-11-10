@@ -66,6 +66,7 @@ class Gameplay {
     const GameState& state() const { return state_; }
     const Background& background() const { return background_; }
     const Gui& gui() const { return gui_; }
+    Gui& gui() { return gui_; }
     const Player& player() const { return *player_; }
     const Effects& effects() const { return *effects_; }
     const ScreenEffects& screenEffects() const { return screen_; }
@@ -108,6 +109,7 @@ class Gameplay {
     // Stage end (spec 6.3): 0 playing, 2 just ended, 3 waiting for Shoot, 1 the next stage
     // loaded and waiting for Shoot.
     int stageEnd_ = 0;
+    std::uint32_t pressShotFrames_ = 0;
     enum class Pending : std::uint8_t { None, Results, BadEnding, Ending } pending_ = Pending::None;
     Gui gui_;
     std::uint16_t gameInput_ = 0;

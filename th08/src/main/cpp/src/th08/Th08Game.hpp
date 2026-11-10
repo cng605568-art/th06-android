@@ -40,9 +40,11 @@ class Th08Game final : public Game {
     bool back() override;
     int takeVibration() override { return 0; }
 
-    bool takeCaptureRequest() override { return false; }
-    int captureTexture() const override { return -1; }
-    void setCaptureReady(bool) override {}
+    bool takeCaptureRequest() override;
+    int captureTexture() const override;
+    void setCaptureReady(bool ready) override;
+    CaptureRect captureRect() const override;
+    bool keepsPreviousFrame() const override;
 
     void logStatus(const FrameInfo& frame) const override;
     void logSummary() const override {}
