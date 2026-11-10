@@ -65,9 +65,9 @@ void Surface::blit(SpriteSink& sink, float x, float y) const {
 
 // ---- ASCII strings --------------------------------------------------------------------------
 
-void AsciiText::add(float x, float y, std::string_view text, std::uint32_t color, float scale, float advance) {
+void AsciiText::add(float x, float y, std::string_view text, std::uint32_t color, float scale, float advance, float xScale) {
     if (items_.size() >= 256) return;
-    items_.push_back({x, y, std::string(text.substr(0, 63)), color, scale, advance});
+    items_.push_back({x, y, std::string(text.substr(0, 63)), color, scale, advance, xScale < 0.0f ? scale : xScale});
 }
 
 void AsciiText::draw(SpriteSink& sink, AnmLibrary& anm) {
@@ -85,7 +85,7 @@ void AsciiText::draw(SpriteSink& sink, AnmLibrary& anm) {
             if (c != ' ' && c > 0 && glyph.selectSprite(c - 1)) {
                 glyph.flags = AnmVm::Visible | AnmVm::Active | AnmVm::AnchorLeft | AnmVm::AnchorTop;
                 glyph.color = t.color;
-                glyph.scale = {t.scale, t.scale};
+                glyph.scale = {t.xScale, t.scale};
                 glyph.position = {x, y, 0.0f};
                 drawVm(sink, glyph, none);
             }

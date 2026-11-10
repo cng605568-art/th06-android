@@ -10,11 +10,14 @@ set(TH08_SRC "${CMAKE_CURRENT_LIST_DIR}/src")
 
 add_library(th08_game STATIC
   ${TH08_SRC}/th08/Anm.cpp
+  ${TH08_SRC}/th08/Background.cpp
   ${TH08_SRC}/th08/Bgm.cpp
   ${TH08_SRC}/th08/ExeTables.cpp
   ${TH08_SRC}/th08/FlowCommon.cpp
   ${TH08_SRC}/th08/GameConfig.cpp
   ${TH08_SRC}/th08/GameFiles.cpp
+  ${TH08_SRC}/th08/Gameplay.cpp
+  ${TH08_SRC}/th08/Gui.cpp
   ${TH08_SRC}/th08/MainMenu.cpp
   ${TH08_SRC}/th08/MusicRoom.cpp
   ${TH08_SRC}/th08/ScoreFile.cpp

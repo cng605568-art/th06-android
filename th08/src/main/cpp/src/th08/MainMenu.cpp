@@ -65,6 +65,9 @@ bool MainMenu::create(std::string* error) {
     switch (ctx_.previous) {
         case Scene::ResultViewer: titleCursor_ = PlayerData; break;
         case Scene::MusicRoom: titleCursor_ = MusicRoom; break;
+        case Scene::Game:
+        case Scene::NextStage:
+        case Scene::ResultAfterGame: titleCursor_ = ctx_.config && ctx_.config->difficulty >= 4 ? ExtraStart : GameStart; break;
         default: titleCursor_ = GameStart; break;
     }
     cursor_ = titleCursor_;
@@ -533,8 +536,14 @@ void MainMenu::character(const MenuInput& in) {
     if (in.pressed(kSelect)) {
         ctx_.character = cursor_;
         ctx_.playSound(kSndSelect);
+        // (Practice goes to the stage list, state 11, which is not ported yet: Stage 1, the
+        // only stage a player without clears can practise.)
         ctx_.stage = state_ == State::ExtraCharacter ? 8 : 0;
-        notPorted();  // the practice stage list and the game itself are not ported yet
+        ctx_.practice = state_ == State::PracticeCharacter;
+        ctx_.spellPractice = false;
+        if (ctx_.music) ctx_.music->stop();
+        removed_ = true;
+        if (ctx_.request) ctx_.request(Scene::Game);
         return;
     }
     if (in.pressed(kCancel)) {

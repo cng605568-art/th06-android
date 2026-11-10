@@ -21,6 +21,8 @@
 #include "gfx/SpriteSink.hpp"
 #include "gfx/TextureLibrary.hpp"
 #include "th08/Anm.hpp"
+#include "th08/Background.hpp"
+#include "th08/Gameplay.hpp"
 #include "th08/ExeTables.hpp"
 #include "th08/Flow.hpp"
 #include "th08/MainMenu.hpp"
@@ -880,6 +882,105 @@ void testRealArchive() {
         ctx.previous = th08::Scene::MusicRoom;
         th08::MainMenu menu5(ctx);
         CHECK(menu5.create(&err) && menu5.cursor() == th08::MainMenu::MusicRoom);
+    }
+    // Every stage background (normal and spell practice) loads and runs 3000 frames: the
+    // ribbons of 4A/4B/Extra, the per-stage cull distance, the sway of stage 5, op 34's clear
+    // colour, and a draw of each pass.
+    {
+        Vfs vfs;
+        auto again = MappedFile::open(path, &err);
+        CHECK(again && vfs.mount(openArchive("th08.dat", std::move(again), &err)));
+        TextureLibrary textures;
+        th08::AnmLibrary lib;
+        CHECK(lib.load(vfs, textures, "text.anm", th08::kSlotText, &err, true));
+        ZunRng rng(11);
+        int loaded = 0;
+        bool swayed = false;
+        for (int spell = 0; spell < 2; ++spell) {
+            for (int st = 0; st < th08::kStageCount; ++st) {
+                th08::Background bg;
+                const bool ok = bg.load(vfs, textures, lib, rng, st, spell != 0, &err);
+                CHECK(ok);
+                if (!ok) {
+                    std::fprintf(stderr, "  %s\n", err.c_str());
+                    continue;
+                }
+                ++loaded;
+                const bool bamboo = st == 3 || st == 4 || st == 8;
+                CHECK((bg.ribbonCount() == 28) == bamboo);
+                const float cull = st == 5 ? 1350.0f : (st == 6 || st == 7) ? 1800.0f : 1150.0f;
+                CHECK(bg.cullDistanceSquared() == cull * cull);
+                int glows = 0;
+                bg.spawnGlow = [&](const Vec3f&) { ++glows; };
+                RecordingSink sink;
+                th08::AnmDrawState ds;
+                for (int f = 0; f < 3000; ++f) {
+                    bg.update(lib, rng);
+                    if (bg.swayMode() != 0) swayed = true;
+                    if (f % 500 == 499) {
+                        bg.drawHigh(sink, ds);
+                        bg.drawLow(sink, ds);
+                    }
+                }
+                CHECK(bg.frames() == 3000);
+                if (!spell) CHECK(glows == 12 * 234);  // every third frame below 700
+                bg.update(lib, rng, true);  // frozen: nothing runs
+                CHECK(bg.frames() == 3000);
+                // 4A: op 34 at frame 0 drives the clear colour; sway mode 1 from frame 290.
+                if (st == 3 && !spell) CHECK(bg.swayMode() == 1 && bg.eyeOffset().x != 0.0f && bg.clearColor() != 0);
+                bg.release(lib);
+            }
+        }
+        CHECK(loaded == 18 && swayed);
+        std::printf("  (18 stage backgrounds ran 3000 frames each)\n");
+    }
+    // A game starts on the real files: stage 1, the HUD files, the stage songs.
+    {
+        Vfs vfs;
+        auto again = MappedFile::open(path, &err);
+        CHECK(again && vfs.mount(openArchive("th08.dat", std::move(again), &err)));
+        TextureLibrary textures;
+        th08::AnmLibrary lib;
+        CHECK(lib.load(vfs, textures, "text.anm", th08::kSlotText, &err, true));
+        CHECK(lib.load(vfs, textures, "ascii.anm", th08::kSlotAscii, &err));
+        ZunRng rng(5);
+        th08::FlowContext ctx;
+        ctx.vfs = &vfs;
+        ctx.textures = &textures;
+        ctx.anm = &lib;
+        ctx.rng = &rng;
+        std::vector<std::string> heard;
+        ctx.musicPlayed = [&](std::string_view p) { heard.emplace_back(p); };
+        th08::Gameplay game(ctx);
+        th08::Gameplay::Setup setup;
+        setup.difficulty = 4;
+        setup.stage = 8;
+        setup.character = 7;
+        CHECK(game.start(setup, &err));
+        CHECK(game.state().lives == 2.0f && game.state().nightSteps == 6 && game.state().hiScore == 100000);
+        th08::MenuInput in;
+        for (int i = 0; i < 120; ++i) {
+            in.sample(0);
+            game.tick(in);
+        }
+        CHECK(game.stageFrame() == 120 && game.outcome() == th08::Gameplay::Outcome::None);
+        CHECK(!heard.empty());  // the stage theme is heard (not practice)
+        RecordingSink sink;
+        game.draw(sink);
+        CHECK(sink.items.size() > 40);  // the panel at least
+        in.sample(th08::BtnMenu);
+        game.tick(in);
+        CHECK(game.outcome() == th08::Gameplay::Outcome::Title);
+        game.end();
+        CHECK(!lib.loaded(th08::Background::kSlotBackground) && !lib.loaded(th08::Gui::kSlotFront));
+        setup = {};
+        setup.practice = true;
+        setup.stage = 1;
+        heard.clear();
+        CHECK(game.start(setup, &err) && game.state().lives == 8.0f && game.state().power == 112.0f);
+        in.sample(0);
+        game.tick(in);
+        CHECK(heard.empty());  // practice marks nothing heard
     }
     // The player's score.dat backup (a fresh file) decodes, with this exe's VRSM; the port's
     // fresh image is the same size, and saving it again changes only the flags it sets.

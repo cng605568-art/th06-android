@@ -1,5 +1,7 @@
 #include "th08/Th08Game.hpp"
 
+#include <algorithm>
+#include <cstdlib>
 #include <format>
 #include <fstream>
 #include <iterator>
@@ -24,7 +26,8 @@ const GameInfo& Th08Game::info() const {
 }
 
 Th08Game::~Th08Game() {
-    if (menu_ || musicRoom_) saveConfig();
+    if (menu_ || musicRoom_ || gameplay_) saveConfig();
+    gameplay_.reset();
     musicRoom_.reset();
     if (music_) music_->shutdown();
 }
@@ -96,6 +99,24 @@ void Th08Game::applyScene() {
         quit_ = true;
         return;
     }
+    if (to == Scene::Game) {
+        menu_.reset();
+        musicRoom_.reset();
+        gameplay_ = std::make_unique<Gameplay>(flow_);
+        Gameplay::Setup setup;
+        setup.stage = flow_.stage;
+        setup.character = flow_.character;
+        setup.difficulty = config_.difficulty;
+        setup.practice = flow_.practice;
+        setup.spellPractice = flow_.spellPractice;
+        setup.lives = config_.lives;
+        // Developer aid: TH08_DEV_STAGE=<stage index 0-8> starts that stage instead.
+        if (const char* dev = std::getenv("TH08_DEV_STAGE"); dev && *dev) setup.stage = std::clamp(std::atoi(dev), 0, kStageCount - 1);
+        if (gameplay_->start(setup, &err)) return;
+        log::warn("The game could not start: {}", err);
+        gameplay_.reset();
+        active_ = requested_ = Scene::MainMenu;  // as Init
+    }
     if (to == Scene::MusicRoom) {
         menu_.reset();
         musicRoom_ = std::make_unique<MusicRoom>(flow_);
@@ -106,6 +127,7 @@ void Th08Game::applyScene() {
     }
     if (active_ == Scene::MainMenu) {
         musicRoom_.reset();
+        gameplay_.reset();
         menu_ = std::make_unique<MainMenu>(flow_);
         if (!menu_->create(&err)) {
             log::warn("The title could not be built: {}", err);
@@ -223,14 +245,20 @@ bool Th08Game::start(const GameContext& ctx) {
 void Th08Game::tick(const InputState& input) {
     ++ticks_;
     if (music_) music_->fadeStep();
-    if (menu_ || musicRoom_) {
+    if (menu_ || musicRoom_ || gameplay_) {
         input_.sample(buttonWord(input));
         if (requested_ != active_) {
             applyScene();
             input_.clear();  // the transition zeroes the raw input and the repeat flag
         }
-        if (musicRoom_) musicRoom_->update(input_);
-        else if (menu_) menu_->update(input_);
+        if (gameplay_) {
+            gameplay_->tick(input_);
+            if (gameplay_->outcome() == Gameplay::Outcome::Title) requested_ = Scene::MainMenu;
+        } else if (musicRoom_) {
+            musicRoom_->update(input_);
+        } else if (menu_) {
+            menu_->update(input_);
+        }
     } else if (input.quit) {
         quit_ = true;
     }
@@ -239,6 +267,10 @@ void Th08Game::tick(const InputState& input) {
 }
 
 void Th08Game::render(SpriteSink& sink, float, const FrameInfo&) {
+    if (gameplay_) {
+        gameplay_->draw(sink);
+        return;
+    }
     if (musicRoom_) {
         musicRoom_->draw(sink);
         return;
@@ -261,8 +293,16 @@ void Th08Game::render(SpriteSink& sink, float, const FrameInfo&) {
     drawText(sink, *ui_, 136, 416, std::format("{} FILES IN THE GAME FOLDER", folder_.files), 2.0f, grey);
 }
 
+// Android Back: in a game, what Menu does (the pause menu is not ported yet: the title).
+bool Th08Game::back() {
+    if (!gameplay_) return false;
+    gameplay_->requestTitle();
+    return true;
+}
+
 void Th08Game::logStatus(const FrameInfo& frame) const {
-    log::info("fps {:.1f} | ticks {} | {}", frame.fps, frame.ticks, musicRoom_ ? "Music Room" : menu_ ? "title" : "status screen");
+    log::info("fps {:.1f} | ticks {} | {}", frame.fps, frame.ticks, gameplay_ ? std::format("stage index {} frame {}", gameplay_->state().stage, gameplay_->stageFrame())
+                         : musicRoom_ ? std::string("Music Room") : menu_ ? std::string("title") : std::string("status screen"));
 }
 
 }  // namespace touhou::th08

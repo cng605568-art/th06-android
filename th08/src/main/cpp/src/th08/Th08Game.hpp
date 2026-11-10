@@ -1,7 +1,7 @@
 #pragma once
 
 // Imperishable Night as the host runs it: the Supervisor's scenes as they are ported from the
-// clean-room specs (so far the main menu and the Music Room). A status screen says what is missing when the
+// clean-room specs (so far the main menu, the Music Room and the start of a game). A status screen says what is missing when the
 // player's files are not there (th08.dat 1.00d, th08.exe 1.00d, thbgm.dat).
 
 #include <cstdint>
@@ -16,6 +16,7 @@
 #include "th08/Flow.hpp"
 #include "th08/GameConfig.hpp"
 #include "th08/GameFiles.hpp"
+#include "th08/Gameplay.hpp"
 #include "th08/MainMenu.hpp"
 #include "th08/MusicRoom.hpp"
 #include "th08/ScoreFile.hpp"
@@ -33,10 +34,10 @@ class Th08Game final : public Game {
 
     bool quitRequested() const override { return quit_; }
     bool paused() const override { return false; }
-    bool showsPlayfield() const override { return false; }
+    bool showsPlayfield() const override { return gameplay_ != nullptr; }
     bool practiceSpeedApplies() const override { return false; }
     void pauseNow() override {}
-    bool back() override { return false; }
+    bool back() override;
     int takeVibration() override { return 0; }
 
     bool takeCaptureRequest() override { return false; }
@@ -71,6 +72,7 @@ class Th08Game final : public Game {
     MenuInput input_;
     std::unique_ptr<MainMenu> menu_;
     std::unique_ptr<MusicRoom> musicRoom_;
+    std::unique_ptr<Gameplay> gameplay_;
     std::vector<MusicTrack> musicTracks_;  // musiccmt.txt: a played song's Music Room index
     Scene active_ = Scene::MainMenu, requested_ = Scene::MainMenu;
     bool quit_ = false;

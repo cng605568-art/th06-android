@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "core/ZunMath.hpp"
+#include "gfx/SpriteSink.hpp"
 #include "gfx/Thtx.hpp"
 
 namespace touhou {
@@ -222,5 +223,7 @@ std::uint32_t effectiveColor(const AnmVm& vm, const AnmDrawState& state);
 // mode-0 or mode-1 draw left (as the original's device state). The host's frame start does not
 // reset it; screen-effect squares count as mode 0.
 void noteAlphaBlendDrawn();
+// The blend a VM draws with (spec 4.3): mode 0 alpha, 1 additive, 2 and 3 the last applied.
+Blend drawBlend(const AnmVm& vm);
 
 }  // namespace touhou::th08

@@ -877,6 +877,14 @@ Blend g_lastDestBlend = Blend::Alpha;  // the destination blend modes 2 and 3 ke
 
 void noteAlphaBlendDrawn() { g_lastDestBlend = Blend::Alpha; }
 
+Blend drawBlend(const AnmVm& vm) {
+    switch (vm.blend()) {
+        case 0: return g_lastDestBlend = Blend::Alpha;
+        case 1: return g_lastDestBlend = Blend::Additive;
+        default: return g_lastDestBlend;  // modes 2 and 3 set no render state
+    }
+}
+
 std::uint32_t effectiveColor(const AnmVm& vm, const AnmDrawState& state) {
     std::uint32_t c = vm.has(AnmVm::UseAltColor) ? vm.altColor : vm.color;
     if (state.multiply) {
@@ -896,13 +904,7 @@ bool drawable(const AnmVm& vm) {
     return vm.sprite && vm.has(AnmVm::Visible) && vm.has(AnmVm::Active) && (vm.color >> 24) != 0;
 }
 
-Blend blendOf(const AnmVm& vm) {
-    switch (vm.blend()) {
-        case 0: return g_lastDestBlend = Blend::Alpha;
-        case 1: return g_lastDestBlend = Blend::Additive;
-        default: return g_lastDestBlend;  // modes 2 and 3 set no render state
-    }
-}
+Blend blendOf(const AnmVm& vm) { return drawBlend(vm); }
 
 // Direct3D puts pixel centres on integers, GL at +0.5: an unrounded Direct3D coordinate v
 // covers what the GL coordinate v + 0.5 does; a rounded one (round(v) - 0.5) is round(v).

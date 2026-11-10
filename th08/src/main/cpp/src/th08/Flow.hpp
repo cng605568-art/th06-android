@@ -131,7 +131,9 @@ class Surface {
 // frame and drawn in order. Glyph advance 13 (TH07: 14).
 class AsciiText {
   public:
-    void add(float x, float y, std::string_view text, std::uint32_t color = 0xFFFFFFFFu, float scale = 1.0f, float advance = 13.0f);
+    // `xScale` < 0: the same as `scale` (the glyphs' horizontal scale; the advance uses `scale`).
+    void add(float x, float y, std::string_view text, std::uint32_t color = 0xFFFFFFFFu, float scale = 1.0f, float advance = 13.0f,
+             float xScale = -1.0f);
     void draw(SpriteSink& sink, AnmLibrary& anm);
     void clear() { items_.clear(); }
 
@@ -140,7 +142,7 @@ class AsciiText {
         float x, y;
         std::string text;
         std::uint32_t color;
-        float scale, advance;
+        float scale, advance, xScale;
     };
     std::vector<Item> items_;
 };
