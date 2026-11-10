@@ -65,6 +65,8 @@ bool Gameplay::start(const Setup& setup, std::string* error) {
     end();
     setup_ = setup;
     outcome_ = Outcome::None;
+    stageEnd_ = 0;
+    pending_ = Pending::None;
     // Fresh set-up (spec 6.2 step 3).
     state_ = GameState{};
     state_.stage = std::clamp(setup.stage, 0, kStageCount - 1);
@@ -240,8 +242,76 @@ void Gameplay::menuDone(InGameMenu::Request request) {
     }
 }
 
+// The next stage (spec 6.4): Stage 3 goes to 4B for Reimu's, Yukari's, Youmu's and Yuyuko's
+// shot types and to 4A for the others; Stage 5 to 6B when the dialogue chose Final B.
+bool Gameplay::nextStage(std::string* error) {
+    const int c = state_.character;
+    int next = state_.stage + 1;
+    if (state_.stage == 2) {
+        const bool b = c == 0 || c == 3 || c == 4 || c == 5 || c == 10 || c == 11;
+        next = b ? 4 : 3;
+    } else if (state_.stage == 3 || state_.stage == 4) {
+        next = 5;
+    } else if (state_.stage == 5) {
+        next = (world_.mode & ModeFinalB) ? 7 : 6;
+    }
+    const std::uint32_t route = world_.mode & ModeFinalB;
+    releaseStageFiles();
+    state_.stage = next;
+    // Next-stage set-up (spec 6.2 step 4): the GUI score catches up; the stage's misses and
+    // bombs-used counters are cleared (two anti-tamper regenerations, 8 steps).
+    state_.guiScore = state_.score * 10;
+    if (ctx_.rng) {
+        antiTamper(*ctx_.rng);
+        antiTamper(*ctx_.rng);
+    }
+    if (!setUpStage(false, error)) return false;
+    world_.mode |= route;  // (the route survives the stage set-up)
+    return true;
+}
+
+// Stage end (spec 6.3), first thing in the GameManager's pass.
+bool Gameplay::stageEndStep(const MenuInput& in) {
+    if (stageEnd_ == 0) return false;
+    if (stageEnd_ == 2) {
+        stageEnd_ = 3;
+        pending_ = Pending::None;
+        state_.guiScore = state_.score * 10;
+        if (state_.practice) {
+            pending_ = Pending::Results;
+            return true;
+        }
+        if (state_.stage <= 5) {
+            if (state_.nightSteps >= 12) {  // dawn: the bad ending
+                pending_ = Pending::BadEnding;
+                return true;
+            }
+            std::string err;
+            if (!nextStage(&err)) {
+                log::warn("th08: the next stage could not start: {}", err);
+                outcome_ = Outcome::Title;
+                return true;
+            }
+            stageEnd_ = 1;  // the new stage waits for Shoot ("Press Shot Button")
+        } else {
+            pending_ = state_.difficulty >= 4 ? Pending::Results : Pending::Ending;
+            return true;
+        }
+    }
+    if (in.pressed(BtnShoot | BtnEnter) || state_.stage >= 6) {
+        stageEnd_ = 0;
+        const Pending p = pending_;
+        pending_ = Pending::None;
+        // (The result screen and the endings are not ported yet: the title.)
+        if (p != Pending::None) outcome_ = Outcome::Title;
+        return true;
+    }
+    return true;
+}
+
 void Gameplay::tick(const MenuInput& in) {
     if (!running_ || outcome_ != Outcome::None) return;
+    if (stageEndStep(in)) return;
     // An in-game menu stops the simulation (spec_flow 6.6 step 8).
     const bool backPressed = pauseRequested_;
     pauseRequested_ = false;
@@ -293,6 +363,12 @@ void Gameplay::tick(const MenuInput& in) {
 
 void Gameplay::draw(SpriteSink& sink) {
     if (!running_) return;
+    if (stageEnd_ == 1) {  // the next stage is loaded: "Press Shot Button"
+        if (ctx_.ui) sink.fillRect(ctx_.ui->white, 0.0f, 0.0f, 640.0f, 480.0f, rgba(0, 0, 0));
+        ascii_.add(384.0f, 440.0f, "Press Shot Button", 0xFFFFFFFFu);
+        if (ctx_.anm) ascii_.draw(sink, *ctx_.anm);
+        return;
+    }
     drawState_ = AnmDrawState{};
     // The shake moves everything up to the popups; the HUD stays put (spec_anm_text 4.2).
     drawState_.offsetX = screen_.offsetX();

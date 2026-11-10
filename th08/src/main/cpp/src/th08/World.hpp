@@ -30,6 +30,7 @@ enum ModeFlag : std::uint32_t {
     ModeReplay = 1u << 3,
     ModeDissolve = 3u << 7,     // bits 7-8: ECL opcode 176
     ModeSpellFreeze = 1u << 10, // a hit during a spell card (everything but the stage waits)
+    ModeFinalB = 3u << 11,      // bits 11-12: the Final route chosen in the Stage 5 dialogue
     ModeBit13 = 1u << 13,       // stops the doll laser (meaning not traced)
     ModeSpellPractice = 1u << 14,
 };

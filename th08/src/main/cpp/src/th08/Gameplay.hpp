@@ -1,10 +1,9 @@
 #pragma once
 
 // A running game of Imperishable Night (spec_flow_menus §6): the game manager's stage
-// set-up and the stage subsystems in the original's calc and draw order. Ported so far: the
-// stage background, the player (movement, focus, familiars, shots), the effect manager's
-// allocation and lists, the HUD panel and the stage music; bullets, items, enemies, dialogue
-// and the in-game menus come next.
+// set-up, the stage subsystems in the original's calc and draw order, the in-game menus, and
+// the stage end with the next stage's set-up (the dialogue and the stage-clear picture that
+// raise the stage end come with the MSG port).
 
 #include <cstdint>
 #include <memory>
@@ -54,6 +53,12 @@ class Gameplay {
 
     Outcome outcome() const { return outcome_; }
     void requestTitle() { outcome_ = Outcome::Title; }
+    // The stage end (spec 6.3), raised by the stage-clear sequence (stages 1-5) or the
+    // dialogue (6A, 6B, Extra).
+    void stageCleared() {
+        if (stageEnd_ == 0) stageEnd_ = 2;
+    }
+    int stageEndState() const { return stageEnd_; }
     // Android Back: what Menu does (opens the pause menu, or closes it).
     void requestPause() { pauseRequested_ = true; }
     const GameState& state() const { return state_; }
@@ -73,6 +78,8 @@ class Gameplay {
   private:
     bool setUpStage(bool fresh, std::string* error);
     void menuDone(InGameMenu::Request request);
+    bool stageEndStep(const MenuInput& in);  // true: the pass stops here
+    bool nextStage(std::string* error);
     void releaseStageFiles();
 
     FlowContext& ctx_;
@@ -88,6 +95,10 @@ class Gameplay {
     InGameMenu menu_;
     Effect* moon_ = nullptr;  // the 6B moon (special effect slot 12)
     bool pauseRequested_ = false;
+    // Stage end (spec 6.3): 0 playing, 2 just ended, 3 waiting for Shoot, 1 the next stage
+    // loaded and waiting for Shoot.
+    int stageEnd_ = 0;
+    enum class Pending : std::uint8_t { None, Results, BadEnding, Ending } pending_ = Pending::None;
     Gui gui_;
     std::uint16_t gameInput_ = 0;
     AsciiText ascii_;

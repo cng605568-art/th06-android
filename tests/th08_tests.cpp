@@ -1211,6 +1211,37 @@ void testRealArchive() {
                 CHECK(!p.bombActive() && (game->world().mode & th08::ModeDissolve) == 0 && game->state().lives == 8.0f);
             }
         }
+        // The stage end (spec_flow 6.3/6.4): from Stage 3 the main game goes on to 4B with
+        // Reimu & Yukari, waits for Shoot on the loading screen, and keeps the score and lives.
+        {
+            th08::Gameplay::Setup main;
+            main.character = 0;
+            main.difficulty = 1;
+            main.lives = 2;
+            main.stage = 2;
+            CHECK(game->start(main, &err));
+            run(0, 10);
+            game->world().state->score = 12345;
+            game->stageCleared();
+            run(0, 1);
+            CHECK(game->stageEndState() == 1 && game->state().stage == 4);
+            run(0, 30);
+            CHECK(game->stageEndState() == 1 && game->stageFrame() == 0);
+            run(th08::BtnShoot, 1);
+            CHECK(game->stageEndState() == 0);
+            run(0, 10);
+            CHECK(game->stageFrame() == 10 && game->state().score >= 12345 && game->state().lives == 2.0f);
+            // Practice ends on Shoot with the results (the title for now).
+            main.practice = true;
+            main.stage = 1;
+            CHECK(game->start(main, &err));
+            run(0, 5);
+            game->stageCleared();
+            run(0, 5);
+            CHECK(game->outcome() == th08::Gameplay::Outcome::None && game->stageEndState() == 3);
+            run(th08::BtnShoot, 1);
+            CHECK(game->outcome() == th08::Gameplay::Outcome::Title);
+        }
         // The pause menu stops the game; Shoot on "resume" closes it after 20 passes.
         {
             th08::Gameplay::Setup main;
