@@ -35,6 +35,12 @@ inline float zcos(float a) { return static_cast<float>(std::cos(static_cast<doub
 inline float zatan2(float y, float x) { return static_cast<float>(std::atan2(static_cast<double>(y), static_cast<double>(x))); }
 inline float cosTimes(float a, float m) { return static_cast<float>(std::cos(static_cast<double>(a)) * static_cast<double>(m)); }
 inline float sinTimes(float a, float m) { return static_cast<float>(std::sin(static_cast<double>(a)) * static_cast<double>(m)); }
+// Vector / scalar as the original computes it: times the float reciprocal (TH07 §0.8).
+inline Vec3f divVec(const Vec3f& v, float s) {
+    const float r = 1.0f / s;
+    return {v.x * r, v.y * r, v.z * r};
+}
+
 inline void fromAngle(Vec3f& out, float a, float m) {
     out.x = cosTimes(a, m);
     out.y = sinTimes(a, m);

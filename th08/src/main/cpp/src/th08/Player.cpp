@@ -1043,8 +1043,9 @@ int Player::laserTest(const World& w, const Vec3f& origin, float angle, const Ve
     return 0;
 }
 
+// `box` is the enemy's killbox (its hitbox / 1.5, divided by the caller).
 Player::HitResult Player::enemyContact(const World& w, const Vec3f& centre, const Vec3f& box) {
-    const float hw = box.x / 1.5f / 2.0f, hh = box.y / 1.5f / 2.0f;
+    const float hw = box.x / 2.0f, hh = box.y / 2.0f;
     if (centre.x + hw < hitMin_.x || centre.x - hw > hitMax_.x || centre.y + hh < hitMin_.y || centre.y - hh > hitMax_.y) {
         return HitResult::None;
     }

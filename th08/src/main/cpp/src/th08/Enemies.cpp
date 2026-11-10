@@ -1861,8 +1861,10 @@ void EnemyManager::updateEnemy(Enemy& e) {
             if (e.attached && e.parent) e.offset = e.parent->pos;
             e.abs = e.pos + e.offset;
             e.abs.z = 0.0f;
-            if (e.trailCount > 0) {
-                for (int k = 95; k > 0; --k) e.trail[static_cast<std::size_t>(k)] = e.trail[static_cast<std::size_t>(k - 1)];
+            // Trail history (TH07 §8.2 step 5): while the trail flags are set, over the count.
+            if (e.trailFlags != 0) {
+                const int count = std::clamp<int>(e.trailCount, 0, 96);
+                for (int k = count - 1; k >= 1; --k) e.trail[static_cast<std::size_t>(k)] = e.trail[static_cast<std::size_t>(k - 1)];
                 e.trail[0] = {e.abs, e.velocity, e.angle};
             }
             if (!e.vm.sprite) e.noCollision = true;
@@ -1870,9 +1872,13 @@ void EnemyManager::updateEnemy(Enemy& e) {
             if (!e.noCollision && !e.inBounds && onScreen(e.abs, sw, sh)) {
                 e.inBounds = true;
             } else if (e.inBounds && !e.oobDisabled && !onScreen(e.abs, sw, sh)) {
-                e.active = false;
-                despawn(e);
-                return;
+                // With a trail its oldest node must be off screen too.
+                const int last = std::clamp<int>(e.trailCount, 0, 96) - 1;
+                if (e.trailFlags == 0 || last < 0 || !onScreen(e.trail[static_cast<std::size_t>(last)].pos, sw, sh)) {
+                    e.active = false;
+                    despawn(e);
+                    return;
+                }
             }
             if (lifeCallback(e)) continue;
             if (e.timerThreshold >= 0 && timerCallback(e)) continue;
@@ -1889,7 +1895,17 @@ void EnemyManager::updateEnemy(Enemy& e) {
         }
         // Collision.
         if (!e.noCollision && !e.youkaiState && !(e.intangibleWhileBombing && bombing)) {
-            if (e.contact) contactTest(e);
+            if (e.contact) {
+                contactTest(e, e.abs, e.hitbox);
+                // Along the trail, every 6th node up to the interval, shrinking with flag 2.
+                if (e.trailFlags != 0) {
+                    for (int j = 1; j < e.trailInterval && j < 96; j += 6) {
+                        Vec3f box = e.hitbox;
+                        if (e.trailFlags & 2) box = box - divVec(box * static_cast<float>(j), static_cast<float>(e.trailInterval));
+                        contactTest(e, e.trail[static_cast<std::size_t>(j)].pos, box);
+                    }
+                }
+            }
             e.damageThisFrame = 0;
             if (e.hittable) shotDamage(e);
         }
@@ -1907,11 +1923,16 @@ void EnemyManager::updateEnemy(Enemy& e) {
     if (!e.noCollision && e.active) drawLists_[std::min<std::size_t>(e.drawLayer, 3)].insert(drawLists_[std::min<std::size_t>(e.drawLayer, 3)].begin(), &e);
 }
 
-void EnemyManager::contactTest(Enemy& e) {
-    Player* player = w().player;
+// The contact test (spec 8.3, TH07 §8.5): projectiles graze every 6th ticked frame with
+// their box / 0.7; the killbox is the box / 1.5 (reciprocal multiplies); a hit costs a
+// killable non-boss, non-projectile enemy 10 life (also while the player is invulnerable).
+void EnemyManager::contactTest(Enemy& e, const Vec3f& centre, const Vec3f& box) {
+    const World& wd = w();
+    Player* player = wd.player;
     if (!player) return;
-    if (player->enemyContact(w(), e.abs, e.hitbox) == Player::HitResult::Hit) {
-        if (e.damageable && !e.boss && !e.projectile && !(e.cannotDie)) e.life -= 10;
+    if (e.projectile && hasTicked(e.timer) && e.timer.current % 6 == 0) player->bulletGraze(wd, centre, divVec(box, 0.7f), false);
+    if (player->enemyContact(wd, centre, divVec(box, 1.5f)) == Player::HitResult::Hit) {
+        if (e.damageable && !e.boss && !e.projectile && !e.cannotDie) e.life -= 10;
     }
 }
 
@@ -2352,14 +2373,123 @@ void EnemyManager::exRoutine(Enemy& e, int routine, const std::uint8_t* ins) {
 
 // ---- drawing ----------------------------------------------------------------------------
 
+namespace {
+
+// Mid(a, b) of the trail spec 3.3, with the original's wrong far-side branch [QUIRK].
+float trailMid(float a, float b) {
+    const float lo = std::min(a, b), hi = std::max(a, b);
+    const float d = hi - lo, w = (lo + kZunTwoPi) - hi;
+    return d < w ? d * 0.5f + lo : w * 0.5f + lo;
+}
+
+}  // namespace
+
+// The enemy draw (visual): the primary VM and the two secondary ones at the enemy plus their
+// offsets; a youkai-state familiar dark at half alpha (spec 8.2 step 16); then the trail.
 void EnemyManager::drawEnemy(SpriteSink& sink, Enemy& e, const AnmDrawState& state) {
-    e.vm.position = {e.abs.x + kPlayfieldX, e.abs.y + kPlayfieldY, 0.0f};
-    drawVm(sink, e.vm, state);
+    const float x = e.abs.x + kPlayfieldX, y = e.abs.y + kPlayfieldY;
+    const std::uint32_t altColor = e.vm.altColor;
+    const bool useAlt = e.vm.has(AnmVm::UseAltColor);
+    if (e.youkaiState) {
+        e.vm.altColor = (static_cast<std::uint32_t>((e.vm.color >> 24) / 2) << 24) | 0x002020C0u;
+        e.vm.set(AnmVm::UseAltColor, true);
+    }
+    e.vm.position = {x + e.vm.offset.x, y + e.vm.offset.y, 0.0f};
+    if (!(e.trailFlags & 16)) drawVm(sink, e.vm, state);
+    e.vm.altColor = altColor;
+    e.vm.set(AnmVm::UseAltColor, useAlt);
     for (int k = 0; k < 2; ++k) {
         if (e.vm2File[static_cast<std::size_t>(k)] < 0) continue;
         AnmVm& v = e.vms2[static_cast<std::size_t>(k)];
-        v.position = e.vm.position;
+        v.position = {x + v.offset.x, y + v.offset.y, 0.0f};
         drawVm(sink, v, state);
+    }
+    if (e.trailFlags != 0) {
+        if (e.trailFlags & 8) drawTrailStrip(sink, e);
+        else drawTrailCopies(sink, e, state);
+    }
+}
+
+// The sprite-copy trail (flag 8 clear; TH07 spec_enemy_trails 4): copies of the primary at
+// nodes S, 2S, ... (unfilled nodes skipped), shrinking with flag 2 and fading with flag 4.
+void EnemyManager::drawTrailCopies(SpriteSink& sink, Enemy& e, const AnmDrawState& state) {
+    const int count = std::clamp<int>(e.trailCount, 0, 96);
+    const int step = std::max<int>(1, e.nodeStep);
+    const Vec2f scale0 = e.vm.scale;
+    const std::uint32_t color0 = e.vm.color;
+    const auto a = static_cast<std::int32_t>(color0 >> 24);
+    for (int j = step; j < count; j += step) {
+        const TrailNode& n = e.trail[static_cast<std::size_t>(j)];
+        if (n.pos.x < -990.0f) continue;
+        AnmVm& vm = e.vm;
+        if (e.trailFlags & 2) vm.scale.x = scale0.x - (static_cast<float>(j) * scale0.x) / static_cast<float>(count);
+        if (e.trailFlags & 4) vm.color = (color0 & 0x00FFFFFFu) | (static_cast<std::uint32_t>(a - (a * j) / count) << 24);
+        vm.position = {n.pos.x + vm.offset.x + kPlayfieldX, n.pos.y + vm.offset.y + kPlayfieldY, 0.0f};
+        drawVm(sink, vm, state);
+    }
+    e.vm.scale = scale0;
+    e.vm.color = color0;
+}
+
+// The strip trail (flag 8; TH07 spec_enemy_trails 3): two vertices per node across the
+// recorded angle, the sprite stretched along the whole length, drawn as consecutive quads.
+void EnemyManager::drawTrailStrip(SpriteSink& sink, Enemy& e) {
+    const AnmVm& vm = e.vm;
+    if (!vm.sprite || !vm.has(AnmVm::Visible) || !vm.has(AnmVm::Active) || (vm.color >> 24) == 0) return;
+    const int count = std::clamp<int>(e.trailCount, 0, 96);
+    const int step = std::max<int>(1, e.nodeStep);
+    int nodes = 0;
+    for (int j = 0; j < count && e.trail[static_cast<std::size_t>(j)].pos.x >= -990.0f; j += step) ++nodes;
+    if (nodes < 2) return;
+    const AnmSprite& sp = *vm.sprite;
+    const float uStep = (sp.uvEndX - sp.uvStartX) / static_cast<float>(nodes - 1);
+    float u = sp.uvEndX + vm.uvScroll.x;
+    const float vA = sp.uvStartY + vm.uvScroll.y, vB = sp.uvEndY + vm.uvScroll.y;
+    const float h0 = vm.scale.y * vm.spriteHeight / 2.0f;
+    const std::uint32_t color0 = vm.color;
+    const auto a = static_cast<std::int32_t>(color0 >> 24);
+    auto toNdc = [](float x, float y, Vertex3D& v) {
+        v.x = (x + 0.5f) / 640.0f * 2.0f - 1.0f;
+        v.y = 1.0f - (y + 0.5f) / 480.0f * 2.0f;
+        v.z = -1.0f;
+        v.w = 1.0f;
+    };
+    Draw3DState ds;
+    ds.depthWrite = false;
+    ds.clipX = kPlayfieldX, ds.clipY = kPlayfieldY, ds.clipW = kPlayfieldW, ds.clipH = kPlayfieldH;
+    Vertex3D prev[2]{};
+    bool havePrev = false;
+    float prevTheta = 0.0f;
+    for (int k = 0, j = 0; k < nodes; ++k, j += step, u -= uStep) {
+        const TrailNode& n = e.trail[static_cast<std::size_t>(j)];
+        const float theta = j == 0 ? n.angle : trailMid(e.trail[static_cast<std::size_t>(j - 1)].angle, n.angle);
+        float h = h0;
+        if (e.trailFlags & 2) {
+            h *= 1.0f - static_cast<float>(j) / static_cast<float>(count);
+            if (j > 0 && j + step < count && havePrev) {
+                const float next = trailMid(e.trail[static_cast<std::size_t>(j + step - 1)].angle, e.trail[static_cast<std::size_t>(step)].angle);
+                if (std::fabs(prevTheta - theta) < 0.00001f && std::fabs(theta - next) < 0.00001f) continue;
+            }
+        }
+        const auto s = static_cast<float>(std::sin(static_cast<double>(theta)));
+        const auto c = static_cast<float>(std::cos(static_cast<double>(theta)));
+        std::uint32_t color = color0;
+        if (e.trailFlags & 4) color = (color0 & 0x00FFFFFFu) | (static_cast<std::uint32_t>(a - (a * j) / count) << 24);
+        Vertex3D cur[2];
+        toNdc(n.pos.x + (-s * h + kPlayfieldX), n.pos.y + (c * h + kPlayfieldY), cur[0]);
+        toNdc(n.pos.x + (s * h + kPlayfieldX), n.pos.y + (-c * h + kPlayfieldY), cur[1]);
+        cur[0].u = cur[1].u = u;
+        cur[0].v = vA;
+        cur[1].v = vB;
+        cur[0].color = cur[1].color = argbToRgbaBytes(color);
+        if (havePrev) {
+            const Vertex3D quad[4] = {prev[0], prev[1], cur[0], cur[1]};
+            sink.drawQuad3D(sp.texture, drawBlend(vm), quad, ds);
+        }
+        prev[0] = cur[0];
+        prev[1] = cur[1];
+        havePrev = true;
+        prevTheta = theta;
     }
 }
 

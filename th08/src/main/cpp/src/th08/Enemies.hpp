@@ -225,7 +225,9 @@ class EnemyManager {
     void clampToBounds(Enemy& e);
     void movementStep(Enemy& e);
     bool onScreen(const Vec3f& p, float w, float h) const;
-    void contactTest(Enemy& e);
+    void contactTest(Enemy& e, const Vec3f& centre, const Vec3f& box);
+    void drawTrailCopies(SpriteSink& sink, Enemy& e, const AnmDrawState& state);
+    void drawTrailStrip(SpriteSink& sink, Enemy& e);
     void shotDamage(Enemy& e);
     bool lifeCallback(Enemy& e);
     bool timerCallback(Enemy& e);
