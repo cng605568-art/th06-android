@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The icon on Android 7 (API 24-25), before adaptive icons: the crescent moon on a night
+     disc. Android 8+ uses drawable-anydpi-v26/ic_launcher.xml instead. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#FF141838" android:pathData="M54,2 A52,52 0 1,1 54,106 A52,52 0 1,1 54,2 Z" />
+    <group android:pivotX="54" android:pivotY="54" android:scaleX="1.45" android:scaleY="1.45">
+        <!-- A full moon, cut to a crescent by a disc of the night colour, and three small stars. -->
+        <path android:fillColor="#FFF2D58A" android:pathData="M54,32 A22,22 0 1,1 54,76 A22,22 0 1,1 54,32 Z" />
+        <path android:fillColor="#FF141838" android:pathData="M64,26 A20,20 0 1,1 64,66 A20,20 0 1,1 64,26 Z" />
+        <path android:fillColor="#FFFFF6DC" android:pathData="M72,64 L73.2,67.8 L77,69 L73.2,70.2 L72,74 L70.8,70.2 L67,69 L70.8,67.8 Z" />
+        <path android:fillColor="#FFFFF6DC" android:pathData="M77,40 L77.8,42.2 L80,43 L77.8,43.8 L77,46 L76.2,43.8 L74,43 L76.2,42.2 Z" />
+        <path android:fillColor="#FFFFF6DC" android:pathData="M36,31 L36.7,33.3 L39,34 L36.7,34.7 L36,37 L35.3,34.7 L33,34 L35.3,33.3 Z" />
+    </group>
+</vector>

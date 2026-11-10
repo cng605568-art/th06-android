@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Night indigo (primary) and moon gold (accent), on pale moonlit paper. -->
+    <color name="th08_night_deep">#141838</color>
+    <color name="th08_night">#262E6B</color>
+    <color name="th08_moon">#C9952B</color>
+    <color name="th08_moon_soft">#FBF1D8</color>
+    <color name="th08_paper">#F8F8FC</color>
+    <color name="th08_ink">#161A33</color>
+    <color name="th08_muted">#5E627A</color>
+</resources>

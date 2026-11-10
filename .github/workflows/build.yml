@@ -6,7 +6,9 @@
 #                                   (tags containing "-", e.g. v0.2.0-beta, become pre-releases)
 # The same job also builds the Perfect Cherry Blossom app (:th07, signed with the same key),
 # uploads it as its own workflow artifact (th07-android-<version>) and attaches it to the
-# release next to the th06 APK (checksums in SHA256SUMS-th07.txt).
+# release next to the th06 APK (checksums in SHA256SUMS-th07.txt). The Imperishable Night
+# app (:th08, in progress) is built and uploaded the same way (th08-android-<version>), but
+# releases do not carry it yet.
 #
 # Repository secrets (Settings > Secrets and variables > Actions):
 #   ANDROID_KEYSTORE_BASE64    base64 of your release .jks (required for tags)
@@ -173,6 +175,15 @@ jobs:
           TH06_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: gradle --no-daemon --stacktrace :th07:assembleRelease -Pth06.abis="$ABIS"
 
+      # The Imperishable Night app (in progress), signed with the same key. A workflow
+      # artifact only: releases do not carry it yet.
+      - name: Build th08 release APK (CMake via externalNativeBuild)
+        env:
+          TH06_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          TH06_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          TH06_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: gradle --no-daemon --stacktrace :th08:assembleRelease -Pth06.abis="$ABIS"
+
       - name: Verify signature and stage APK
         run: |
           apk=th06/build/outputs/apk/release/th06-release.apk
@@ -231,6 +242,42 @@ jobs:
           cp "$apk" "dist-th07/${base}${suffix}.apk"
           (cd dist-th07 && sha256sum *.apk > SHA256SUMS-th07.txt && cat SHA256SUMS-th07.txt)
 
+      - name: Verify signature and stage th08 APK
+        run: |
+          apk=th08/build/outputs/apk/release/th08-release.apk
+          test -f "$apk" || { echo "::error::$apk was not produced"; ls -R th08/build/outputs/apk || true; exit 1; }
+          "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner" verify --verbose --print-certs "$apk"
+          # Its own app id, so it installs next to the th06 app instead of over it.
+          aapt2="$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/aapt2"
+          badging="$([ -x "$aapt2" ] && "$aapt2" dump badging "$apk" 2>/dev/null || true)"
+          if [ -n "$badging" ]; then
+            package_line="$(printf '%s\n' "$badging" | grep -m 1 '^package:' || true)"
+            echo "$package_line"
+            case "$package_line" in
+              *"name='io.github.cng605568art.th08'"*) ;;
+              *) echo "::error::th08 APK does not have the app id io.github.cng605568art.th08"; exit 1 ;;
+            esac
+          else
+            echo "::warning::aapt2 dump badging unavailable; app id not checked"
+          fi
+          # The app cannot start without these three libraries for every ABI built.
+          unzip -l "$apk" 'lib/*'
+          for abi in ${ABIS//,/ }; do
+            for lib in libmain.so libSDL2.so libc++_shared.so; do
+              unzip -l "$apk" "lib/$abi/$lib" > /dev/null || { echo "::error::lib/$abi/$lib missing from the th08 APK"; exit 1; }
+            done
+          done
+          "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/zipalign" -c -P 16 4 "$apk" \
+            && echo "th08: native libraries are 16 KB page aligned" \
+            || echo "::warning::th08: native libraries are not 16 KB page aligned (needed by some Android 15+ devices)"
+          base="th08-android-${TH06_VERSION_NAME//+/-}"
+          echo "TH08_APK_BASENAME=$base" >> "$GITHUB_ENV"
+          mkdir -p dist-th08
+          suffix=""
+          [ "$HAS_KEYSTORE" = "true" ] || suffix="-debugsigned"
+          cp "$apk" "dist-th08/${base}${suffix}.apk"
+          (cd dist-th08 && sha256sum *.apk > SHA256SUMS-th08.txt && cat SHA256SUMS-th08.txt)
+
       # Unstripped native libraries, to turn the addresses in a player's crash log
       # (libmain.so+0x...) back into function names and lines.
       - name: Stage native debug symbols
@@ -286,6 +333,34 @@ jobs:
         with:
           name: ${{ env.TH07_APK_BASENAME }}
           path: dist-th07/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Stage th08 native debug symbols
+        run: |
+          mkdir -p symbols-th08
+          for abi in ${ABIS//,/ }; do
+            lib=$(find th08/build/intermediates -path "*merged_native_libs*" -path "*/$abi/*" -name libmain.so | head -n 1)
+            if [ -n "$lib" ]; then
+              mkdir -p "symbols-th08/$abi" && cp "$lib" "symbols-th08/$abi/libmain.so"
+            else
+              echo "::warning::No unstripped th08 libmain.so found for $abi"
+            fi
+          done
+
+      - name: Upload th08 native debug symbols
+        uses: actions/upload-artifact@v7
+        with:
+          name: debug-symbols-${{ env.TH08_APK_BASENAME }}
+          path: symbols-th08/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload th08 APK artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.TH08_APK_BASENAME }}
+          path: dist-th08/*
           if-no-files-found: error
           retention-days: 30
 

@@ -17,3 +17,4 @@ dependencyResolutionManagement {
 rootProject.name = 'th06-android'
 include ':th06'
 include ':th07'
+include ':th08'
