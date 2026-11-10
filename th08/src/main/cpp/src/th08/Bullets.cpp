@@ -857,6 +857,7 @@ void BulletManager::collect(const World& w, Item& it) {
             break;
         }
         case Point: {
+            ++g.runPointItems;
             const std::int32_t maxV = g.pointValue;
             const float poc = player.header().pocLine;
             std::int32_t v = it.pos.y < poc ? maxV : maxV / 2 - static_cast<std::int32_t>(it.pos.y - poc) * (maxV / 1000);

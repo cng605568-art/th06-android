@@ -15,6 +15,7 @@ add_library(th08_game STATIC
   ${TH08_SRC}/th08/Bgm.cpp
   ${TH08_SRC}/th08/Bullets.cpp
   ${TH08_SRC}/th08/Effects.cpp
+  ${TH08_SRC}/th08/Ending.cpp
   ${TH08_SRC}/th08/Enemies.cpp
   ${TH08_SRC}/th08/ExeTables.cpp
   ${TH08_SRC}/th08/FlowCommon.cpp
@@ -28,6 +29,7 @@ add_library(th08_game STATIC
   ${TH08_SRC}/th08/Spellcard.cpp
   ${TH08_SRC}/th08/MusicRoom.cpp
   ${TH08_SRC}/th08/Player.cpp
+  ${TH08_SRC}/th08/ResultScreen.cpp
   ${TH08_SRC}/th08/ScoreFile.cpp
   ${TH08_SRC}/th08/ScreenEffects.cpp
   ${TH08_SRC}/th08/ShotData.cpp

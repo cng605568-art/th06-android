@@ -26,7 +26,13 @@ const GameInfo& Th08Game::info() const {
 }
 
 Th08Game::~Th08Game() {
-    if (menu_ || musicRoom_ || gameplay_) saveConfig();
+    if (anyScene()) {
+        saveConfig();
+        // The program exit writes score.dat (spec_result_ending 1.5 #3; the in-memory records).
+        saveScores(true);
+    }
+    result_.reset();
+    ending_.reset();
     gameplay_.reset();
     musicRoom_.reset();
     if (music_) music_->shutdown();
@@ -66,12 +72,20 @@ void Th08Game::saveConfig() const {
 
 // score.dat as the port keeps it (the app's own copy): written whenever a record the port
 // tracks changes, as a whole new file (spec_files §5.2).
-void Th08Game::saveScores() {
+void Th08Game::saveScores(bool gameRng) {
+    std::uint8_t seed, filler;
+    if (gameRng) {
+        // Two range(256) draws from the game's RNG, byte 1 then byte 6 (spec_result_ending 1.6),
+        // even when nothing is written (no storage).
+        seed = static_cast<std::uint8_t>(rng_.u16InRange(256));
+        filler = static_cast<std::uint8_t>(rng_.u16InRange(256));
+    } else {
+        std::minstd_rand bytesRng(static_cast<std::uint32_t>(ticks_ * 2654435761u + scores_.totalPlays + 1));
+        seed = static_cast<std::uint8_t>(bytesRng() & 0xFF);
+        filler = static_cast<std::uint8_t>(bytesRng() & 0xFF);
+    }
     if (storage_.empty()) return;
     std::vector<std::uint8_t> image = scores_.imageToSave();
-    // The two random header bytes; not from the game's RNG, so saving draws nothing from it.
-    std::minstd_rand bytesRng(static_cast<std::uint32_t>(ticks_ * 2654435761u + scores_.totalPlays + 1));
-    const auto seed = static_cast<std::uint8_t>(bytesRng() & 0xFF), filler = static_cast<std::uint8_t>(bytesRng() & 0xFF);
     const auto bytes = encodeScoreFile(image, seed, filler);
     std::ofstream f(storage_ + "score.dat", std::ios::binary | std::ios::trunc);
     if (!f) {
@@ -79,12 +93,12 @@ void Th08Game::saveScores() {
         return;
     }
     f.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-    // Later saves patch the image just written (a fresh one when there was no file).
+    // The original keeps only what it wrote (the first 10 nodes of each high-score list).
     if (const auto decoded = decodeScoreFile(bytes)) {
         ScoreData reread;
         if (parseScoreImage(*decoded, reread)) {
             scores_.image = std::move(reread.image);
-            scores_.plstOffset = reread.plstOffset;
+            scores_.highScores = std::move(reread.highScores);
         }
     }
 }
@@ -99,9 +113,51 @@ void Th08Game::applyScene() {
         quit_ = true;
         return;
     }
+    if (to == Scene::Ending) {
+        // The ending (scene 9): the run's records first, then its script.
+        gameplay_.reset();
+        ending_ = std::make_unique<Ending>(flow_);
+        Ending::Run run;
+        run.character = lastGame_.character;
+        run.difficulty = lastGame_.difficulty;
+        run.stage = lastGame_.stage;
+        run.finished = lastGame_.finished;
+        run.continued = lastGame_.continues > 0;
+        if (ending_->create(run, &scores_, &err)) return;
+        log::warn("The ending could not start: {}", err);
+        ending_.reset();
+        active_ = requested_ = Scene::ResultAfterGame;  // (create() asked for it)
+        applyScene();
+        return;
+    }
+    if (to == Scene::ResultViewer) {
+        // Player Data (scene 5).
+        menu_.reset();
+        result_ = std::make_unique<ResultScreen>(flow_, ResultScreen::Mode::Viewer, GameState{}, scores_);
+        if (result_->create(&err)) return;
+        log::warn("Player Data could not be built: {}", err);
+        result_.reset();
+        active_ = requested_ = Scene::MainMenu;
+    }
+    if (to == Scene::ResultAfterGame) {
+        // The result screen (scene 6) after a game, a practice or a spell practice.
+        gameplay_.reset();
+        ending_.reset();
+        const ResultScreen::Mode mode = lastGame_.spellPractice ? ResultScreen::Mode::SpellPracticeEnd
+                                        : lastGame_.practice    ? ResultScreen::Mode::PracticeEnd
+                                                                : ResultScreen::Mode::AfterGame;
+        result_ = std::make_unique<ResultScreen>(flow_, mode, lastGame_, scores_);
+        if (result_->create(&err)) return;
+        log::warn("The result screen could not be built: {}", err);
+        result_.reset();
+        saveScores(true);
+        active_ = requested_ = Scene::MainMenu;
+    }
     if (to == Scene::Game) {
         menu_.reset();
         musicRoom_.reset();
+        result_.reset();
+        ending_.reset();
         gameplay_ = std::make_unique<Gameplay>(flow_);
         Gameplay::Setup setup;
         setup.stage = flow_.stage;
@@ -132,6 +188,9 @@ void Th08Game::applyScene() {
     if (active_ == Scene::MainMenu) {
         musicRoom_.reset();
         gameplay_.reset();
+        ending_.reset();
+        result_.reset();
+        refreshUnlocks();  // (every title creation reads the clear records again)
         menu_ = std::make_unique<MainMenu>(flow_);
         if (!menu_->create(&err)) {
             log::warn("The title could not be built: {}", err);
@@ -235,22 +294,46 @@ bool Th08Game::start(const GameContext& ctx) {
     flow_.musicPlayed = [this](std::string_view path) {
         if (scores_.setMusicHeard(musicTrackIndex(musicTracks_, path))) saveScores();
     };
-    flow_.extraUnlocked = scores_.extraUnlocked();
-    flow_.spellPracticeUnlocked = scores_.spellPracticeUnlocked();
-    flow_.solosUnlocked = scores_.solosUnlocked();
-    flow_.totalPlays = static_cast<int>(scores_.totalPlays);
+    flow_.records = &scores_;
+    flow_.saveScores = [this](bool gameRng) { saveScores(gameRng); };
+    refreshUnlocks();
     menu_ = std::make_unique<MainMenu>(flow_);
     if (!menu_->create(&err)) {
         log::warn("The title could not be built: {}", err);
         menu_.reset();
     }
+    // Developer aid: TH08_DEV_SCENE=result|ending|badending starts on that scene with a made-up
+    // run (team TH08_DEV_CHARACTER, Normal), to look at those screens.
+    if (const char* dev = std::getenv("TH08_DEV_SCENE"); dev && *dev) {
+        const std::string v(dev);
+        lastGame_ = GameState{};
+        if (const char* c = std::getenv("TH08_DEV_CHARACTER"); c && *c) lastGame_.character = std::clamp(std::atoi(c), 0, 11);
+        lastGame_.stage = v == "badending" ? 5 : 6;
+        lastGame_.finished = v == "ending";
+        lastGame_.score = lastGame_.guiScore = 123456789;
+        lastGame_.runFrames = 216000;
+        requested_ = v == "result" ? Scene::ResultAfterGame : Scene::Ending;
+    }
     return true;
+}
+
+void Th08Game::refreshUnlocks() {
+    flow_.extraUnlocked = scores_.extraUnlocked();
+    flow_.spellPracticeUnlocked = scores_.spellPracticeUnlocked();
+    flow_.solosUnlocked = scores_.solosUnlocked();
+    flow_.totalPlays = static_cast<int>(scores_.totalPlays);
 }
 
 void Th08Game::tick(const InputState& input) {
     ++ticks_;
+    // The PLST times (running, and play while a game runs), in milliseconds of 60 Hz ticks.
+    if (anyScene()) {
+        const auto ms = static_cast<std::uint32_t>(ticks_ * 1000 / 60 - (ticks_ - 1) * 1000 / 60);
+        scores_.addTime(ScoreData::kRunningTime, ms);
+        if (gameplay_) scores_.addTime(ScoreData::kPlayTime, ms);
+    }
     if (music_) music_->fadeStep();
-    if (menu_ || musicRoom_ || gameplay_) {
+    if (anyScene()) {
         input_.sample(buttonWord(input));
         if (requested_ != active_) {
             applyScene();
@@ -282,7 +365,22 @@ void Th08Game::tick(const InputState& input) {
             }();
             if (devLives && gameplay_->world().state) gameplay_->world().state->lives = 8.0f;
             gameplay_->tick(input_);
-            if (gameplay_->outcome() == Gameplay::Outcome::Title) requested_ = Scene::MainMenu;
+            switch (gameplay_->outcome()) {
+                case Gameplay::Outcome::Title: requested_ = Scene::MainMenu; break;
+                case Gameplay::Outcome::Ending:
+                    lastGame_ = gameplay_->state();
+                    requested_ = Scene::Ending;
+                    break;
+                case Gameplay::Outcome::Results:
+                    lastGame_ = gameplay_->state();
+                    requested_ = Scene::ResultAfterGame;
+                    break;
+                case Gameplay::Outcome::None: break;
+            }
+        } else if (ending_) {
+            ending_->update(input_);
+        } else if (result_) {
+            result_->update(input_);
         } else if (musicRoom_) {
             musicRoom_->update(input_);
         } else if (menu_) {
@@ -298,6 +396,14 @@ void Th08Game::tick(const InputState& input) {
 void Th08Game::render(SpriteSink& sink, float, const FrameInfo&) {
     if (gameplay_) {
         gameplay_->draw(sink);
+        return;
+    }
+    if (ending_) {
+        ending_->draw(sink);
+        return;
+    }
+    if (result_) {
+        result_->draw(sink);
         return;
     }
     if (musicRoom_) {
@@ -356,6 +462,7 @@ bool Th08Game::back() {
 
 void Th08Game::logStatus(const FrameInfo& frame) const {
     log::info("fps {:.1f} | ticks {} | {}", frame.fps, frame.ticks, gameplay_ ? std::format("stage index {} frame {}", gameplay_->state().stage, gameplay_->stageFrame())
+                         : ending_ ? std::string("ending") : result_ ? std::string("result screen")
                          : musicRoom_ ? std::string("Music Room") : menu_ ? std::string("title") : std::string("status screen"));
 }
 

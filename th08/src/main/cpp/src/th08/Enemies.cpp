@@ -1870,6 +1870,11 @@ void EnemyManager::update(const World& w) {
     if (!w.dialogue && hasTicked(managerTimer_) && period > 0 && managerTimer_.current % period == 0) {
         g.increaseSubrank(100);  // (0x43BFC3 is IncreaseSubrank: spec_player 0.8)
     }
+    // The completion counter (frames without dialogue) and the human-rate counters of the
+    // run's high-score record (spec_result_ending 3.3, 3.5).
+    if (!w.dialogue) ++g.playTime;
+    ++g.countedFrames;
+    if (w.player && !w.player->youkaiInFront()) ++g.humanFrames;
     for (auto& l : drawLists_) l.clear();
     runTimelines();
     liveCount_ = 0;
@@ -2672,8 +2677,32 @@ void EnemyManager::exRoutine(Enemy& e, int routine, const std::uint8_t* ins) {
         case 17:
             if (wd.screen) wd.screen->flash(180, 1, 0xFFFFFFFFu);
             break;
-        case 0: case 3: case 5: case 6: case 13: case 20:
-            break;  // visual only
+        case 0:  // Mystia's night blindness (spec_visual_gaps 1.1): var 10000 and var 10016
+            if (wd.gui) wd.gui->setBlindness(c.args.intA[0], c.args.floatA[0]);
+            break;
+        case 3: case 6: case 20: {  // stage 4A's window (spec_visual_gaps 2; ex spec 7.3)
+            const int type = routine == 3 ? 56 : routine == 6 ? 58 : 65;
+            const int script = routine == 3 ? 97 : routine == 6 ? 101 : 99;
+            if (wd.effects) {
+                (void)wd.effects->spawnSpecial(wd, type, e.pos, 9, 1, 0xFFFFFFFFu);
+                Effect& ten = wd.effects->spawnSpecial(wd, type, e.pos, 10, 1, 0xFFFFFFFFu);
+                if (wd.anm && wd.rng) ten.vm.start(*wd.anm, *wd.rng, Effects::kSlotEtama, script);
+                if (wd.background) {
+                    Effects* fx = wd.effects;
+                    Background* bg = wd.background;
+                    bg->spellDrawCallback = [fx, bg](SpriteSink& sink, AnmDrawState& st) {
+                        const Effect& e9 = fx->special(9);
+                        bg->drawMirrorWindow(sink, st, e9.pos, e9.vm.position.x, fx->special(10).vm.position.x);
+                    };
+                }
+            }
+            break;
+        }
+        case 5:  // the window's rings freed (ex spec 7.4)
+            if (wd.effects) wd.effects->special(9).inUse = wd.effects->special(10).inUse = false;
+            break;
+        case 13:
+            break;  // visual only (the stage tint)
         default: eclWarnOnce(std::format("ex routine {} is not ported yet", routine)); break;
     }
 }

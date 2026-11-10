@@ -79,6 +79,12 @@ class Background {
     // The spell-background draw callback (stage 4A's "window", ECL ex 3/6/20), after the
     // spell VMs in the low pass.
     std::function<void(SpriteSink&, AnmDrawState&)> spellDrawCallback;
+    // That window (claude/th08-specs/spec_visual_gaps.md §2): inside the square band between
+    // the two glowing squares (half-sizes 0.7071 x the rings' radii, centred on `centre` +
+    // (32, 16)), spell VM 0 drawn again rotated 180 degrees and spell VM 1 counter-rotated,
+    // both tinted 0xE0C0C0. The original masks with depth (a band at z 0.8, the copies at 0.7
+    // and 0.6 under less-or-equal); the band is four axis-aligned rectangles, so the port clips.
+    void drawMirrorWindow(SpriteSink& sink, const AnmDrawState& state, const Vec3f& centre, float outerRadius, float innerRadius);
     // The glow particles (spec 1.4 step 13): twelve type-62 effects every third frame from
     // stage frame 700, at the recorded lantern points (or (0, 0, 0)); the effects hook in.
     std::function<void(const Vec3f& point)> spawnGlow;

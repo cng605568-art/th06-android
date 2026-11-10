@@ -49,6 +49,7 @@ bool Gui::stageStart(const FlowContext& ctx, const GameState& g, bool firstStage
     ui_ = ctx.ui;
     textures_ = ctx.textures;
     spellPractice_ = g.spellPractice;
+    blindWord_ = 0;  // (the set-up worker clears the word, not the size)
     if (firstStage) {
         // (CPU-side: the boss name images are copied into sprite 10's texels)
         if (!lib.load(*ctx.vfs, *ctx.textures, "front.anm", kSlotFront, error, true)) return false;
@@ -518,6 +519,37 @@ void Gui::drawGauge(SpriteSink& sink, const GameState& g) {
         sum += d;
         if (sum != 0) glyph(136 + d);
     }
+}
+
+void Gui::drawBlindness(SpriteSink& sink, const Vec3f& p, float ox, float oy) {
+    if (blindWord_ <= 0 || !ui_) return;
+    const std::uint32_t a = static_cast<std::uint32_t>(blindWord_) & 0xFFu;
+    const float h = blindH_;
+    // (the alpha test: 1-3 draws nothing, as the original's ">= 4")
+    if (a >= 4) {
+        const float l = ((p.x + 32.0f) - h) + ox, r = ((p.x + 32.0f) + h) + ox;
+        const float t = ((p.y + 16.0f) - h) + oy, b = ((p.y + 16.0f) + h) + oy;
+        const auto colour = rgba(0, 0, 0, static_cast<std::uint8_t>(a));
+        auto rect = [&](float x0, float y0, float x1, float y1) { sink.fillRect(ui_->white, x0, y0, x1 - x0, y1 - y0, colour); };
+        if (l > 32.0f) rect(32.0f, 16.0f, l, 464.0f);
+        if (416.0f > r) rect(r, 16.0f, 416.0f, 464.0f);
+        const float x0 = l < 32.0f ? 32.0f : l, x1 = r > 416.0f ? 416.0f : r;
+        if (t > 16.0f) rect(x0, 16.0f, x1, t);
+        if (464.0f > b) rect(x0, b, x1, 464.0f);
+    }
+    // The hole: restarted on etama script 105 every drawn frame (only its sprite-229 select runs).
+    if (!anm_) return;
+    ZunRng scratch;  // (script 105 draws nothing from the RNG)
+    blindHole_ = AnmVm{};
+    blindHole_.startFresh(*anm_, scratch, 6, 105);
+    const float s = h / 63.0f;
+    blindHole_.scale = {s, s};
+    blindHole_.position = {p.x + 32.0f, p.y + 16.0f, p.z};
+    blindHole_.color = (a << 24) | 0xFFFFFFu;
+    AnmDrawState st;
+    st.offsetX = ox;
+    st.offsetY = oy;
+    drawVm(sink, blindHole_, st);
 }
 
 void Gui::bossMarker(int i, int label) {

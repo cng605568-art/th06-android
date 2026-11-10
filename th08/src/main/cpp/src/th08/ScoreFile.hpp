@@ -30,18 +30,30 @@ struct ClearRecord {
 
 // A PSCR record: per stage slot (0-8) and difficulty (0-4) the practice play count and the
 // best practice score (internal units, shown with a trailing 0), index slot x 5 + difficulty.
+// Written only once it has data.
 struct PracticeRecord {
     std::array<std::uint32_t, 45> plays{}, best{};
+    bool hasData = false;
 };
 
 // A CATK record (spec_files §5.4): per spell card, per character (index 12 = all
-// characters) the best bonus, attempts and captures, in story mode and in spell practice.
+// characters) the best bonus, attempts and captures, in story mode and in spell practice;
+// the card's name, owner and comment lines (Shift-JIS) and the difficulty of the last play.
 struct CardRecord {
     bool present = false;
     std::array<std::uint32_t, 13> best{}, attempts{}, captures{};
     std::array<std::uint32_t, 13> practiceBest{}, practiceAttempts{}, practiceCaptures{};
+    std::array<std::uint8_t, 48> name{}, owner{};
+    std::array<std::uint8_t, 64> comment1{}, comment2{};
+    std::uint8_t level = 0;
+    // The anti-tamper byte (+0x0E): the name's bytes as signed chars plus all 78 counters.
+    std::uint8_t checksum() const;
 };
 inline constexpr int kCardCount = 222;
+
+// An HSCR record (spec_result_ending §3.3), kept whole.
+using HighScoreRecord = std::array<std::uint8_t, 0x168>;
+inline constexpr std::size_t kPlstSize = 0x228;
 
 struct ScoreData {
     std::array<ClearRecord, kClearRecords> clears{};
@@ -49,9 +61,16 @@ struct ScoreData {
     std::uint32_t totalPlays = 0;            // PLST's total row
     std::array<std::uint8_t, 32> musicHeard{};  // PLST +0x208: Music Room track i has been heard
     std::array<std::uint8_t, 17> lastWords{};  // FLSP: byte k = 205 + k when Last Word 205 + k is unlocked
-    std::array<CardRecord, kCardCount> cards{};    // CATK (read; the game keeps its own counts)
-    std::vector<std::uint8_t> image;         // the decoded header + body (empty: no file)
-    std::size_t plstOffset = 0;              // the PLST record the image's flags come from (0: none)
+    std::array<CardRecord, kCardCount> cards{};  // CATK
+    // The cards are written once they are tagged: the first game's set-up tags all 222 (a
+    // fresh PC file has none).
+    bool cardsTagged = false;
+    std::vector<HighScoreRecord> highScores;  // HSCR, in file order (then the new entries)
+    std::array<char, 9> lastName{' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 0};  // LSNM
+    bool hasLastName = false;
+    std::array<std::uint8_t, kPlstSize> plst{};  // the play statistics record, whole
+    std::array<std::uint8_t, 0x1C> vrsm{};       // the version record as read (zero: write ours)
+    std::vector<std::uint8_t> image;          // the decoded header + body (empty: no file)
 
     // The unlocks (spec_flow_menus §5.1): teams only, Easy-Lunatic.
     bool extraUnlocked() const;         // any team: a no-continue Final B clear
@@ -62,8 +81,36 @@ struct ScoreData {
 
     // Marks Music Room track `index` (musiccmt.txt order) as heard; true when it was not yet.
     bool setMusicHeard(int index);
-    // The image to save: the loaded one (or a fresh one, spec_files §5.4, when there was no
-    // valid file) with the port's fields patched into its last PLST record.
+
+    // ---- the play statistics (PLST rows: 0-4 difficulties, 6 total; spec_result_ending 2.7) ----
+    enum PlstField { Plays = 0, PerCharacter = 1, Retries = 13, Clears = 14, Continues = 15, PracticePlays = 16 };
+    std::uint32_t plstValue(int row, int field) const;
+    void plstAdd(int row, int field, std::uint32_t v = 1);
+    // The PLST times: +0x0C the running time, +0x1C the play time, each {h, m, s, ms}.
+    static constexpr std::size_t kRunningTime = 0x0C, kPlayTime = 0x1C;
+    std::array<std::uint32_t, 4> plstTime(std::size_t at) const;
+    void addTime(std::size_t at, std::uint32_t ms);
+    // A game's start (spec_flow_menus 6.2 step 9) and a continue (7.3, pass 90).
+    void notePlay(int difficulty, int character, bool restart, bool practice);
+    void noteContinue(int difficulty, int character);
+    // CLRD words: the stage bit or an ending bit, no-continue only while no continue was used.
+    void markClear(int character, int difficulty, std::uint16_t bit, bool noContinue);
+
+    // ---- high scores (spec_result_ending 1.4-1.6) ----
+    // The 0-based rank `score` would take in list (difficulty, character) among the records and
+    // the ten placeholders (100000 down to 10000), ties going to the newer entry.
+    int rankOf(int difficulty, int character, std::uint32_t score) const;
+    // The list as shown: the first 10 nodes; a null entry is a placeholder with its score.
+    struct ListRow {
+        const HighScoreRecord* record = nullptr;
+        std::uint32_t placeholderScore = 0;
+    };
+    std::array<ListRow, 10> listRows(int difficulty, int character) const;
+    void addHighScore(const HighScoreRecord& r) { highScores.push_back(r); }
+    std::uint32_t bestScore(int difficulty, int character) const;  // the in-game hi-score
+
+    // The image to save (spec_files §5.4 order): TH8K, HSCR (the first 10 nodes of each of the
+    // 60 lists), CLRD, CATK (once tagged), PSCR (with data), LSNM, FLSP, PLST, VRSM.
     std::vector<std::uint8_t> imageToSave() const;
 };
 

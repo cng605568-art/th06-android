@@ -173,6 +173,15 @@ void Spellcard::begin(const World& w, Enemy& boss, const std::uint8_t* ins) {
             if (v < 9999) ++v;
         };
         const auto ch = static_cast<std::size_t>(std::clamp(g->character, 0, 11));
+        // The name (decoded) and the owner (48 bytes XOR 0xBB) are copied into the record.
+        r.name.fill(0);
+        std::memcpy(r.name.data(), name_.data(), std::min(name_.size(), r.name.size()));
+        r.owner.fill(0);
+        for (std::size_t i = 0; i < r.owner.size(); ++i) {
+            const auto c = static_cast<std::uint8_t>(ins[0x44 + i] ^ 0xBB);
+            if (c == 0) break;
+            r.owner[i] = c;
+        }
         if (w.mode & ModeSpellPractice) {
             bump(r.practiceAttempts[ch]);
             bump(r.practiceAttempts[12]);
@@ -180,6 +189,7 @@ void Spellcard::begin(const World& w, Enemy& boss, const std::uint8_t* ins) {
             bump(r.attempts[ch]);
             bump(r.attempts[12]);
         }
+        r.level = static_cast<std::uint8_t>(g->difficulty);
     }
 }
 
@@ -279,6 +289,7 @@ void Spellcard::orbBonus(std::uint32_t v) {
 
 void Spellcard::end(const World& w) {
     GameState* g = w.state;
+    if (w.gui) w.gui->clearBlindness();  // (first, even without an active card)
     if (has(Active)) {
         bool captured = false;
         setFlag(Active, false);
@@ -314,6 +325,8 @@ void Spellcard::end(const World& w) {
                 best[12] = std::max(best[12], capture_);
                 if (caps[ch] < 9999) ++caps[ch];
                 if (caps[12] < 9999) ++caps[12];
+                r.level = static_cast<std::uint8_t>(g->difficulty);
+                ++g->runCaptures[static_cast<std::size_t>(id_)];  // (the run's record, +0x88)
             }
             if (g) ++g->cardsCaptured;
             captured = true;

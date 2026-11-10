@@ -41,6 +41,11 @@ struct GameState {
     std::int32_t timeTotal = 0;         // globals+0x44: this stage's running total of time points
     std::int32_t cardsCaptured = 0;     // globals+0x1C: spell cards captured this game (ECL ex 24)
     std::int32_t playTime = 0;          // GM+0x3DE04: a play-time counter (+1800 by ECL op 148)
+    // The run's high-score record fields (spec_result_ending 3.3).
+    std::uint32_t runFrames = 0, runPointItems = 0, pauses = 0, humanFrames = 0, countedFrames = 0;
+    std::int32_t timeOrbsNet = 0;
+    std::array<std::uint8_t, 222> runCaptures{};
+    bool finished = false;  // GM flag bit 4: a good ending (or Extra) was reached
     std::int32_t extends = 0;           // globals+0x34: extends granted
     std::int32_t rank = 10, minRank = 8, maxRank = 16, subrank = 0;  // GM+0x3DE2C (spec 14)
     float misses = 0, bombsUsed = 0;
@@ -194,6 +199,19 @@ class Gui {
     void hudTick(ZunRng& rng);  // every frame, also while paused
     // Draw priority 14: the frame, the icons, the pointer, the percentage and the point value.
     void drawGauge(SpriteSink& sink, const GameState& g);
+    // Mystia's night blindness (claude/th08-specs/spec_visual_gaps.md §1): ECL ex 0 sets the
+    // alpha word (var 10000; drawn while > 0, its low byte the alpha) and the clear square's
+    // half-size h (var 10016). Spellcard End, the stage set-up and the teardown clear the word
+    // only. Drawn in the priority-14 pass after the popups: four black rectangles around the
+    // player's square, then etama script 105's soft hole (sprite 229) scaled h / 63.
+    void setBlindness(std::int32_t word, float h) {
+        blindWord_ = word;
+        blindH_ = h;
+    }
+    void clearBlindness() { blindWord_ = 0; }
+    std::int32_t blindness() const { return blindWord_; }
+    float blindnessSize() const { return blindH_; }
+    void drawBlindness(SpriteSink& sink, const Vec3f& playerPos, float shakeX, float shakeY);
     // The boss markers: shown / hidden (ECL op 127, despawn), placed and coloured by the enemy
     // pass, drawn at priority 20 (full screen).
     void bossMarker(int i, int label);
@@ -250,6 +268,9 @@ class Gui {
     AnmLibrary* anm_ = nullptr;
     TextureLibrary* textures_ = nullptr;
     const UiArt* ui_ = nullptr;
+    std::int32_t blindWord_ = 0;
+    float blindH_ = 0.0f;
+    AnmVm blindHole_;
     bool loaded_ = false;
     bool spellPractice_ = false;
     std::array<AnmVm, kFrontVms> front_{};

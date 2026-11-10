@@ -1,7 +1,7 @@
 #pragma once
 
 // Imperishable Night as the host runs it: the Supervisor's scenes as they are ported from the
-// clean-room specs (so far the main menu, the Music Room and the start of a game). A status screen says what is missing when the
+// clean-room specs (the main menu, the Music Room, the game, the endings and the result screen). A status screen says what is missing when the
 // player's files are not there (th08.dat 1.00d, th08.exe 1.00d, thbgm.dat).
 
 #include <cstdint>
@@ -12,6 +12,7 @@
 #include "host/Game.hpp"
 #include "th08/Anm.hpp"
 #include "th08/Bgm.hpp"
+#include "th08/Ending.hpp"
 #include "th08/ExeTables.hpp"
 #include "th08/Flow.hpp"
 #include "th08/GameConfig.hpp"
@@ -19,6 +20,7 @@
 #include "th08/Gameplay.hpp"
 #include "th08/MainMenu.hpp"
 #include "th08/MusicRoom.hpp"
+#include "th08/ResultScreen.hpp"
 #include "th08/ScoreFile.hpp"
 #include "th08/SoundPlayer.hpp"
 
@@ -54,7 +56,11 @@ class Th08Game final : public Game {
 
   private:
     void saveConfig() const;
-    void saveScores();
+    // `gameRng`: the two random header bytes come from the game's RNG (the original's writes);
+    // the port's own extra writes (a song heard) draw nothing from it.
+    void saveScores(bool gameRng = false);
+    bool anyScene() const { return menu_ || musicRoom_ || gameplay_ || ending_ || result_; }
+    void refreshUnlocks();
     void applyScene();
 
     const UiArt* ui_ = nullptr;
@@ -75,6 +81,9 @@ class Th08Game final : public Game {
     std::unique_ptr<MainMenu> menu_;
     std::unique_ptr<MusicRoom> musicRoom_;
     std::unique_ptr<Gameplay> gameplay_;
+    std::unique_ptr<Ending> ending_;
+    std::unique_ptr<ResultScreen> result_;
+    GameState lastGame_;  // the run as it ended (for the ending and the result screen)
     std::vector<MusicTrack> musicTracks_;  // musiccmt.txt: a played song's Music Room index
     Scene active_ = Scene::MainMenu, requested_ = Scene::MainMenu;
     bool quit_ = false;

@@ -75,6 +75,10 @@ class Effects {
     int active() const { return active_; }
     // The ring/strip drawer (spec_effects 4.5); also the 6B moon's draw callback.
     static void drawRing(SpriteSink& sink, const Effect& e, const AnmDrawState& state);
+    // Its vertex positions (screen pixels, Direct3D centres): per pair outer x, y, inner x, y;
+    // returns N (N + 1 pairs).
+    using RingPoints = std::array<float, 129 * 4>;
+    static int ringGeometry(const Effect& e, RingPoints& pts);
     std::uint32_t frames() const { return frames_; }
     void setQuality(int quality) { quality_ = quality; }
 

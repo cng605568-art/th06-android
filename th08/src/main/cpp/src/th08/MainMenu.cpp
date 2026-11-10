@@ -265,8 +265,13 @@ void MainMenu::title(const MenuInput& in) {
                 removed_ = true;
                 if (ctx_.request) ctx_.request(Scene::MusicRoom);
                 break;
+            case PlayerData:
+                hideDescription();
+                removed_ = true;
+                if (ctx_.request) ctx_.request(Scene::ResultViewer);
+                break;
             default:
-                notPorted();  // Spell Card Practice, Replay, Player Data
+                notPorted();  // Spell Card Practice, Replay
                 break;
         }
         return;

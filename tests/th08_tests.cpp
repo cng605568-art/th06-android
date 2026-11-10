@@ -26,6 +26,7 @@
 #include "th08/Background.hpp"
 #include "th08/Bullets.hpp"
 #include "th08/Effects.hpp"
+#include "th08/Ending.hpp"
 #include "th08/Enemies.hpp"
 #include "th08/Gameplay.hpp"
 #include "th08/ScreenEffects.hpp"
@@ -37,6 +38,7 @@
 #include "th08/MainMenu.hpp"
 #include "th08/Msg.hpp"
 #include "th08/MusicRoom.hpp"
+#include "th08/ResultScreen.hpp"
 #include "th08/ScoreFile.hpp"
 #include "th08/GameConfig.hpp"
 #include "th08/GameFiles.hpp"
@@ -513,40 +515,62 @@ void testScoreFile() {
     CHECK(th08::parseScoreImage(withVrsm, sd2));  // no exe to check against
     CHECK(!th08::parseScoreImage(withVrsm, sd2, std::make_pair(840704, 1)));
 
-    // Music Room flags (PLST +0x208): read, set, and patched into the saved image, every other
-    // byte carried over.
-    Bytes heard = image;
-    const std::size_t plstAt = 0x1C + 0x0C + 13 * 0x24;
-    CHECK(std::memcmp(heard.data() + plstAt, "PLST", 4) == 0);
-    heard[plstAt + 0x208 + 0] = 1;
+    // A save rebuilds the image from the records (spec_files §5.4 order) and reads back the same.
     th08::ScoreData sd3;
-    CHECK(th08::parseScoreImage(heard, sd3) && sd3.plstOffset == plstAt);
-    CHECK(sd3.musicHeard[0] == 1 && sd3.musicHeard[1] == 0);
-    CHECK(!sd3.setMusicHeard(0) && sd3.setMusicHeard(5) && !sd3.setMusicHeard(32) && !sd3.setMusicHeard(-1));
-    const Bytes saved = sd3.imageToSave();
-    CHECK(saved.size() == heard.size());
-    std::size_t changed = 0;
-    for (std::size_t i = 0; i < saved.size(); ++i) changed += saved[i] != heard[i] ? 1 : 0;
-    CHECK(changed == 1 && saved[plstAt + 0x208 + 5] == 1);
-    // No file: a fresh image (TH8K, 13 CLRD, LSNM, FLSP, PLST, VRSM) that reads back as one.
+    CHECK(th08::parseScoreImage(image, sd3));
+    CHECK(!sd3.setMusicHeard(-1) && sd3.setMusicHeard(5) && !sd3.setMusicHeard(5) && !sd3.setMusicHeard(32));
+    th08::ScoreData back;
+    CHECK(th08::parseScoreImage(sd3.imageToSave(), back));
+    CHECK(back.musicHeard[5] == 1 && back.musicHeard[0] == 0 && back.totalPlays == 42 && back.lastWords[3] == 208);
+    CHECK(back.practice[5].hasData && back.practice[5].best[7] == 12345 && !back.practice[4].hasData);
+    CHECK(back.teamHasNoContinueFinalB(1) && back.teamHasFinalA(2) && !back.cardsTagged && back.highScores.empty());
+    // No file: a fresh image (TH8K, 13 CLRD, LSNM, FLSP, PLST, VRSM), the size of a fresh PC file.
     th08::ScoreData none;
     CHECK(none.setMusicHeard(0));
     const auto fresh = th08::decodeScoreFile(th08::encodeScoreFile(none.imageToSave(), 7, 9));
-    CHECK(fresh.has_value());
+    CHECK(fresh.has_value() && fresh->size() == 1144);
     th08::ScoreData sd4;
     CHECK(fresh && th08::parseScoreImage(*fresh, sd4, std::make_pair(840704, static_cast<std::int32_t>(2724749753u))));
     CHECK(sd4.musicHeard[0] == 1 && sd4.musicHeard[1] == 0 && sd4.totalPlays == 0 && !sd4.extraUnlocked());
-    CHECK(fresh && fresh->size() == 1144);  // the size of a fresh PC file's image
-    CHECK(sd4.clears[12].noContinue[4] == 1 && sd4.clears[0].reached[0] == 1);
-    // A valid file without a PLST record gets one appended.
-    Bytes noPlst(0x1C, 0);
-    const Bytes key = scoreRecord("TH8K", 0x0C, 1);
-    noPlst.insert(noPlst.end(), key.begin(), key.end());
-    th08::ScoreData sd5;
-    CHECK(th08::parseScoreImage(noPlst, sd5) && sd5.plstOffset == 0);
-    sd5.setMusicHeard(2);
-    th08::ScoreData sd6;
-    CHECK(th08::parseScoreImage(sd5.imageToSave(), sd6) && sd6.musicHeard[2] == 1 && sd6.image.size() == 0x1C + 0x0C + 0x228);
+    CHECK(sd4.clears[12].noContinue[4] == 1 && sd4.clears[0].reached[0] == 1 && std::string(sd4.lastName.data()) == "        ");
+    // Statistics, clear bits and cards: written and read back.
+    th08::ScoreData rec;
+    rec.notePlay(1, 6, true, false);
+    rec.noteContinue(1, 6);
+    rec.markClear(6, 1, 0x4000, false);
+    rec.markClear(6, 1, 0x0001, true);
+    rec.cardsTagged = true;
+    rec.cards[7].attempts[6] = 3;
+    rec.cards[7].captures[12] = 1;
+    rec.cards[7].name[0] = 0x82;
+    rec.cards[7].level = 1;
+    std::memcpy(rec.lastName.data(), "ABC     ", 8);
+    th08::ScoreData rec2;
+    CHECK(th08::parseScoreImage(rec.imageToSave(), rec2));
+    CHECK(rec2.plstValue(1, th08::ScoreData::Plays) == 2 && rec2.plstValue(6, th08::ScoreData::Plays) == 2 && rec2.totalPlays == 2);
+    CHECK(rec2.plstValue(6, th08::ScoreData::PerCharacter + 6) == 2 && rec2.plstValue(1, th08::ScoreData::Retries) == 1);
+    CHECK(rec2.plstValue(6, th08::ScoreData::Continues) == 1);
+    CHECK(rec2.clears[6].reached[1] == 0x4001 && rec2.clears[6].noContinue[1] == 0x0001 && rec2.clears[12].reached[1] == 0x4001);
+    CHECK(rec2.cardsTagged && rec2.cards[7].attempts[6] == 3 && rec2.cards[7].captures[12] == 1 && rec2.cards[7].name[0] == 0x82);
+    CHECK(rec2.cards[7].level == 1 && rec2.cards[0].present && std::string(rec2.lastName.data()) == "ABC     ");
+    // High scores: ten placeholders (100000 ... 10000) per list; ties rank the newer entry first;
+    // only the first 10 nodes are written.
+    CHECK(rec.rankOf(1, 6, 100000) == 0 && rec.rankOf(1, 6, 95000) == 1 && rec.rankOf(1, 6, 9000) == 10);
+    for (std::uint32_t k = 0; k < 12; ++k) {
+        th08::HighScoreRecord h{};
+        const std::uint32_t score = 200000 + 1000 * k;
+        std::memcpy(h.data() + 0x0C, &score, 4);
+        h[0x14] = 6;
+        h[0x15] = 1;
+        h[0x16] = static_cast<std::uint8_t>(k);
+        rec.addHighScore(h);
+    }
+    CHECK(rec.rankOf(1, 6, 211000) == 0 && rec.rankOf(1, 6, 210999) == 1 && rec.rankOf(2, 6, 100000) == 0);
+    const auto rows = rec.listRows(1, 6);
+    CHECK(rows[0].record && (*rows[0].record)[0x16] == 11 && rows[9].record && (*rows[9].record)[0x16] == 2);
+    CHECK(rec.bestScore(1, 6) == 211000 && rec.bestScore(0, 0) == 100000);
+    th08::ScoreData rec3;
+    CHECK(th08::parseScoreImage(rec.imageToSave(), rec3) && rec3.highScores.size() == 10);
 }
 
 // musiccmt.txt: path, title, comment lines (line 0 always empty), blank lines dropped, a
@@ -1236,7 +1260,7 @@ void testRealArchive() {
             CHECK(game->stageEndState() == 0);
             run(0, 10);
             CHECK(game->stageFrame() == 10 && game->state().score >= 12345 && game->state().lives == 2.0f);
-            // Practice ends on Shoot with the results (the title for now).
+            // Practice ends on Shoot with the results (scene 6).
             main.practice = true;
             main.stage = 1;
             CHECK(game->start(main, &err));
@@ -1245,7 +1269,7 @@ void testRealArchive() {
             run(0, 5);
             CHECK(game->outcome() == th08::Gameplay::Outcome::None && game->stageEndState() == 3);
             run(th08::BtnShoot, 1);
-            CHECK(game->outcome() == th08::Gameplay::Outcome::Title);
+            CHECK(game->outcome() == th08::Gameplay::Outcome::Results);
         }
         // The dialogue (spec_msg_stage_end): Stage 1's opening dialogue cancels the bullets, holds
         // the timeline's op 7 and runs to its end on Skip; the post-boss dialogue shows the results,
@@ -1667,6 +1691,308 @@ void testRealArchive() {
     }
 }
 
+// The ring strip's positions (spec_visual_gaps 3.7 worked numbers).
+void testRings() {
+    th08::Effect e;
+    e.segments = 64;
+    e.width = 15.0f;
+    e.radius = 256.0f;
+    th08::Effects::RingPoints p{};
+    CHECK(th08::Effects::ringGeometry(e, p) == 64);
+    CHECK(std::fabs(p[0] - 303.01810f) < 1e-4f && p[1] == 16.0f && std::fabs(p[2] - 272.98190f) < 1e-4f && p[3] == 16.0f);
+    // The last pair closes the ring (up to rounding).
+    CHECK(std::fabs(p[64 * 4] - p[0]) < 1e-2f && std::fabs(p[64 * 4 + 1] - p[1]) < 1e-2f);
+    // The stage-4A square: 4 segments from pi/4.
+    e.segments = 4;
+    e.width = 16.0f;
+    e.radius = 192.0f;
+    e.angle = kZunPi / 4.0f;
+    e.centre = {192.0f, 128.0f, 0.0f};
+    CHECK(th08::Effects::ringGeometry(e, p) == 4);
+    CHECK(std::fabs(p[0] - 375.76450f) < 1e-3f && std::fabs(p[1] - 295.76450f) < 1e-3f);
+    CHECK(std::fabs(p[2] - 343.76450f) < 1e-3f && std::fabs(p[3] - 263.76453f) < 1e-3f);
+    // Wavy: six lobes; the radius at the start angle is R + R2 (phase 0), at half a lobe R - R2.
+    e = th08::Effect{};
+    e.segments = 64;
+    e.width = 1.0f;
+    e.radius = 100.0f;
+    e.radius2 = 20.0f;
+    e.waves = 6.0f;
+    CHECK(th08::Effects::ringGeometry(e, p) == 64);
+    const float rOuter0 = std::hypot(p[0] - 32.0f, p[1] - 16.0f);
+    CHECK(std::fabs(rOuter0 - (120.0f + 1.0012f)) < 0.01f);
+    // (64 / 12: pair 5.33 is half a lobe; check pair 16 = a whole 1.5 lobes -> trough)
+    const float rTrough = std::hypot(p[16 * 4] - 32.0f, p[16 * 4 + 1] - 16.0f);
+    CHECK(std::fabs(rTrough - (80.0f + 1.0012f)) < 0.01f);
+    // An ellipse (second radius non-zero, no waves) ignores the start angle.
+    e.waves = 0.0f;
+    e.angle = 1.0f;
+    th08::Effects::RingPoints q{};
+    (void)th08::Effects::ringGeometry(e, q);
+    e.angle = 0.0f;
+    (void)th08::Effects::ringGeometry(e, p);
+    CHECK(p == q && std::fabs(p[0] - (32.0f + 100.0f + 1.0012f)) < 0.01f);
+}
+
+// The result screen and the endings on the player's files (spec_result_ending 3, 5, 7).
+void testResultAndEnding() {
+    const char* path = std::getenv("TH08_REAL_DAT");
+    if (!path || !*path) return;
+    std::string err;
+    Vfs vfs;
+    auto file = MappedFile::open(path, &err);
+    CHECK(file && vfs.mount(openArchive("th08.dat", std::move(file), &err)));
+    TextureLibrary textures;
+    th08::AnmLibrary lib;
+    CHECK(lib.load(vfs, textures, "text.anm", th08::kSlotText, &err, true));
+    CHECK(lib.load(vfs, textures, "ascii.anm", th08::kSlotAscii, &err));
+    ZunRng rng(5);
+    th08::FlowContext ctx;
+    ctx.vfs = &vfs;
+    ctx.textures = &textures;
+    ctx.anm = &lib;
+    ctx.rng = &rng;
+    int saves = 0;
+    th08::Scene asked = th08::Scene::Init;
+    ctx.saveScores = [&](bool gameRng) { saves += gameRng ? 1 : 100; };
+    ctx.request = [&](th08::Scene s) { asked = s; };
+    th08::MenuInput in;
+    th08::GameState g;
+    g.character = 2;
+    g.difficulty = 1;
+    g.stage = 3;
+    g.score = g.guiScore = 1234567;
+    g.runFrames = 5000;
+    g.runPointItems = 321;
+    g.misses = 2;
+    g.pauses = 3;
+    g.humanFrames = 300;
+    g.countedFrames = 400;
+    g.runCaptures[7] = 1;
+    // After a game: rank 0 among the placeholders, the name "A" through the grid, END.
+    {
+        th08::ScoreData records;
+        th08::ResultScreen rs(ctx, th08::ResultScreen::Mode::AfterGame, g, records);
+        CHECK(rs.create(&err));
+        auto pass = [&](std::uint16_t b) {
+            in.sample(b);
+            rs.update(in);
+        };
+        pass(0);
+        CHECK(rs.state() == th08::ResultScreen::State::NameEntry && rs.rank() == 0 && rs.keyCursor() == 0);
+        CHECK(records.highScores.size() == 1 && records.highScores[0][9] == 1);
+        pass(th08::BtnShoot);  // (pass 1: input starts at pass 10)
+        CHECK(rs.nameCursor() == 0);
+        for (int i = 0; i < 9; ++i) pass(0);
+        pass(th08::BtnShoot);  // 'A'
+        pass(0);
+        pass(th08::BtnRight);
+        pass(0);
+        pass(th08::BtnShoot);  // 'B'
+        pass(0);
+        CHECK(rs.nameCursor() == 2 && rs.name()[0] == 'A' && rs.name()[1] == 'B' && rs.keyCursor() == 1);
+        pass(th08::BtnBomb);  // backspace
+        pass(0);
+        CHECK(rs.nameCursor() == 1 && rs.name()[1] == ' ');
+        pass(th08::BtnLeft);
+        pass(0);
+        pass(th08::BtnUp);  // 0 - 16 wraps to 80
+        pass(0);
+        CHECK(rs.keyCursor() == 80);
+        pass(th08::BtnLeft);  // within the row: 80 -> 95 (END)
+        pass(0);
+        CHECK(rs.keyCursor() == th08::ResultScreen::kKeyEnd);
+        pass(th08::BtnShoot);
+        CHECK(rs.state() == th08::ResultScreen::State::Statistics);
+        const th08::HighScoreRecord& r = records.highScores[0];
+        std::uint32_t score = 0, frames = 0;
+        std::memcpy(&score, r.data() + 0x0C, 4);
+        std::memcpy(&frames, r.data() + 0x64, 4);
+        std::int32_t rate = 0;
+        std::memcpy(&rate, r.data() + 0x84, 4);
+        CHECK(std::memcmp(r.data(), "HSCR", 4) == 0 && r[9] == 0 && score == 1234567 && frames == 5000 && rate == 7500);
+        CHECK(r[0x14] == 2 && r[0x15] == 1 && r[0x16] == 3 && r[0x88 + 7] == 1 && std::memcmp(r.data() + 0x17, "A       ", 8) == 0);
+        CHECK(records.hasLastName && std::memcmp(records.lastName.data(), "A       ", 8) == 0);
+        int n = 0;
+        for (; n < 200 && rs.state() == th08::ResultScreen::State::Statistics; ++n) pass(n % 2 ? th08::BtnShoot : 0);
+        CHECK(n >= 90 && rs.state() == th08::ResultScreen::State::StatisticsOut);
+        RecordingSink sink;
+        rs.draw(sink);
+        CHECK(!sink.items.empty());
+        for (n = 0; n < 100 && !rs.done(); ++n) pass(0);
+        CHECK(rs.done() && saves == 1 && asked == th08::Scene::MainMenu);
+        // The list as drawn: this run first, then the placeholders.
+        const auto rows = records.listRows(1, 2);
+        CHECK(rows[0].record != nullptr && rows[1].record == nullptr && rows[1].placeholderScore == 100000);
+        // A second run that does not qualify goes straight to the statistics.
+        th08::GameState low = g;
+        low.score = low.guiScore = 5;
+        saves = 0;
+        th08::ResultScreen again(ctx, th08::ResultScreen::Mode::AfterGame, low, records);
+        CHECK(again.create(&err));
+        in.sample(0);
+        again.update(in);
+        CHECK(again.state() == th08::ResultScreen::State::Statistics && again.rank() == -1 && records.highScores.size() == 2);
+        CHECK(records.highScores[1][9] == 0);
+    }
+    // A practice result: the best is raised, then the screen leaves.
+    {
+        th08::ScoreData records;
+        th08::GameState p = g;
+        p.practice = true;
+        p.character = 3;
+        p.stage = 2;
+        records.practice[3].best[2 * 5 + 1] = 99;
+        saves = 0;
+        asked = th08::Scene::Init;
+        th08::ResultScreen rs(ctx, th08::ResultScreen::Mode::PracticeEnd, p, records);
+        CHECK(rs.create(&err));
+        CHECK(records.practice[3].best[11] == 1234567 && records.practice[3].hasData && rs.state() == th08::ResultScreen::State::Leave);
+        for (int n = 0; n < 40 && !rs.done(); ++n) {
+            in.sample(0);
+            rs.update(in);
+        }
+        CHECK(rs.done() && saves == 1 && asked == th08::Scene::MainMenu && records.highScores.empty());
+    }
+    // Player Data (spec 2) with the exe's tables: the menu, the statistics page's lines, the
+    // spell list's counts, the score table's character, the leave.
+    if (const char* exePath = std::getenv("TH08_REAL_EXE")) {
+        th08::ExeTables tables;
+        auto exe = MappedFile::open(exePath, &err);
+        CHECK(exe && th08::loadExeTables(exe->bytes(), tables, &err));
+        CHECK(tables.cardCategories[0].size() == 42 && tables.cardCategories[5].size() == 222 && tables.cardCategories[5][221] == 221);
+        CHECK(!tables.fullNames[12].empty() && tables.dataText.playsRow.find("%6d") != std::string::npos && tables.dataText.unknownCard.size() == 10);
+        std::printf("  (Easy cards start %d %d; Extra %d-%d)\n", tables.cardCategories[0][0], tables.cardCategories[0][1], tables.cardCategories[4][0],
+                    tables.cardCategories[4][13]);
+        ctx.tables = &tables;
+        th08::ScoreData records;
+        th08::CardRecord& card = records.cards[static_cast<std::size_t>(tables.cardCategories[0][1])];
+        card.present = true;
+        card.captures[2] = 1;
+        card.attempts[12] = 2;
+        std::memcpy(card.name.data(), "TEST", 4);
+        records.plstAdd(1, th08::ScoreData::PerCharacter + 2, 7);
+        records.plstAdd(1, th08::ScoreData::Clears, 3);
+        th08::ResultScreen rs(ctx, th08::ResultScreen::Mode::Viewer, th08::GameState{}, records);
+        CHECK(rs.create(&err) && rs.state() == th08::ResultScreen::State::Menu);
+        CHECK(records.plstValue(6, th08::ScoreData::Clears) == 3);  // (the totals recomputed)
+        CHECK(rs.capturedCount(5, 2) == 1 && rs.capturedCount(5, 12) == 0 && rs.capturedCount(0, 2) == 1);
+        auto pass = [&](std::uint16_t b) {
+            in.sample(b);
+            rs.update(in);
+        };
+        for (int i = 0; i < 21; ++i) pass(0);
+        pass(th08::BtnDown);
+        pass(th08::BtnDown);  // (held: no second move)
+        pass(0);
+        pass(th08::BtnDown);
+        pass(0);
+        CHECK(rs.menuCursor() == 2);
+        pass(th08::BtnShoot);
+        CHECK(rs.state() == th08::ResultScreen::State::DataIn);
+        for (int i = 0; i < 45; ++i) pass(0);
+        CHECK(rs.state() == th08::ResultScreen::State::DataShown);
+        CHECK(rs.textLine(3).rfind(tables.fullNames[0], 0) == 0 && rs.textLine(5).find("      7") != std::string::npos);
+        CHECK(rs.textLine(16).find("     3") != std::string::npos);
+        pass(th08::BtnShoot);
+        for (int i = 0; i < 25; ++i) pass(0);
+        CHECK(rs.state() == th08::ResultScreen::State::Menu && rs.menuCursor() == 2);
+        // The spell list: category 0 (Easy), column 2; card 3 (No.04) shows its name.
+        for (int i = 0; i < 21; ++i) pass(0);
+        pass(th08::BtnUp);
+        pass(0);
+        pass(th08::BtnShoot);
+        CHECK(rs.state() == th08::ResultScreen::State::SpellCategory);
+        for (int i = 0; i < 7; ++i) pass(0);
+        pass(th08::BtnDown);  // 5 (all) wraps to 0 (Easy)
+        pass(0);
+        CHECK(rs.cursor() == 0);
+        pass(th08::BtnShoot);
+        CHECK(rs.state() == th08::ResultScreen::State::SpellColumn && rs.category() == 0);
+        for (int i = 0; i < 7; ++i) pass(0);
+        for (int k = 0; k < 3; ++k) {  // 12 wraps to 0, then 2
+            pass(th08::BtnDown);
+            pass(0);
+        }
+        pass(th08::BtnShoot);
+        CHECK(rs.state() == th08::ResultScreen::State::SpellList && rs.column() == 2);
+        for (int i = 0; i < 12; ++i) pass(0);
+        CHECK(rs.textLine(0) == tables.dataText.unknownCard && rs.textLine(1) == "TEST" && rs.textLine(10).rfind("  1/ 42", 0) == 0);
+        RecordingSink sink;
+        rs.draw(sink);
+        CHECK(!sink.items.empty());
+        // Back out to the menu and leave: score.dat is written, the title follows.
+        pass(th08::BtnBomb);
+        for (int i = 0; i < 12; ++i) pass(0);
+        CHECK(rs.state() == th08::ResultScreen::State::SpellColumn);
+        for (int i = 0; i < 7; ++i) pass(0);  // (input after 6 passes)
+        pass(th08::BtnBomb);
+        CHECK(rs.state() == th08::ResultScreen::State::SpellCategory);
+        for (int i = 0; i < 7; ++i) pass(0);
+        pass(th08::BtnBomb);
+        CHECK(rs.state() == th08::ResultScreen::State::Menu && rs.menuCursor() == 1);
+        for (int i = 0; i < 21; ++i) pass(0);
+        pass(th08::BtnBomb);  // the cursor to Exit
+        pass(0);
+        pass(th08::BtnBomb);  // and out
+        saves = 0;
+        asked = th08::Scene::Init;
+        for (int i = 0; i < 30 && !rs.done(); ++i) pass(0);
+        CHECK(rs.done() && saves == 1 && asked == th08::Scene::MainMenu);
+        ctx.tables = nullptr;
+    }
+    // An ending script: lines into the text VMs, @w waits, @r clears, @z ends.
+    {
+        th08::Ending e(ctx);
+        const char script[] = "@s4\0 2\0\r\nLine one\r\nLine two\r\n@w30\0 10\0\r\n@r5\0 0\0\r\nLine three\r\n@z\r\n";
+        e.startScript(std::vector<std::uint8_t>(script, script + sizeof script - 1), "test.end");
+        asked = th08::Scene::Init;
+        int frames = 0;
+        for (; frames < 400 && !e.done(); ++frames) {
+            in.sample(0);
+            e.update(in);
+            if (frames == 1) {
+                CHECK(e.lineSlot() == 1 && e.lastLine() == "Line one");
+            }
+        }
+        CHECK(e.done() && asked == th08::Scene::ResultAfterGame && e.lastLine() == "Line three");
+        // (4 + 1 + 4 + 1, the @w 30 + 1, the @r 5 + 1, the last line's 4)
+        CHECK(frames > 40 && frames < 60);
+    }
+    // A good ending on the real files: Final A for team 0, the records written first; Shoot
+    // advances it to the staff roll and the end.
+    {
+        th08::ScoreData records;
+        th08::Ending e(ctx);
+        th08::Ending::Run run;
+        run.character = 0;
+        run.difficulty = 2;
+        run.stage = 6;
+        run.finished = true;
+        CHECK(e.create(run, &records, &err));
+        CHECK(e.script() == "end00b.end" && !e.seen());
+        CHECK((records.clears[0].noContinue[2] & 0x8000) != 0 && (records.clears[0].reached[2] & 0x8000) != 0);
+        CHECK(records.musicHeard[18] == 1 && records.musicHeard[19] == 1 && records.plstValue(2, th08::ScoreData::Clears) == 1 &&
+              records.plstValue(6, th08::ScoreData::Clears) == 1);
+        asked = th08::Scene::Init;
+        bool staff = false;
+        int frames = 0;
+        for (; frames < 200000 && !e.done(); ++frames) {
+            in.sample(frames % 2 ? th08::BtnShoot : 0);
+            e.update(in);
+            staff = staff || e.script() == "data/staff00b.end";
+        }
+        CHECK(e.done() && staff && asked == th08::Scene::ResultAfterGame);
+        std::printf("  (Final A ending and staff roll: %d frames with Shoot tapped)\n", frames);
+        // A bad ending: no records but the theme flag; the bad ending file.
+        th08::Ending bad(ctx);
+        run.finished = false;
+        run.stage = 5;
+        run.character = 7;  // a solo: team 1
+        CHECK(bad.create(run, &records, &err) && bad.script() == "end01a.end" && records.musicHeard[18] == 0x12);
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -1685,7 +2011,9 @@ int main() {
         {"musiccmt.txt: tracks, comment lines, track lookup", testMusicComments},
         {"ANM v3: files, sprites by position, opcodes 9/33/82-89, interrupt return, freeze", testAnm},
         {"version file: every matching line, exe checksum", testVersionFile},
+        {"ring strip: flat, square, wavy and ellipse positions", testRings},
         {"the player's th08.dat (TH08_REAL_DAT)", testRealArchive},
+        {"result screen and endings (TH08_REAL_DAT)", testResultAndEnding},
     };
     for (const Test& t : tests) {
         const int before = g_failures;

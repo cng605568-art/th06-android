@@ -93,6 +93,33 @@ bool loadExeTables(std::span<const std::uint8_t> exe, ExeTables& t, std::string*
         words(ExeTables::kClearBase, 9, [&](std::size_t i, std::uint32_t v) { t.clearBase[i] = static_cast<std::int32_t>(v); });
     if (!dialogue) return fail("dialogue tables not in the file");
     t.fakeCardName = pe.cString(ExeTables::kFakeCardName, 48);
+    // Player Data's names, categories and texts (optional: the viewer degrades without them).
+    (void)words(ExeTables::kFullNames, 13, [&](std::size_t i, std::uint32_t va) { t.fullNames[i] = pe.cString(va, 64); });
+    {
+        std::array<std::uint32_t, 6> tables{}, counts{};
+        if (words(ExeTables::kCategoryTables, 6, [&](std::size_t i, std::uint32_t v) { tables[i] = v; }) &&
+            words(ExeTables::kCategoryCounts, 6, [&](std::size_t i, std::uint32_t v) { counts[i] = v; })) {
+            for (std::size_t k = 0; k < 6; ++k) {
+                if (counts[k] > 222) continue;
+                std::vector<std::int32_t> ids;
+                if (words(tables[k], counts[k], [&](std::size_t, std::uint32_t v) { ids.push_back(static_cast<std::int32_t>(v)); })) {
+                    t.cardCategories[k] = std::move(ids);
+                }
+            }
+        }
+    }
+    {
+        ExeTables::DataText& d = t.dataText;
+        d.running = pe.cString(ExeTables::kTextRunning, 64);
+        d.playTime = pe.cString(ExeTables::kTextPlayTime, 64);
+        d.playsHeader = pe.cString(ExeTables::kTextPlaysHeader, 96);
+        d.playsRow = pe.cString(ExeTables::kTextPlaysRow, 64);
+        d.clears = pe.cString(ExeTables::kTextClears, 96);
+        d.continues = pe.cString(ExeTables::kTextContinues, 96);
+        d.practice = pe.cString(ExeTables::kTextPractice, 96);
+        d.spellHeader = pe.cString(ExeTables::kTextSpellHeader, 64);
+        d.unknownCard = pe.cString(ExeTables::kTextUnknownCard, 16);
+    }
     for (std::size_t i = 0; i < t.bombNames.size(); ++i) {
         const auto push = pe.at(ExeTables::kBombNamePushes[i], 5);
         if (push.size() != 5 || push[0] != 0x68) continue;

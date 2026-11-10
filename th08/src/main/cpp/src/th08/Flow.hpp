@@ -97,6 +97,11 @@ struct FlowContext {
     std::function<void(std::string_view path)> musicPlayed;
     const std::array<std::uint8_t, 32>* musicHeard = nullptr;  // score.dat's PLST flags
     const ScoreData* scores = nullptr;   // score.dat as read at boot
+    // The same records, kept and changed by the game (GameManager), and written by the
+    // result screen's write-through (mode 2); `gameRng`: the two header bytes come from the
+    // game's RNG (the write at a fresh set-up).
+    ScoreData* records = nullptr;
+    std::function<void(bool gameRng)> saveScores;
     Scene previous = Scene::Init;        // the Supervisor's previous scene
 
     // Unlocks (spec 5.1), from score.dat once it is ported.
@@ -123,6 +128,9 @@ class Surface {
     bool loaded() const { return texture_ >= 0; }
     const std::string& path() const { return path_; }
     void blit(SpriteSink& sink, float x, float y) const;
+    // The w x h window at (left, top) of the picture, drawn at (x, y).
+    void blitRect(SpriteSink& sink, float x, float y, float left, float top, float w, float h) const;
+    int height() const { return height_; }
 
   private:
     int texture_ = -1;

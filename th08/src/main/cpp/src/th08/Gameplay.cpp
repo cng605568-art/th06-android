@@ -35,6 +35,7 @@ void World::addTimePoints(std::int32_t n) const {
         g.timePoints = 0;
         return;
     }
+    g.timeOrbsNet += n;
     g.timePoints += n;
     g.timeTotal += n;
     if (rng) antiTamper(*rng);
@@ -145,6 +146,24 @@ bool Gameplay::start(const Setup& setup, std::string* error) {
         state_.rank = kRankStart[state_.difficulty];
     }
     state_.pointValue = kPointValue[state_.difficulty];
+    // Step 3.8: the result screen's write-through (score.dat written, two game-RNG draws), then
+    // the records this game reads: the hi-score, the cards (all tagged), the practice count.
+    if (ctx_.saveScores) ctx_.saveScores(true);
+    if (ScoreData* r = ctx_.records) {
+        r->cardsTagged = true;
+        for (CardRecord& c : r->cards) c.present = true;
+        const auto slot = static_cast<std::size_t>(state_.stage * 5 + state_.difficulty);
+        PracticeRecord& pr = r->practice[static_cast<std::size_t>(state_.character)];
+        if (state_.practice && slot < pr.plays.size()) {
+            state_.hiScore = pr.best[slot];
+            ++pr.plays[slot];
+            pr.hasData = true;
+        } else {
+            state_.hiScore = r->bestScore(state_.difficulty, state_.character);
+        }
+        // Step 9: the statistics (not in spell practice).
+        if (!state_.spellPractice) r->notePlay(state_.difficulty, state_.character, setup.restart, state_.practice);
+    }
     if (!setUpStage(true, error)) {
         end();
         return false;
@@ -269,15 +288,11 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
         }
     }
     // The spell card object (spec_spellcard_hud 1.1-1.2): zeroed and bound every stage.
-    if (fresh) {
-        if (ctx_.scores) *cards_ = ctx_.scores->cards;
-        else cards_->fill(CardRecord{});
-    }
     Spellcard::Context sc;
     sc.anm = &lib;
     sc.textures = ctx_.textures;
     sc.text = ctx_.text;
-    sc.cards = cards_.get();
+    sc.cards = ctx_.records ? &ctx_.records->cards : cards_.get();
     spellcard_.stageStart(world_, sc);
     dialogue_.onScriptZero = [this](int) {
         if (state_.stage >= 6) background_.setSpellBackgrounds(2, 2);
@@ -323,14 +338,21 @@ void Gameplay::menuDone(InGameMenu::Request request) {
         case R::Resume:
             if (ctx_.music) ctx_.music->resume();
             break;
-        case R::Title:
-        case R::Results:    // (the result screen is not ported yet)
-        case R::BadEnding:  // (nor the endings)
+        case R::Title:  // (the write-through keeps this run's records, spec_result_ending 1.5)
+            if (ctx_.saveScores) ctx_.saveScores(true);
             outcome_ = Outcome::Title;
+            break;
+        case R::Results:
+            outcome_ = Outcome::Results;
+            break;
+        case R::BadEnding:
+            state_.finished = false;
+            outcome_ = Outcome::Ending;
             break;
         case R::Restart: {  // the main game from Stage 1, fresh
             Setup s = setup_;
             s.stage = 0;
+            s.restart = true;
             std::string err;
             if (!start(s, &err)) outcome_ = Outcome::Title;
             break;
@@ -354,6 +376,7 @@ void Gameplay::menuDone(InGameMenu::Request request) {
             state_.pointItems = 0;
             state_.extends = 0;
             state_.nextExtend = 100;
+            if (ctx_.records) ctx_.records->noteContinue(state_.difficulty, state_.character);
             player_->continueGame();
             if (ctx_.music) ctx_.music->resume();
             break;
@@ -396,6 +419,8 @@ bool Gameplay::stageEndStep(const MenuInput& in) {
     if (stageEnd_ == 2) {
         stageEnd_ = 3;
         pending_ = Pending::None;
+        // The stage's bit in the clear records (no-continue only while no continue was used).
+        if (ctx_.records) ctx_.records->markClear(state_.character, state_.difficulty, static_cast<std::uint16_t>(1u << state_.stage), state_.continues == 0);
         state_.guiScore = state_.score;
         if (state_.practice) {
             pending_ = Pending::Results;
@@ -403,6 +428,7 @@ bool Gameplay::stageEndStep(const MenuInput& in) {
         }
         if (state_.stage <= 5) {
             if (state_.nightSteps >= 12) {  // dawn: the bad ending
+                state_.finished = false;
                 pending_ = Pending::BadEnding;
                 return true;
             }
@@ -413,8 +439,21 @@ bool Gameplay::stageEndStep(const MenuInput& in) {
                 return true;
             }
             stageEnd_ = 1;  // the new stage waits for Shoot ("Press Shot Button")
+        } else if (state_.difficulty >= 4) {
+            // Extra: 0x8000 into the character's no-continue Extra word, but into record 12's
+            // reached word [QUIRK]; the Extra clear count (difficulty row only).
+            if (ScoreData* r = ctx_.records; r && state_.difficulty == 4) {
+                ClearRecord& mine = r->clears[static_cast<std::size_t>(state_.character)];
+                mine.noContinue[4] = static_cast<std::uint16_t>(mine.noContinue[4] | 0x8000);
+                r->clears[12].reached[4] = static_cast<std::uint16_t>(r->clears[12].reached[4] | 0x8000);
+                r->plstAdd(4, ScoreData::Clears);
+            }
+            state_.finished = true;
+            pending_ = Pending::Results;
+            return true;
         } else {
-            pending_ = state_.difficulty >= 4 ? Pending::Results : Pending::Ending;
+            state_.finished = true;
+            pending_ = Pending::Ending;
             return true;
         }
     }
@@ -422,8 +461,8 @@ bool Gameplay::stageEndStep(const MenuInput& in) {
         stageEnd_ = 0;
         const Pending p = pending_;
         pending_ = Pending::None;
-        // (The result screen and the endings are not ported yet: the title.)
-        if (p != Pending::None) outcome_ = Outcome::Title;
+        if (p == Pending::Results) outcome_ = Outcome::Results;
+        else if (p == Pending::Ending || p == Pending::BadEnding) outcome_ = Outcome::Ending;
         return true;
     }
     return true;
@@ -431,6 +470,7 @@ bool Gameplay::stageEndStep(const MenuInput& in) {
 
 void Gameplay::tick(const MenuInput& in) {
     if (!running_ || outcome_ != Outcome::None) return;
+    ++state_.runFrames;  // (the GameManager's frame counter: loading, pauses and dialogue too)
     if (stageEndStep(in)) return;
     // The AsciiManager's HUD VMs tick every frame, also while paused.
     if (ctx_.rng) gui_.hudTick(*ctx_.rng);
@@ -449,6 +489,7 @@ void Gameplay::tick(const MenuInput& in) {
     if (in.pressed(BtnMenu) || backPressed) {
         if (ctx_.music) ctx_.music->pause();
         menu_.openPause(world_);
+        ++state_.pauses;
         return;
     }
     // GameManager (priority 4): the music starts when play begins (spec 6.6 step 3).
@@ -524,6 +565,7 @@ void Gameplay::draw(SpriteSink& sink) {
     effects_->draw(sink, drawState_, &background_);  // 12
     bullets_->draw(sink, drawState_);         // 13: lasers, items, bullets
     effects_->drawListD(sink, drawState_);     // (inside the bullet draw)
+    gui_.drawBlindness(sink, player_->position(), drawState_.offsetX, drawState_.offsetY);  // 14, after the popups
     drawState_.offsetX = drawState_.offsetY = 0.0f;
     sink.clearClip();
     gui_.drawGauge(sink, state_);             // 14 (the AsciiManager's popup pass)

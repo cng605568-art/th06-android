@@ -12,7 +12,7 @@ namespace {
 constexpr std::size_t kHeader = 0x1C;
 constexpr thcrypt::Params kScoreCrypt{0x59, 0x79, 0x100, 0xC00};
 constexpr std::size_t kMaxImage = 0xA001C;  // the original's buffer
-constexpr std::size_t kPlstSize = 0x228, kPlstHeard = 0x208;
+constexpr std::size_t kPlstHeard = 0x208;
 
 std::uint16_t rd16(std::span<const std::uint8_t> b, std::size_t at) { return static_cast<std::uint16_t>(b[at] | b[at + 1] << 8); }
 std::uint32_t rd32(std::span<const std::uint8_t> b, std::size_t at) {
@@ -111,11 +111,20 @@ bool parseScoreImage(std::span<const std::uint8_t> image, ScoreData& out,
         } else if (tag("PLST") && version == 2 && len >= kPlstSize) {
             parsed.totalPlays = rd32(rec, 0x2C + 6 * 0x44);  // the last valid PLST wins
             std::memcpy(parsed.musicHeard.data(), rec.data() + kPlstHeard, parsed.musicHeard.size());
-            parsed.plstOffset = at;
+            std::memcpy(parsed.plst.data(), rec.data(), kPlstSize);
+        } else if (tag("HSCR") && version == 4 && len >= 0x168) {
+            HighScoreRecord r{};
+            std::memcpy(r.data(), rec.data(), r.size());
+            parsed.highScores.push_back(r);
+        } else if (tag("LSNM") && version == 1 && len >= 0x18 && !parsed.hasLastName) {
+            for (std::size_t i = 0; i < 8; ++i) parsed.lastName[i] = static_cast<char>(rec[0x0C + i]);
+            parsed.lastName[8] = 0;
+            parsed.hasLastName = true;
         } else if (tag("PSCR") && version == 2 && len >= 0x178) {
             const std::uint8_t shot = rec[0x174];
             if (shot < kCharacters && rec[0x175] != 0) {
                 PracticeRecord& r = parsed.practice[shot];
+                r.hasData = true;
                 for (std::size_t i = 0; i < 45; ++i) {
                     r.plays[i] = rd32(rec, 0x0C + 4 * i);
                     r.best[i] = rd32(rec, 0xC0 + 4 * i);
@@ -125,7 +134,13 @@ bool parseScoreImage(std::span<const std::uint8_t> image, ScoreData& out,
             const std::uint16_t card = rd16(rec, 0x0C);
             if (card < kCardCount) {
                 CardRecord& c = parsed.cards[card];
+                parsed.cardsTagged = true;
                 c.present = true;
+                c.level = rec[0x0F];
+                std::memcpy(c.name.data(), rec.data() + 0x10, c.name.size());
+                std::memcpy(c.owner.data(), rec.data() + 0x40, c.owner.size());
+                std::memcpy(c.comment1.data(), rec.data() + 0x70, c.comment1.size());
+                std::memcpy(c.comment2.data(), rec.data() + 0xB0, c.comment2.size());
                 for (std::size_t i = 0; i < 13; ++i) {
                     c.best[i] = rd32(rec, 0xF0 + 4 * i);
                     c.attempts[i] = rd32(rec, 0x124 + 4 * i);
@@ -142,6 +157,7 @@ bool parseScoreImage(std::span<const std::uint8_t> image, ScoreData& out,
             const bool debug = std::memcmp(rec.data() + 0x0C, "debug", 5) == 0;
             if (!debug && (size != exeVersion->first || sum != exeVersion->second)) return false;
         }
+        if (tag("VRSM") && version == 1 && len >= 0x1C) std::memcpy(parsed.vrsm.data(), rec.data(), parsed.vrsm.size());
         at += len;
     }
     if (!haveKey || lastKeyVersion != 1) return false;
@@ -199,20 +215,217 @@ bool ScoreData::setMusicHeard(int index) {
     return true;
 }
 
-std::vector<std::uint8_t> ScoreData::imageToSave() const {
-    std::vector<std::uint8_t> b = image;
-    std::size_t plst = plstOffset;
-    if (b.size() < kHeader) {
-        b = freshScoreImage();
-        plst = 0;
-        for (std::size_t at = kHeader; at + 12 <= b.size(); at += rd16(b, at + 4)) {
-            if (std::memcmp(b.data() + at, "PLST", 4) == 0) plst = at;
-        }
-    } else if (plst == 0 || plst + kPlstSize > b.size()) {
-        plst = b.size();  // a valid file without a PLST record: add one
-        appendRecord(b, "PLST", static_cast<std::uint16_t>(kPlstSize), 2);
+std::uint8_t CardRecord::checksum() const {
+    std::uint32_t sum = 0;
+    for (std::uint8_t b : name) sum += static_cast<std::uint32_t>(static_cast<std::int32_t>(static_cast<std::int8_t>(b)));
+    for (const auto* a : {&best, &attempts, &captures, &practiceBest, &practiceAttempts, &practiceCaptures}) {
+        for (std::uint32_t v : *a) sum += v;
     }
-    std::memcpy(b.data() + plst + kPlstHeard, musicHeard.data(), musicHeard.size());
+    return static_cast<std::uint8_t>(sum & 0xFF);
+}
+
+// ---- play statistics -------------------------------------------------------------------------
+
+std::uint32_t ScoreData::plstValue(int row, int field) const {
+    if (row < 0 || row > 6 || field < 0 || field > 16) return 0;
+    return rd32(plst, 0x2C + 0x44 * static_cast<std::size_t>(row) + 4 * static_cast<std::size_t>(field));
+}
+
+std::array<std::uint32_t, 4> ScoreData::plstTime(std::size_t at) const {
+    return {rd32(plst, at), rd32(plst, at + 4), rd32(plst, at + 8), rd32(plst, at + 12)};
+}
+
+void ScoreData::addTime(std::size_t at, std::uint32_t ms) {
+    std::array<std::uint32_t, 4> t = plstTime(at);
+    t[3] += ms;
+    t[2] += t[3] / 1000;
+    t[3] %= 1000;
+    t[1] += t[2] / 60;
+    t[2] %= 60;
+    t[0] += t[1] / 60;
+    t[1] %= 60;
+    for (std::size_t k = 0; k < 4; ++k) {
+        for (int b = 0; b < 4; ++b) plst[at + 4 * k + static_cast<std::size_t>(b)] = static_cast<std::uint8_t>(t[k] >> (8 * b));
+    }
+}
+
+void ScoreData::plstAdd(int row, int field, std::uint32_t v) {
+    if (row < 0 || row > 6 || field < 0 || field > 16) return;
+    const std::size_t at = 0x2C + 0x44 * static_cast<std::size_t>(row) + 4 * static_cast<std::size_t>(field);
+    const std::uint32_t old = rd32(plst, at);
+    for (int k = 0; k < 4; ++k) plst[at + static_cast<std::size_t>(k)] = static_cast<std::uint8_t>((old + v) >> (8 * k));
+    totalPlays = plstValue(6, Plays);
+}
+
+void ScoreData::notePlay(int difficulty, int character, bool restart, bool practicePlay) {
+    for (int row : {std::clamp(difficulty, 0, 4), 6}) {
+        plstAdd(row, Plays);
+        plstAdd(row, PerCharacter + std::clamp(character, 0, 11));
+        if (restart) plstAdd(row, Retries);
+        if (practicePlay) plstAdd(row, PracticePlays);
+    }
+}
+
+void ScoreData::noteContinue(int difficulty, int character) {
+    for (int row : {std::clamp(difficulty, 0, 4), 6}) {
+        plstAdd(row, Plays);
+        plstAdd(row, PerCharacter + std::clamp(character, 0, 11));
+        plstAdd(row, Continues);
+    }
+}
+
+void ScoreData::markClear(int character, int difficulty, std::uint16_t bit, bool noContinue) {
+    const auto d = static_cast<std::size_t>(std::clamp(difficulty, 0, 4));
+    for (int r : {std::clamp(character, 0, 11), 12}) {
+        ClearRecord& c = clears[static_cast<std::size_t>(r)];
+        if (noContinue) c.noContinue[d] = static_cast<std::uint16_t>(c.noContinue[d] | bit);
+        c.reached[d] = static_cast<std::uint16_t>(c.reached[d] | bit);
+    }
+}
+
+// ---- high scores -----------------------------------------------------------------------------
+
+namespace {
+
+struct Node {
+    std::uint32_t score;
+    const HighScoreRecord* record;  // null: a placeholder
+};
+
+std::uint32_t recordScore(const HighScoreRecord& r) { return rd32(r, 0x0C); }
+
+// Insertion (0x45A500): before the first node whose score is <= the new one.
+std::size_t insertNode(std::vector<Node>& list, Node n) {
+    std::size_t pos = 0;
+    while (pos < list.size() && list[pos].score > n.score) ++pos;
+    list.insert(list.begin() + static_cast<std::ptrdiff_t>(pos), n);
+    return pos;
+}
+
+std::vector<Node> buildList(const std::vector<HighScoreRecord>& records, int difficulty, int character) {
+    std::vector<Node> list;
+    for (int i = 0; i < 10; ++i) insertNode(list, Node{static_cast<std::uint32_t>(100000 - 10000 * i), nullptr});
+    for (const HighScoreRecord& r : records) {
+        if (r[0x14] == character && r[0x15] == difficulty) insertNode(list, Node{recordScore(r), &r});
+    }
+    return list;
+}
+
+}  // namespace
+
+int ScoreData::rankOf(int difficulty, int character, std::uint32_t score) const {
+    std::vector<Node> list = buildList(highScores, difficulty, character);
+    return static_cast<int>(insertNode(list, Node{score, nullptr}));
+}
+
+std::array<ScoreData::ListRow, 10> ScoreData::listRows(int difficulty, int character) const {
+    std::array<ListRow, 10> rows{};
+    const std::vector<Node> list = buildList(highScores, difficulty, character);
+    for (std::size_t i = 0; i < rows.size() && i < list.size(); ++i) rows[i] = ListRow{list[i].record, list[i].score};
+    return rows;
+}
+
+std::uint32_t ScoreData::bestScore(int difficulty, int character) const {
+    const std::vector<Node> list = buildList(highScores, difficulty, character);
+    return list.empty() ? 100000u : std::max(list.front().score, 100000u);
+}
+
+// ---- the writer --------------------------------------------------------------------------------
+
+std::vector<std::uint8_t> ScoreData::imageToSave() const {
+    std::vector<std::uint8_t> b(kHeader, 0);
+    if (image.size() >= kHeader) std::memcpy(b.data(), image.data(), kHeader);
+    wr16(b, 4, 1);
+    wr32(b, 8, kHeader);
+    appendRecord(b, "TH8K", 0x0C, 1);
+    // HSCR: the first 10 nodes of every list, real records only.
+    for (int d = 0; d < 5; ++d) {
+        for (int c = 0; c < kCharacters; ++c) {
+            const std::vector<Node> list = buildList(highScores, d, c);
+            for (std::size_t i = 0; i < 10 && i < list.size(); ++i) {
+                if (!list[i].record) continue;
+                const std::size_t at = b.size();
+                b.insert(b.end(), list[i].record->begin(), list[i].record->end());
+                std::memcpy(b.data() + at, "HSCR", 4);
+                wr16(b, at + 4, 0x168);
+                wr16(b, at + 6, 0x168);
+                b[at + 8] = 4;
+                b[at + 9] = 0;
+                b[at + 0x14] = static_cast<std::uint8_t>(c);
+                b[at + 0x15] = static_cast<std::uint8_t>(d);
+            }
+        }
+    }
+    for (int i = 0; i < kClearRecords; ++i) {
+        const std::size_t at = b.size();
+        appendRecord(b, "CLRD", 0x24, 4);
+        const ClearRecord& c = clears[static_cast<std::size_t>(i)];
+        for (std::size_t k = 0; k < 5; ++k) {
+            wr16(b, at + 0x0C + 2 * k, c.noContinue[k]);
+            wr16(b, at + 0x16 + 2 * k, c.reached[k]);
+        }
+        b[at + 0x20] = c.pending;
+        b[at + 0x21] = static_cast<std::uint8_t>(i);
+    }
+    if (cardsTagged) {
+        for (int i = 0; i < kCardCount; ++i) {
+            const CardRecord& c = cards[static_cast<std::size_t>(i)];
+            const std::size_t at = b.size();
+            appendRecord(b, "CATK", 0x22C, 3);
+            wr16(b, at + 0x0C, static_cast<std::uint16_t>(i));
+            b[at + 0x0E] = c.checksum();
+            b[at + 0x0F] = c.level;
+            std::memcpy(b.data() + at + 0x10, c.name.data(), c.name.size());
+            std::memcpy(b.data() + at + 0x40, c.owner.data(), c.owner.size());
+            std::memcpy(b.data() + at + 0x70, c.comment1.data(), c.comment1.size());
+            std::memcpy(b.data() + at + 0xB0, c.comment2.data(), c.comment2.size());
+            for (std::size_t k = 0; k < 13; ++k) {
+                wr32(b, at + 0xF0 + 4 * k, c.best[k]);
+                wr32(b, at + 0x124 + 4 * k, c.attempts[k]);
+                wr32(b, at + 0x158 + 4 * k, c.captures[k]);
+                wr32(b, at + 0x18C + 4 * k, c.practiceBest[k]);
+                wr32(b, at + 0x1C0 + 4 * k, c.practiceAttempts[k]);
+                wr32(b, at + 0x1F4 + 4 * k, c.practiceCaptures[k]);
+            }
+        }
+    }
+    for (int i = 0; i < kCharacters; ++i) {
+        const PracticeRecord& r = practice[static_cast<std::size_t>(i)];
+        if (!r.hasData) continue;
+        const std::size_t at = b.size();
+        appendRecord(b, "PSCR", 0x178, 2);
+        for (std::size_t k = 0; k < 45; ++k) {
+            wr32(b, at + 0x0C + 4 * k, r.plays[k]);
+            wr32(b, at + 0xC0 + 4 * k, r.best[k]);
+        }
+        b[at + 0x174] = static_cast<std::uint8_t>(i);
+        b[at + 0x175] = 1;
+    }
+    std::uint8_t name[12] = {};
+    for (std::size_t i = 0; i < 8; ++i) name[i] = static_cast<std::uint8_t>(lastName[i] != 0 ? lastName[i] : ' ');
+    appendRecord(b, "LSNM", 0x18, 1, name);
+    appendRecord(b, "FLSP", 0x20, 1, lastWords);
+    {
+        const std::size_t at = b.size();
+        b.insert(b.end(), plst.begin(), plst.end());
+        std::memcpy(b.data() + at, "PLST", 4);
+        wr16(b, at + 4, static_cast<std::uint16_t>(kPlstSize));
+        wr16(b, at + 6, static_cast<std::uint16_t>(kPlstSize));
+        b[at + 8] = 2;
+        b[at + 9] = 0;
+        std::memcpy(b.data() + at + kPlstHeard, musicHeard.data(), musicHeard.size());
+    }
+    const std::size_t at = b.size();
+    if (std::memcmp(vrsm.data(), "VRSM", 4) == 0) {
+        b.insert(b.end(), vrsm.begin(), vrsm.end());  // (the PC's record carries a byte at +0x12)
+    } else {
+        appendRecord(b, "VRSM", 0x1C, 1);
+        std::memcpy(b.data() + at + 0x0C, "0100d", 6);
+        wr32(b, at + 0x14, 840704u);
+        wr32(b, at + 0x18, 2724749753u);
+    }
+    wr32(b, 0x10, static_cast<std::uint32_t>(b.size()));
+    wr32(b, 0x14, static_cast<std::uint32_t>(b.size() - kHeader));
     return b;
 }
 

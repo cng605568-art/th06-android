@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <span>
 #include <string>
+#include <vector>
 
 namespace touhou::th08 {
 
@@ -82,6 +83,18 @@ struct ExeTables {
         0x0040C058, 0x0040C958, 0x00410C88, 0x00411028, 0x0040E3F8, 0x0040E7C8, 0x0040D479, 0x0040D9B9, 0x0040FD18,
         0x00410438, 0x0040EE6A, 0x0040F5CA, 0x00411B78, 0x00412438, 0x00413188, 0x004139D8, 0x0040D153};
     static constexpr std::uint32_t kFakeCardName = 0x004B495C;
+    // Player Data (spec_result_ending §2): the full character names (12 + "all characters"),
+    // the spell list's six categories (card ids; Easy, Normal, Hard, Lunatic, Extra, all), and
+    // the Shift-JIS lines and formats the pages render.
+    std::array<std::string, 13> fullNames;
+    std::array<std::vector<std::int32_t>, 6> cardCategories;
+    struct DataText {
+        std::string running, playTime, playsHeader, playsRow, clears, continues, practice, spellHeader, unknownCard;
+    } dataText;
+    static constexpr std::uint32_t kFullNames = 0x004C7F4C, kCategoryTables = 0x004C67D0, kCategoryCounts = 0x004C67E8;
+    static constexpr std::uint32_t kTextRunning = 0x004B7A9C, kTextPlayTime = 0x004B7A80, kTextPlaysHeader = 0x004B7A44,
+                                   kTextPlaysRow = 0x004B7A28, kTextClears = 0x004B79FC, kTextContinues = 0x004B79D0,
+                                   kTextPractice = 0x004B79A4, kTextSpellHeader = 0x004B795C, kTextUnknownCard = 0x004B77D8;
     static constexpr std::uint32_t kTimeQuota = 0x004C77F0, kRankTable = 0x004C7880, kExtendMain = 0x004C7A84,
                                    kExtendExtra = 0x004C7A9C, kBurstColors = 0x004C6100;
     static constexpr std::uint32_t kSoundTable = 0x004C8040, kSampleNames = 0x004C81B0;

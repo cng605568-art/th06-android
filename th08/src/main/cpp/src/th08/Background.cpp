@@ -656,6 +656,36 @@ void Background::drawLow(SpriteSink& sink, AnmDrawState& state) {
     glowEnable_ = false;
 }
 
+void Background::drawMirrorWindow(SpriteSink& sink, const AnmDrawState& state, const Vec3f& centre, float outerRadius,
+                                  float innerRadius) {
+    const float a = outerRadius * 0.70710683f, b = innerRadius * 0.70710683f;
+    const float cx = 32.0f + centre.x, cy = 16.0f + centre.y;
+    const float hi = std::max(a, b), lo = std::min(a, b);
+    if (!(hi > lo)) return;
+    AnmVm v0 = spellVms_[0], v1 = spellVms_[1];
+    v0.scale = {-1.5f, -1.75f};
+    v0.position = {416.0f, 464.0f, 0.7f};
+    v0.color = 0xFFE0C0C0u;
+    v1.rotation.z = v1.rotation.z * -1.0f;
+    v1.position.z = 0.6f;
+    v1.color = 0xFFE0C0C0u;
+    // A pixel is inside an unrounded edge pair [p, q) when its Direct3D centre is: ceil(p) to
+    // ceil(q); then the playfield.
+    auto clipDraw = [&](float x0, float y0, float x1, float y1) {
+        const float l = std::max(std::ceil(x0), 32.0f), r = std::min(std::ceil(x1), 416.0f);
+        const float t = std::max(std::ceil(y0), 16.0f), btm = std::min(std::ceil(y1), 464.0f);
+        if (r <= l || btm <= t) return;
+        sink.setClip(l, t, r - l, btm - t);
+        drawVm(sink, v0, state);
+        drawVm(sink, v1, state);
+    };
+    clipDraw(cx - hi, cy - hi, cx + hi, cy - lo);  // top
+    clipDraw(cx - hi, cy + lo, cx + hi, cy + hi);  // bottom
+    clipDraw(cx - hi, cy - lo, cx - lo, cy + lo);  // left
+    clipDraw(cx + lo, cy - lo, cx + hi, cy + lo);  // right
+    sink.clearClip();
+}
+
 void Background::drawLayer(SpriteSink& sink, AnmDrawState& state, int layer) {
     buildStageCamera();
     const Vec3f eye = eyePosition();

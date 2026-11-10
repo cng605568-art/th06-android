@@ -40,8 +40,10 @@ class Gameplay {
         int difficulty = 1;
         bool practice = false, spellPractice = false;
         int lives = 2;  // the configured lives (the set-up applies the Extra and practice rules)
+        bool restart = false;  // scene 10: the main game restarted from the pause menu
     };
-    enum class Outcome : std::uint8_t { None, Title };
+    // What the game hands over: the title, the ending (scene 9) or the result screen (6).
+    enum class Outcome : std::uint8_t { None, Title, Ending, Results };
 
     explicit Gameplay(FlowContext& ctx) : ctx_(ctx) {}
     ~Gameplay();

@@ -63,6 +63,20 @@ void Surface::blit(SpriteSink& sink, float x, float y) const {
     sink.draw(static_cast<std::uint16_t>(texture_), Blend::Alpha, s);
 }
 
+void Surface::blitRect(SpriteSink& sink, float x, float y, float left, float top, float w, float h) const {
+    if (texture_ < 0 || left < 0 || top < 0 || left + w > static_cast<float>(width_) || top + h > static_cast<float>(height_)) return;
+    SpriteInstance s;
+    s.x = x + w * 0.5f;
+    s.y = y + h * 0.5f;
+    s.w = w;
+    s.h = h;
+    s.u0 = left / static_cast<float>(width_);
+    s.v0 = top / static_cast<float>(height_);
+    s.u1 = (left + w) / static_cast<float>(width_);
+    s.v1 = (top + h) / static_cast<float>(height_);
+    sink.draw(static_cast<std::uint16_t>(texture_), Blend::Alpha, s);
+}
+
 // ---- ASCII strings --------------------------------------------------------------------------
 
 void AsciiText::add(float x, float y, std::string_view text, std::uint32_t color, float scale, float advance, float xScale) {

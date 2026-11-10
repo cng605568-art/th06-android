@@ -344,59 +344,93 @@ void Effects::update(const World& w) {
     ++frames_;
 }
 
-// The ring/strip drawer (spec_effects 4.5): N + 1 vertex pairs around the centre, outer first,
-// drawn as N quads. Visual only.
-void Effects::drawRing(SpriteSink& sink, const Effect& e, const AnmDrawState& state) {
-    const AnmVm& vm = e.vm;
-    if (!vm.sprite || !vm.has(AnmVm::Visible) || !vm.has(AnmVm::Active) || (vm.color >> 24) == 0) return;
+// The ring/strip drawer (claude/th08-specs/spec_visual_gaps.md §3, 0x427450): N + 1 vertex
+// pairs around the centre, outer first, drawn as a strip of 2N triangles. The UVs run across
+// the band (outer u start, inner u end) and down the sprite along the ring; the vertex colour
+// is the VM's raw colour; no shake offset. The x87 sines and cosines are kept unrounded where
+// the original keeps them. Visual only.
+int Effects::ringGeometry(const Effect& e, RingPoints& pts) {
     const int n = std::clamp(e.segments, 1, 128);
     const float step = kZunTwoPi / static_cast<float>(n);
-    const float h = e.width / std::sin((kZunPi - step) / 2.0f);
-    const float psiStep = kZunTwoPi * e.waves / static_cast<float>(n);
-    std::array<float, 129 * 4> pts{};  // outer x, y, inner x, y
-    float theta = e.angle, phi = 0.0f, psi = e.phase;
-    const float ct = std::cos(e.phase), st = std::sin(e.phase);
-    for (int i = 0; i <= n; ++i) {
-        if (theta >= kZunPi) theta -= kZunTwoPi;
-        float ox, oy, ix, iy;
-        if (e.radius2 == 0.0f) {
-            ox = std::cos(theta) * (e.radius + h), oy = std::sin(theta) * (e.radius + h);
-            ix = std::cos(theta) * (e.radius - h), iy = std::sin(theta) * (e.radius - h);
-        } else if (e.waves == 0.0f) {
-            const float ex0 = std::cos(phi) * (e.radius + h), ey0 = std::sin(phi) * (e.radius2 + h);
-            const float ex1 = std::cos(phi) * (e.radius - h), ey1 = std::sin(phi) * (e.radius2 - h);
-            ox = ex0 * ct - ey0 * st, oy = ex0 * st + ey0 * ct;
-            ix = ex1 * ct - ey1 * st, iy = ex1 * st + ey1 * ct;
-        } else {
-            const float wave = std::cos(psi) * e.radius2;
-            ox = std::cos(theta) * (e.radius + h + wave), oy = std::sin(theta) * (e.radius + h + wave);
-            ix = std::cos(theta) * (e.radius - h + wave), iy = std::sin(theta) * (e.radius - h + wave);
-            psi += psiStep;
-        }
-        const float cx = e.centre.x + kPlayfieldX + state.offsetX + 0.5f, cy = e.centre.y + kPlayfieldY + state.offsetY + 0.5f;
+    const float h = static_cast<float>(static_cast<double>(e.width) / std::sin(static_cast<double>((kZunPi - step) / 2.0f)));
+    // polar(a, r): one fsincos, each product rounded once.
+    auto polar = [](float a, float r, float& x, float& y) {
+        x = static_cast<float>(std::cos(static_cast<double>(a)) * static_cast<double>(r));
+        y = static_cast<float>(std::sin(static_cast<double>(a)) * static_cast<double>(r));
+    };
+    const float ox0 = e.centre.x, oy0 = e.centre.y;
+    auto place = [&](int i, float px, float py, float qx, float qy) {
         float* p = &pts[static_cast<std::size_t>(i) * 4];
-        p[0] = cx + ox, p[1] = cy + oy, p[2] = cx + ix, p[3] = cy + iy;
-        theta += step;
-        phi += step;
+        p[0] = kPlayfieldX + (px + ox0), p[1] = kPlayfieldY + (py + oy0);
+        p[2] = kPlayfieldX + (qx + ox0), p[3] = kPlayfieldY + (qy + oy0);
+    };
+    if (e.radius2 == 0.0f) {  // flat (the second radius is tested first)
+        const float ro = h + e.radius, ri = e.radius - h;
+        float theta = e.angle;
+        for (int i = 0; i <= n; ++i) {
+            if (theta >= kZunPi) theta -= kZunTwoPi;
+            float px, py, qx, qy;
+            polar(theta, ro, px, py);
+            polar(theta, ri, qx, qy);
+            place(i, px, py, qx, qy);
+            theta += step;
+        }
+    } else if (e.waves == 0.0f) {  // ellipse, tilted by the phase (the start angle is ignored)
+        const float ao = h + e.radius, bo = h + e.radius2, ai = e.radius - h, bi = e.radius2 - h;
+        const float sn = std::sin(e.phase), k = std::cos(e.phase);
+        float phi = 0.0f;
+        for (int i = 0; i <= n; ++i) {
+            const double c = std::cos(static_cast<double>(phi)), sv = std::sin(static_cast<double>(phi));
+            const float ex0 = static_cast<float>(c * ao), ey0 = static_cast<float>(sv * bo);
+            const float ex1 = static_cast<float>(c * ai), ey1 = static_cast<float>(sv * bi);
+            place(i, k * ex0 - sn * ey0, k * ey0 + sn * ex0, k * ex1 - sn * ey1, k * ey1 + sn * ex1);
+            phi += step;
+        }
+    } else {  // wavy: W lobes riding on the start angle
+        const float ro = h + e.radius, ri = e.radius - h;
+        const float dpsi = (kZunTwoPi * e.waves) / static_cast<float>(n);
+        float theta = e.angle, psi = e.phase;
+        for (int i = 0; i <= n; ++i) {
+            if (theta >= kZunPi) theta -= kZunTwoPi;
+            if (psi >= kZunPi) psi -= kZunTwoPi;
+            const float d = static_cast<float>(std::cos(static_cast<double>(psi)) * static_cast<double>(e.radius2));
+            float px, py, qx, qy;
+            polar(theta, ro + d, px, py);
+            polar(theta, ri + d, qx, qy);
+            place(i, px, py, qx, qy);
+            theta += step;
+            psi += dpsi;
+        }
     }
-    const std::uint32_t color = argbToRgbaBytes(effectiveColor(vm, state));
-    const float u0 = vm.sprite->uvStartX + vm.uvScroll.x, u1 = vm.sprite->uvEndX + vm.uvScroll.x;
-    const float v0 = vm.sprite->uvStartY + vm.uvScroll.y, v1 = vm.sprite->uvEndY + vm.uvScroll.y;
+    return n;
+}
+
+void Effects::drawRing(SpriteSink& sink, const Effect& e, const AnmDrawState& state) {
+    (void)state;
+    const AnmVm& vm = e.vm;
+    if (!vm.sprite || !vm.has(AnmVm::Visible) || !vm.has(AnmVm::Active) || (vm.color >> 24) == 0) return;
+    RingPoints pts{};
+    const int n = ringGeometry(e, pts);
+    // The "vertical" UV fill (0x464B00): u across the band, v from the sprite's end down.
+    const std::uint32_t color = argbToRgbaBytes(vm.color);
+    const float uo = vm.sprite->uvStartX + vm.uvScroll.x, ui = vm.sprite->uvEndX + vm.uvScroll.x;
+    const float stepV = (vm.sprite->uvEndY - vm.sprite->uvStartY) / static_cast<float>(n);
     Draw3DState ds;
     ds.depthWrite = false;
     ds.clipX = kPlayfieldX, ds.clipY = kPlayfieldY, ds.clipW = kPlayfieldW, ds.clipH = kPlayfieldH;
     constexpr float kW = 640.0f, kH = 480.0f;
+    float va = vm.sprite->uvEndY + vm.uvScroll.y;
     for (int i = 0; i < n; ++i) {
+        const float vb = va - stepV;
         const float* a = &pts[static_cast<std::size_t>(i) * 4];
         const float* b = &pts[static_cast<std::size_t>(i + 1) * 4];
-        const float ua = u0 + (u1 - u0) * static_cast<float>(i) / static_cast<float>(n);
-        const float ub = u0 + (u1 - u0) * static_cast<float>(i + 1) / static_cast<float>(n);
+        // (the strip's quad: outer i, outer i + 1, inner i, inner i + 1; +0.5: GL pixel centres)
         const float xs[4] = {a[0], b[0], a[2], b[2]}, ys[4] = {a[1], b[1], a[3], b[3]};
-        const float us[4] = {ua, ub, ua, ub}, vs[4] = {v0, v0, v1, v1};
+        const float us[4] = {uo, uo, ui, ui}, vs[4] = {va, vb, va, vb};
         Vertex3D v[4];
         for (int k = 0; k < 4; ++k) {
-            v[k].x = xs[k] / kW * 2.0f - 1.0f;
-            v[k].y = 1.0f - ys[k] / kH * 2.0f;
+            v[k].x = (xs[k] + 0.5f) / kW * 2.0f - 1.0f;
+            v[k].y = 1.0f - (ys[k] + 0.5f) / kH * 2.0f;
             v[k].z = -1.0f;
             v[k].w = 1.0f;
             v[k].u = us[k];
@@ -404,6 +438,7 @@ void Effects::drawRing(SpriteSink& sink, const Effect& e, const AnmDrawState& st
             v[k].color = color;
         }
         sink.drawQuad3D(vm.sprite->texture, drawBlend(vm), v, ds);
+        va = vb;
     }
 }
 
