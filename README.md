@@ -214,6 +214,17 @@ Apple's C++ library has the number formatting the game uses from 16.3 on).
 * Not on iOS yet: the game-text downloads, replace music and the launcher's backup button
   (copy the `Saves` folder instead).
 
+## Imperishable Night (th08) app: in progress
+
+`:th08` (app id `io.github.cng605568art.th08`, "TH08 Port") is the next game on the same
+engine. CI builds it as **th08-android-<version>** (releases do not carry it yet). For now
+the launcher imports your files (th08.dat, th08.exe **1.00d**, thbgm.dat) and Play shows
+which of them the game found; the game's own screens follow as the systems are ported.
+
+TH08 is written from clean-room behaviour specs taken from your own th08.exe and public
+format documentation (thtk, thcrap). It does not use the GensokyoClub/th08 decompilation:
+its authors have asked that AI ports not draw on their work.
+
 ## Languages
 
 The launcher speaks English, 日本語, 简体中文, 繁體中文 and Bahasa Melayu (the **Language**
