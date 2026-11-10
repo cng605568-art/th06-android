@@ -43,6 +43,8 @@ class Archive {
 //   "PBG3" - the 2002 release (紅魔郷CM.DAT / KOUMAKYO_CM.dat ...): bit-packed table + LZSS.
 //   "PKGL" - New Classic (2026, th06CM.dat ...): XOR-keystream table and payloads + zstd.
 //   "PBG4" - Perfect Cherry Blossom (th07.dat): LZSS-compressed table + LZSS members.
+//   "PBGZ" - Imperishable Night (th08.dat): PBG4's layout with an encrypted header and
+//            table, and members encrypted by file type (io/ThCrypt).
 // fileName is the archive's own file name; New Classic derives its table key from it.
 std::unique_ptr<Archive> openArchive(std::string fileName, std::unique_ptr<MappedFile> file,
                                      std::string* error);
@@ -52,6 +54,8 @@ std::unique_ptr<Archive> openPbg3(std::string fileName, std::unique_ptr<MappedFi
 std::unique_ptr<Archive> openPkgl(std::string fileName, std::unique_ptr<MappedFile> file,
                                   std::string* error);
 std::unique_ptr<Archive> openPbg4(std::string fileName, std::unique_ptr<MappedFile> file,
+                                  std::string* error);
+std::unique_ptr<Archive> openPbgz(std::string fileName, std::unique_ptr<MappedFile> file,
                                   std::string* error);
 
 }  // namespace touhou

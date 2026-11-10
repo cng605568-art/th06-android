@@ -1,4 +1,4 @@
-# Host unit tests for the shared engine's core and each game's code (th06, th07); run in CI
+# Host unit tests for the shared engine's core and each game's code (th06, th07, th08); run in CI
 # before the APK build.
 #   bash scripts/fetch_deps.sh
 #   cmake -S tests -B build-tests -DCMAKE_BUILD_TYPE=Release && cmake --build build-tests -j
@@ -15,6 +15,7 @@ set(THENGINE_ZSTD_WITH_COMPRESSOR ON)
 include(${CMAKE_CURRENT_LIST_DIR}/../engine/native/engine.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/../th06/src/main/cpp/th06.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/../th07/src/main/cpp/th07.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/../th08/src/main/cpp/th08.cmake)
 
 add_executable(th06_tests test_main.cpp)
 target_link_libraries(th06_tests PRIVATE th06_game)
@@ -28,6 +29,13 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
   target_compile_options(th07_tests PRIVATE -Wall -Wextra)
 endif()
 
+add_executable(th08_tests th08_tests.cpp)
+target_link_libraries(th08_tests PRIVATE th08_game)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+  target_compile_options(th08_tests PRIVATE -Wall -Wextra)
+endif()
+
 enable_testing()
 add_test(NAME th06_tests COMMAND th06_tests)
 add_test(NAME th07_tests COMMAND th07_tests)
+add_test(NAME th08_tests COMMAND th08_tests)

@@ -45,6 +45,8 @@ add_library(thengine_core STATIC
   ${THENGINE_SRC}/io/PeImage.cpp
   ${THENGINE_SRC}/io/Pbg3Archive.cpp
   ${THENGINE_SRC}/io/Pbg4Archive.cpp
+  ${THENGINE_SRC}/io/PbgzArchive.cpp
+  ${THENGINE_SRC}/io/ThCrypt.cpp
   ${THENGINE_SRC}/io/PkglArchive.cpp
   ${THENGINE_SRC}/io/Vfs.cpp
   ${THENGINE_SRC}/gfx/Anm.cpp

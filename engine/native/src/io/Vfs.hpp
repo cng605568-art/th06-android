@@ -26,7 +26,7 @@ class Vfs {
     // Returns false if the archive was empty; ownership is taken either way.
     bool mount(std::unique_ptr<Archive> archive);
 
-    // Mounts every PBG3/PBG4/PKGL archive found directly in `dir` and in `dir/data`, and
+    // Mounts every PBG3/PBG4/PBGZ/PKGL archive found directly in `dir` and in `dir/data`, and
     // keeps th07's music (thbgm.dat, "ZWAV") as a loose file. The 2002 format is mounted
     // first unless preferNewClassic is set.
     std::size_t mountDirectory(const std::string& dir, bool preferNewClassic);
