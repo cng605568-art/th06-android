@@ -687,8 +687,10 @@ void Gui::bossHudUpdate() {
         }
     }
     if (bossState_ >= 2) {
+        // Rate-limited both ways, never past the life fraction (th07.exe clamps the falling
+        // step too; without it the bar's end jittered by up to 6 px under steady fire).
         if (bossFill_ < b.bar) bossFill_ = std::min(bossFill_ + 0.01f, b.bar);
-        else if (bossFill_ > b.bar) bossFill_ -= 0.02f;
+        else if (bossFill_ > b.bar) bossFill_ = std::max(bossFill_ - 0.02f, b.bar);
     }
 }
 
