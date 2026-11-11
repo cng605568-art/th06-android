@@ -315,7 +315,7 @@ std::string iosGameDataDir() {
     @autoreleasepool {
         const std::string docs = documentsDir();
         NSString* root = [NSString stringWithUTF8String:docs.c_str()];
-        NSString* found = findArchiveFolder(root, 2);
+        NSString* found = findArchiveFolder(root, 4);  // (a copied folder may sit a few levels down)
         std::string s = found ? std::string(found.UTF8String) : docs;
         if (!s.empty() && s.back() != '/') s += '/';
         return s;
@@ -335,7 +335,8 @@ std::string iosStorageDir() {
         if (![[NSFileManager defaultManager] fileExistsAtPath:note]) {
             NSString* text = @"Copy your own copy of the game here (the whole folder is fine): th07.dat and th07.exe "
                              @"(version 1.00b), and thbgm.dat for music. Keep a thcrap folder with the English patch "
-                             @"next to them for English text. Saves, replays and logs are kept in the Saves folder.\n";
+                             @"next to them for English text. After copying, close the app and open it again. Saves, replays "
+                             @"and logs are kept in the Saves folder.\n";
             [text writeToFile:note atomically:YES encoding:NSUTF8StringEncoding error:nil];
         }
         return saves;

@@ -452,6 +452,15 @@ void Th07Game::render(SpriteSink& sink, float, const FrameInfo& frame) {
     if (sound_) drawText(sink, *ui_, 136, 368, "PRESS SHOT TO TEST A SOUND", 2.0f, grey);
     if (music_ && music_->playing()) drawText(sink, *ui_, 136, 304, "NOW PLAYING: " + music_->current(), 2.0f, grey);
     drawText(sink, *ui_, 136, 416, std::format("{} FILES IN THE GAME FOLDER", files_), 2.0f, grey);
+#if defined(TOUHOU_IOS)
+    // Where the files go (above the title, clear of the touch buttons).
+    if (!archive_ || !exe_) {
+        const std::uint32_t note = rgba(255, 230, 140);
+        drawText(sink, *ui_, 24, 24, "COPY YOUR GAME FOLDER (TH07.DAT, TH07.EXE)", 2.0f, note);
+        drawText(sink, *ui_, 24, 48, "TO FILES > ON MY IPHONE/IPAD > TH07 PORT,", 2.0f, note);
+        drawText(sink, *ui_, 24, 72, "THEN CLOSE THIS APP AND OPEN IT AGAIN.", 2.0f, note);
+    }
+#endif
 }
 
 bool Th07Game::takeCaptureRequest() {
