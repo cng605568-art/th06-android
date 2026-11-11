@@ -202,9 +202,10 @@ Apple's C++ library has the number formatting the game uses from 16.3 on).
   SideStore or Sideloadly (free accounts re-sign every 7 days; AltStore and SideStore can do
   that automatically), or sign it with a developer account for TestFlight.
 * **Game files:** open the **Files** app → **On My iPhone** → **TH07 Port** and copy your own
-  game folder there (th07.dat and th07.exe 1.00b, thbgm.dat for music; the folder may sit one
-  or two levels down). Keep its `thcrap` folder for English text. Nothing of the game ships with
-  the app.
+  game folder there (th07.dat and th07.exe 1.00b, thbgm.dat for music; the folder may sit up to
+  four levels down, but not inside a .zip: tap a zip in Files to unpack it), then close the app
+  (swipe it away) and open it again: the files are looked for at start-up. Keep its `thcrap`
+  folder for English text. Nothing of the game ships with the app.
 * **Settings:** iOS Settings → **TH07 Port** has the launcher's options: English text, skip the
   title (shot, difficulty, stage, lives, practice), touch controls (drag or D-pad, drag speed,
   button size, opacity, auto-fire, latching Focus, left-handed, vibration), display (landscape
