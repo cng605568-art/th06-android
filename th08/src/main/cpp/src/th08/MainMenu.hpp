@@ -94,6 +94,7 @@ class MainMenu {
     int spellStep(int character, int step) const;
     const std::vector<std::int32_t>* spellList() const;
     void renderText(AnmVm& vm, std::string& line, const std::string& sjis);
+    std::string cardName(int card, const std::string& sjis) const;
     void renderSpellRows();
     void spellCursorMoved();
     void detailPanel(bool entry);

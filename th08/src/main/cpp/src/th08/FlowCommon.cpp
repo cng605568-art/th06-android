@@ -8,6 +8,7 @@
 #include "gfx/SpriteSink.hpp"
 #include "gfx/TextureLibrary.hpp"
 #include "io/Vfs.hpp"
+#include "th08/English.hpp"
 #include "th08/Flow.hpp"
 #include "th08/SoundPlayer.hpp"
 
@@ -92,7 +93,15 @@ std::string sjisPrintf(const char* format, ...) {
     va_start(args, format);
     const int n = std::vsnprintf(buf, sizeof buf, format, args);
     va_end(args);
-    return n > 0 ? std::string(buf, static_cast<std::size_t>(std::min(n, 511))) : std::string();
+    return tidyGameText(n > 0 ? std::string(buf, static_cast<std::size_t>(std::min(n, 511))) : std::string());
+}
+
+std::string tidyGameText(std::string s) {
+    if (s.find(static_cast<char>(kUtf8TextMarker), 1) == std::string::npos) return s;
+    const bool utf8 = static_cast<std::uint8_t>(s[0]) == kUtf8TextMarker;
+    s.erase(std::remove(s.begin() + 1, s.end(), static_cast<char>(kUtf8TextMarker)), s.end());
+    if (!utf8) s.erase(std::remove(s.begin(), s.end(), static_cast<char>(kUtf8TextMarker)), s.end());
+    return s;
 }
 
 void AsciiText::draw(SpriteSink& sink, AnmLibrary& anm) {
@@ -142,7 +151,13 @@ void renderSpriteText(TextureLibrary* textures, TextRenderer* text, AnmVm& vm, s
         TextStyle style;
         style.fontSize = size;
         style.rgb = ((colorRef & 0xFF) << 16) | (colorRef & 0xFF00) | ((colorRef >> 16) & 0xFF);
-        text->render(bytes, style, std::max(0.0f, x), band);
+        if (isUtf8Text(bytes)) {  // translated (the English text mode): within the sprite's rectangle
+            std::string_view utf8 = sjis.substr(1);
+            utf8 = utf8.substr(0, utf8.find('\x14'));  // (a translator's note is not shown)
+            renderTranslated(*text, utf8, style, sp->startX, std::max(1.0f, (sp->endX - sp->startX) * sp->cols), align, band);
+        } else {
+            text->render(bytes, style, std::max(0.0f, x), band);
+        }
         finishTextBand(band);
     }
     for (int y = 0; y < 16 && top + y < img->height; ++y) {

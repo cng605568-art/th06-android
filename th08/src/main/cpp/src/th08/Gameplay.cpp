@@ -396,6 +396,7 @@ bool Gameplay::setUpStage(bool fresh, std::string* error) {
     world_.rng = &rng;
     world_.anm = &lib;
     world_.tables = ctx_.tables;
+    world_.english = ctx_.english;
     world_.sound = ctx_.sound;
     world_.effects = effects_.get();
     world_.player = player_.get();

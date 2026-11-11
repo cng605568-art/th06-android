@@ -1,5 +1,7 @@
 #include "th08/ResultScreen.hpp"
 
+#include "th08/English.hpp"
+
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -47,7 +49,7 @@ template <typename... A>
 std::string sjisFormat(const std::string& fmt, A... args) {
     char buf[256];
     const int n = std::snprintf(buf, sizeof buf, fmt.c_str(), args...);
-    return n > 0 ? std::string(buf, static_cast<std::size_t>(std::min(n, 255))) : std::string();
+    return tidyGameText(n > 0 ? std::string(buf, static_cast<std::size_t>(std::min(n, 255))) : std::string());
 }
 
 std::string cString(const std::uint8_t* p, std::size_t max) {
@@ -509,7 +511,11 @@ void ResultScreen::renderSpellPage() {
         const int c = ids[static_cast<std::size_t>(index)];
         if (c < 0 || c >= kCardCount) continue;
         const CardRecord& r = records_.cards[static_cast<std::size_t>(c)];
-        renderText(i, r.attempts[12] == 0 ? tables->dataText.unknownCard : cString(r.name.data(), r.name.size()));
+        std::string name = cString(r.name.data(), r.name.size());
+        if (ctx_.english) {  // the English text mode (thcrap's spell_name#result): shown translated, kept as it is
+            if (const auto t = ctx_.english->spellName(c)) name = English::gameText(*t);
+        }
+        renderText(i, r.attempts[12] == 0 ? tables->dataText.unknownCard : name);
         text_[static_cast<std::size_t>(i)].color |= 0xFF000000u;
     }
     renderText(10, sjisFormat(tables->dataText.spellHeader, capturedCount(category_, column_), n));

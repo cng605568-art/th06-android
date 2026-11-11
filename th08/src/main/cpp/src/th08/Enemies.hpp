@@ -123,6 +123,10 @@ struct Enemy {
 
     std::array<TrailNode, 96> trail{};
     std::uint8_t trailFlags = 0;
+    // Draw-only flags: ECL 145 (flags-1 bit 25) turns the primary sprite (and its trail copies)
+    // to the movement angle; ECL 182 (flags-2 bit 8) places the secondary VMs at the primary's
+    // offset (claude/th08-specs/spec_rotation.md §4.3).
+    bool headingRotation = false, secondaryAtPrimaryOffset = false;
     std::int16_t trailCount = 0, trailInterval = 0, nodeStep = 0;
     Timer invincible = zeroTimer();
 };

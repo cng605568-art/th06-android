@@ -6,6 +6,7 @@
 #include "core/Log.hpp"
 #include "gfx/ProceduralArt.hpp"
 #include "gfx/SpriteSink.hpp"
+#include "gfx/TextRenderer.hpp"
 #include "io/Vfs.hpp"
 #include "th08/Bullets.hpp"
 #include "th08/Enemies.hpp"
@@ -153,8 +154,11 @@ void Dialogue::renderLine(const World& w, AnmVm& vm, int script, std::string_vie
     if (!ctx_.anm || !w.rng) return;
     vm.start(*ctx_.anm, *w.rng, kSlotText, script);
     vm.fontWidth = vm.fontHeight = static_cast<std::uint8_t>(fontSize_);
+    // (A translated line of the English text mode is UTF-8 behind its marker and may be longer
+    // than the 64 bytes the original's copy holds.)
     std::string text;
-    for (std::size_t i = 0; i < masked.size() && i < 64; ++i) {
+    const bool utf8 = !masked.empty() && (static_cast<std::uint8_t>(masked[0]) ^ 0x77) == kUtf8TextMarker;
+    for (std::size_t i = 0; i < masked.size() && (i < 64 || utf8); ++i) {
         const char c = static_cast<char>(static_cast<std::uint8_t>(masked[i]) ^ 0x77);
         if (c == 0) break;
         text.push_back(c);

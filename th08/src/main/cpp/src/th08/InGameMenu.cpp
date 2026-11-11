@@ -265,11 +265,9 @@ void InGameMenu::draw(SpriteSink& sink) {
     AnmDrawState none;
     auto drawItem = [&](int i) {
         if (!visible_[static_cast<std::size_t>(i)]) return;
-        AnmVm& vm = vms_[static_cast<std::size_t>(i)];
-        const Vec3f at = vm.position;
-        if (i == selected_) vm.position = vm.position - Vec3f{4.0f, 4.0f, 0.0f};
-        drawVm(sink, vm, none);
-        vm.position = at;
+        // (The selected row's (-4, -4) offset is written but never drawn in TH08:
+        // claude/th08-specs/spec_replay_menu.md §3.2. The colour marks the selection.)
+        drawVm(sink, vms_[static_cast<std::size_t>(i)], none);
     };
     if (captureReady_ && snapshot_.sprite) drawVm(sink, snapshot_, none);
     if (mode_ == Mode::Pause) {

@@ -127,8 +127,9 @@ class Player {
 
     // The player pass (spec 1.2) with the game input word.
     void update(const World& w, std::uint16_t input);
-    void drawShots(SpriteSink& sink, const AnmDrawState& state);   // draw priority 9 (with the bomb's)
-    void drawPlayer(SpriteSink& sink, const AnmDrawState& state);  // draw priority 10
+    // Draw priority 9: flying shots, the bomb, the player and familiars; 10: hit animations.
+    void drawShots(SpriteSink& sink, const AnmDrawState& state);
+    void drawPlayer(SpriteSink& sink, const AnmDrawState& state);
 
     // The damage the shots deal to an enemy box this frame (spec 6.5, shots part); `bomb` is
     // set when a bomb region hit.
@@ -206,7 +207,8 @@ class Player {
     void bombStartUp(const World& w, std::int32_t duration, std::int32_t invulnerable);
     void runBomb(const World& w, std::int32_t t);
     void drawBomb(SpriteSink& sink, const AnmDrawState& state);
-    void drawShotSprites(SpriteSink& sink, const AnmDrawState& state);
+    void drawShotSprites(SpriteSink& sink, const AnmDrawState& state, int pass);
+    void drawDollTrail(SpriteSink& sink, const AnmDrawState& state, Shot& s);
     void reimu(const World& w, std::int32_t t, bool last);
     void yukari(const World& w, std::int32_t t, bool last);
     void marisa(const World& w, std::int32_t t, bool last);
@@ -283,6 +285,7 @@ class Player {
 
     // The bomb (spec 9).
     bool bombActive_ = false;  // mirrors bomb_.active
+    bool youkai80_ = false;    // the gauge at youkai-80 % or more (this frame's update)
     int bombIndex_ = 0;
     Timer bombTimer_;          // mirrors bomb_.timer
     Bomb bomb_;

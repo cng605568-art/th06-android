@@ -618,10 +618,27 @@ bool App::capturePlayfield() {
     } else {
         log::warn("Playfield capture: framebuffer incomplete");
     }
+    // A capture that reads back black at nine points across the rectangle is treated as
+    // failed: the menus then show over the live (paused) playfield instead of a black one.
+    // (Some phone GPUs were seen to give a black copy; a dark stage can also be black at all
+    // nine points, which only costs the snapshot's dimming.)
+    bool black = ok;
+    if (ok) {
+        for (int i = 0; i < 9 && black; ++i) {
+            std::uint8_t px[4] = {0, 0, 0, 0};
+            glReadPixels(r.x + w * (1 + i % 3) / 4, r.y + h * (1 + i / 3) / 4, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
+            if (px[0] | px[1] | px[2]) black = false;
+        }
+        if (black && captureBlackStreak_++ == 0) {
+            log::warn("Playfield capture read back black ({}x{} at {},{} of texture {}x{}; GL {}): drawing the live playfield instead", w, h, r.x,
+                      r.y, texW, texH, reinterpret_cast<const char*>(glGetString(GL_RENDERER)));
+        }
+        if (!black) captureBlackStreak_ = 0;
+    }
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 0, 0);
     RenderTarget::bindScreen();
     gl::check("capturePlayfield");
-    return ok;
+    return ok && !black;
 }
 
 // Draws part of the game's picture (sx..: picture pixels) at dx.. on the screen.

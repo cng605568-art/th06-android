@@ -15,6 +15,7 @@
 #include "th08/Bgm.hpp"
 #include "th08/ExeTables.hpp"
 #include "th08/GameConfig.hpp"
+#include "th08/English.hpp"
 #include "th08/MainMenu.hpp"
 #include "th08/ScoreFile.hpp"
 
@@ -36,7 +37,18 @@ std::string commentText(const std::array<std::uint8_t, 64>& a) {
     return std::string(reinterpret_cast<const char*>(a.data()), n);
 }
 
+bool isTranslated(const std::string& s) { return !s.empty() && static_cast<std::uint8_t>(s[0]) == kUtf8TextMarker; }
+
 }  // namespace
+
+// A card's name as shown: the English patch's (spells.js) in the English text mode, else the
+// name kept in score.dat.
+std::string MainMenu::cardName(int card, const std::string& sjis) const {
+    if (ctx_.english) {
+        if (const auto t = ctx_.english->spellName(card)) return English::gameText(*t);
+    }
+    return sjis;
+}
 
 int MainMenu::cardDifficulty(const ExeTables* tables, int card) {
     if (!tables) return card >= 205 ? 5 : card >= 191 ? 4 : 1;
@@ -192,7 +204,7 @@ void MainMenu::renderSpellRows() {
         v.fontWidth = v.fontHeight = 15;
         std::string text = t.unknown8;
         if (ctx_.scores && k >= 0 && k < kCardCount) {
-            if (ctx_.scores->everAttempted(k)) text = cardText(ctx_.scores->cards[static_cast<std::size_t>(k)].name);
+            if (ctx_.scores->everAttempted(k)) text = cardName(k, cardText(ctx_.scores->cards[static_cast<std::size_t>(k)].name));
             else if (cardDifficulty(ctx_.tables, k) == 5 && ctx_.scores->lastWordUnlocked(k)) text = t.welcome;
         }
         renderText(v, listLines_[static_cast<std::size_t>(i)], text);
@@ -239,16 +251,23 @@ void MainMenu::detailPanel(bool entry) {
     auto line = [&](int i, const std::string& text) {
         renderText(panel_[static_cast<std::size_t>(i)], panelLines_[static_cast<std::size_t>(i)], text);
     };
+    // The English text mode: the patch's card name, owner and comments (spells.js,
+    // spellcomments.js) and ASCII digits, as thcrap's base_tsa shows them.
+    const English* en = ctx_.english;
+    const auto comment = en ? en->spellComment(k) : std::nullopt;
     if (due(11)) {
         std::string number;
         const int shown = k + 1;
-        for (const int digit : {shown / 100 % 10, shown / 10 % 10, shown % 10}) number += tb.wideDigits[static_cast<std::size_t>(digit)];
-        line(0, sjisPrintf(t.panelNumber.c_str(), number.c_str(), tried ? cardText(r.name).c_str() : t.unknown8.c_str()));
+        if (en && isTranslated(t.panelNumber)) number = std::format("{:03d}", shown);
+        else for (const int digit : {shown / 100 % 10, shown / 10 % 10, shown % 10}) number += tb.wideDigits[static_cast<std::size_t>(digit)];
+        line(0, sjisPrintf(t.panelNumber.c_str(), number.c_str(), tried ? cardName(k, cardText(r.name)).c_str() : t.unknown8.c_str()));
     }
     if (due(9)) {
         const bool last = std::find(tb.bossFinal.begin(), tb.bossFinal.end(), k) != tb.bossFinal.end();
-        line(1, sjisPrintf(t.panelOwner.c_str(), tried ? cardText(r.owner).c_str() : t.unknown8.c_str(),
-                           tb.difficultyNames[static_cast<std::size_t>(std::clamp(diff, 0, 5))].c_str(), last ? "Last" : " "));
+        std::string owner = tried ? cardText(r.owner) : t.unknown8;
+        if (tried && comment && comment->owner && isTranslated(t.panelOwner)) owner = English::gameText(*comment->owner);
+        line(1, sjisPrintf(t.panelOwner.c_str(), owner.c_str(), tb.difficultyNames[static_cast<std::size_t>(std::clamp(diff, 0, 5))].c_str(),
+                           last ? "Last" : " "));
     }
     if (entry) {
         line(2, sjisPrintf(t.panelColumns.c_str(), tb.fullNames[cc].c_str()));
@@ -275,8 +294,13 @@ void MainMenu::detailPanel(bool entry) {
             if (due(3)) line(6, sjisPrintf(cond.format2.c_str(), b[0], b[1], b[2], b[3], b[4]));
         } else {
             const bool shown = r.practiceCaptures[12] != 0;
-            if (due(5)) line(5, shown ? commentText(r.comment1) : t.unknown9);
-            if (due(3)) line(6, shown ? commentText(r.comment2) : t.unknown9);
+            auto commentLine = [&](std::size_t i, const std::array<std::uint8_t, 64>& original) {
+                if (comment && i < comment->lines.size()) return English::gameText(comment->lines[i]);
+                if (comment) return std::string();  // (the patch's comment has fewer lines)
+                return commentText(original);
+            };
+            if (due(5)) line(5, shown ? commentLine(0, r.comment1) : t.unknown9);
+            if (due(3)) line(6, shown ? commentLine(1, r.comment2) : t.unknown9);
         }
     }
     if (entry || detail_ == 3) {

@@ -29,6 +29,7 @@
 #include "th08/Bullets.hpp"
 #include "th08/Effects.hpp"
 #include "th08/Ending.hpp"
+#include "th08/English.hpp"
 #include "th08/Enemies.hpp"
 #include "th08/Gameplay.hpp"
 #include "th08/ScreenEffects.hpp"
@@ -2648,6 +2649,85 @@ void testReplayMenu() {
     }
 }
 
+// The English text mode on the player's thcrap folder (TH08_THCRAP): the dialogue patched in
+// thcrap's msg08 way, spell names and comments, the program's strings by address.
+void testEnglish() {
+    const char* path = std::getenv("TH08_REAL_DAT");
+    const char* thcrap = std::getenv("TH08_THCRAP");
+    const char* exePath = std::getenv("TH08_REAL_EXE");
+    if (!path || !*path || !thcrap || !*thcrap) return;
+    std::string err;
+    Vfs vfs;
+    auto file = MappedFile::open(path, &err);
+    CHECK(file && vfs.mount(openArchive("th08.dat", std::move(file), &err)));
+    auto stack = th08::English::discoverStack(thcrap);
+    CHECK(!stack.empty());
+    th08::English e(stack);
+    auto msg = vfs.read("msg1a.dat");
+    CHECK(msg.has_value());
+    if (!msg) return;
+    const auto original = *msg;
+    auto patched = e.filterFile("msg1a.dat", msg);
+    CHECK(patched.has_value() && *patched != original);
+    // Decode the first entry's text commands.
+    std::vector<std::string> lines;
+    if (patched) {
+        const auto& b = *patched;
+        auto u32 = [&](std::size_t a) { return static_cast<std::uint32_t>(b[a] | b[a + 1] << 8 | b[a + 2] << 16 | b[a + 3] << 24); };
+        std::size_t p = u32(4);
+        while (p + 4 <= b.size()) {
+            const unsigned t = b[p] | b[p + 1] << 8, ty = b[p + 2], ln = b[p + 3];
+            const std::uint8_t* d = &b[p + 4];
+            p += 4 + ln;
+            if (t == 0 && ty == 0) break;
+            if (ty != 3 && ty != 16) continue;
+            std::string s;
+            for (unsigned i = ty == 3 ? 4 : 0; i < ln; ++i) {
+                const char c = static_cast<char>(d[i] ^ 0x77);
+                if (c == 0) break;
+                s.push_back(c);
+            }
+            lines.push_back(s);
+        }
+    }
+    CHECK(lines.size() >= 20);
+    if (lines.size() >= 20) {
+        CHECK(lines[0] == th08::English::gameText("Look, there's nothing out here!"));
+        CHECK(lines[1] == th08::English::gameText("The night's still only just begun.") && lines[2] == th08::English::gameText("No need to hurry."));
+        // The hard-line box that starts at time 63 continues at 124 (its line 1).
+        bool hard0 = false, hard1 = false;
+        for (const auto& l : lines) {
+            hard0 = hard0 || l == th08::English::gameText("You've been saying \"nothing here\" for a while now...");
+            hard1 = hard1 || l == th08::English::gameText("I'm here, aren't I?!");
+        }
+        CHECK(hard0 && hard1);
+    }
+    CHECK(e.spellName(7) == std::optional<std::string>("Wriggle Sign \"Little Bug Storm\""));
+    const auto c = e.spellComment(0);
+    CHECK(c && c->owner == std::optional<std::string>("Wriggle Nightbug") && c->lines.size() == 2);
+    CHECK(e.exeString(0x4B8F1C) == std::optional<std::string>("Start the game"));
+    CHECK(e.musicTitle(2) == std::optional<std::string>("Illusionary Night ~ Ghostly Eyes"));
+    if (exePath && *exePath) {
+        th08::ExeTables tables;
+        auto exe = MappedFile::open(exePath, &err);
+        CHECK(exe && th08::loadExeTables(exe->bytes(), tables, &err));
+        th08::translateExeTables(exe->bytes(), tables, [&](std::uint32_t va) -> std::optional<std::string> {
+            if (const auto t = e.exeString(va)) return th08::English::gameText(*t);
+            return std::nullopt;
+        });
+        CHECK(tables.titleText[0].sjis == th08::English::gameText("Start the game"));
+        CHECK(tables.bombNames[0].find("Fantasy") != std::string::npos);
+        CHECK(th08::tidyGameText(th08::English::gameText("A ") + th08::English::gameText("B")) == th08::English::gameText("A B"));
+    }
+    // The endings: a translated run replaces its lines.
+    auto end = vfs.read("end00a.end");
+    CHECK(end.has_value());
+    if (end) {
+        const auto out = e.filterFile("end00a.end", end);
+        CHECK(out && std::string(out->begin(), out->end()).find("The Hakurei Shrine at morning.") != std::string::npos);
+    }
+}
+
 int main() {
     struct Test {
         const char* name;
@@ -2671,6 +2751,7 @@ int main() {
         {"the four demo replays played back (TH08_REAL_DAT, TH08_REAL_EXE)", testDemoReplays},
         {"a recorded run played back frame for frame (TH08_REAL_DAT, TH08_REAL_EXE)", testReplayRoundTrip},
         {"the replay menu, playback mode 1, the attract demo, slow mode (TH08_REAL_DAT, TH08_REAL_EXE)", testReplayMenu},
+        {"the English text mode: dialogue, endings, spell names, program strings (TH08_REAL_DAT, TH08_THCRAP)", testEnglish},
     };
     for (const Test& t : tests) {
         const int before = g_failures;

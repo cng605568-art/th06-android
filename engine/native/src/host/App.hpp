@@ -116,6 +116,7 @@ class App {
     SpriteBatch batch_;
     RenderTarget target_;
     GLuint captureFbo_ = 0;
+    int captureBlackStreak_ = 0;  // captures in a row that read back all black (see capturePlayfield)
     AudioMixer audio_;
     InputMapper input_;
     VirtualController touch_;

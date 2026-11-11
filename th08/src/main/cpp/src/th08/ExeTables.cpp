@@ -1,5 +1,7 @@
 #include "th08/ExeTables.hpp"
 
+#include "core/Log.hpp"
+
 #include "io/PeImage.hpp"
 #include "th08/GameFiles.hpp"
 
@@ -210,6 +212,69 @@ bool loadExeTables(std::span<const std::uint8_t> exe, ExeTables& t, std::string*
         t.bombNames[i] = pe.cString(va, 131);
     }
     return true;
+}
+
+void translateExeTables(std::span<const std::uint8_t> exe, ExeTables& t,
+                        const std::function<std::optional<std::string>(std::uint32_t address)>& lookup) {
+    PeImage pe;
+    std::string why;
+    if (!lookup || !pe.parse(exe, &why)) return;
+    int changed = 0;
+    auto put = [&](std::string& s, std::uint32_t va) {
+        if (va == 0) return;
+        if (auto e = lookup(va)) {
+            s = std::move(*e);
+            ++changed;
+        }
+    };
+    auto words = [&](std::uint32_t va, std::size_t n, auto&& each) {
+        const std::int64_t a = pe.offsetOf(va, 4 * n);
+        if (a < 0) return;
+        for (std::size_t i = 0; i < n; ++i) each(i, pe.u32(static_cast<std::size_t>(a) + 4 * i));
+    };
+    for (const std::span<ExeTables::MenuText> texts : {std::span<ExeTables::MenuText>(t.titleText), std::span<ExeTables::MenuText>(t.optionText),
+                        std::span<ExeTables::MenuText>(t.keyConfigText)}) {
+        for (ExeTables::MenuText& m : texts) put(m.sjis, m.address);
+    }
+    ExeTables::PracticeText& p = t.practiceText;
+    put(p.statsHeader, 0x004B92C0);
+    put(p.rateHeader, 0x004B92A4);
+    put(p.listHeader, 0x004B92FC);
+    put(p.welcome, 0x004B9320);
+    put(p.unknown8, 0x004B6EA0);
+    put(p.unknown9, 0x004B9330);
+    put(p.panelNumber, 0x004B9448);
+    put(p.panelOwner, 0x004B942C);
+    put(p.panelColumns, 0x004B9404);
+    put(p.panelNote, 0x004B9344);
+    put(p.statsUntried, 0x004B93C4);
+    put(p.statsCard, 0x004B938C);
+    put(p.statsLastWord, 0x004B9354);
+    ExeTables::DataText& d = t.dataText;
+    put(d.running, ExeTables::kTextRunning);
+    put(d.playTime, ExeTables::kTextPlayTime);
+    put(d.playsHeader, ExeTables::kTextPlaysHeader);
+    put(d.playsRow, ExeTables::kTextPlaysRow);
+    put(d.clears, ExeTables::kTextClears);
+    put(d.continues, ExeTables::kTextContinues);
+    put(d.practice, ExeTables::kTextPractice);
+    put(d.spellHeader, ExeTables::kTextSpellHeader);
+    put(d.unknownCard, ExeTables::kTextUnknownCard);
+    put(t.fakeCardName, ExeTables::kFakeCardName);
+    words(ExeTables::kFullNames, t.fullNames.size(), [&](std::size_t i, std::uint32_t va) { put(t.fullNames[i], va); });
+    words(ExeTables::kDifficultyNames, t.difficultyNames.size(), [&](std::size_t i, std::uint32_t va) { put(t.difficultyNames[i], va); });
+    words(ExeTables::kLastWordConditions, 18 * 12, [&](std::size_t i, std::uint32_t va) {
+        ExeTables::Condition& c = t.lastWordConditions[i / 12];
+        if (i % 12 == 0) put(c.format1, va);
+        else if (i % 12 == 6) put(c.format2, va);
+    });
+    for (std::size_t i = 0; i < t.bombNames.size(); ++i) {
+        const auto push = pe.at(ExeTables::kBombNamePushes[i], 5);
+        if (push.size() != 5 || push[0] != 0x68) continue;
+        put(t.bombNames[i], static_cast<std::uint32_t>(push[1]) | (static_cast<std::uint32_t>(push[2]) << 8) |
+                                (static_cast<std::uint32_t>(push[3]) << 16) | (static_cast<std::uint32_t>(push[4]) << 24));
+    }
+    log::info("English text: {} of the program's strings translated", changed);
 }
 
 }  // namespace touhou::th08

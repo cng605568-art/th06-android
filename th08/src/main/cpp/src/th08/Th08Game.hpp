@@ -13,6 +13,7 @@
 #include "th08/Anm.hpp"
 #include "th08/Bgm.hpp"
 #include "th08/Ending.hpp"
+#include "th08/English.hpp"
 #include "th08/ExeTables.hpp"
 #include "th08/Flow.hpp"
 #include "th08/GameConfig.hpp"
@@ -67,8 +68,13 @@ class Th08Game final : public Game {
     bool saveReplay(const std::string& path, const std::string& name);
     std::string replayUserText(const std::string& name) const;
     void applyScene();
+    // The English text mode (thcrap's English patch, or a downloaded thpatch translation):
+    // the patch stack read, and the Vfs filter that patches the game's files as they are read.
+    void setUpEnglish(const GameContext& ctx);
 
     const UiArt* ui_ = nullptr;
+    Vfs* vfs_ = nullptr;
+    std::unique_ptr<English> english_;
     FolderReport folder_;
     std::string storage_;
     GameConfig config_;

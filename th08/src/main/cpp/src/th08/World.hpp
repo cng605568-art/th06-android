@@ -23,6 +23,7 @@ class ScreenEffects;
 class SoundPlayer;
 struct ExeTables;
 struct GameState;
+class English;
 
 inline constexpr float kPlayfieldX = 32.0f, kPlayfieldY = 16.0f;
 inline constexpr float kPlayfieldW = 384.0f, kPlayfieldH = 448.0f;
@@ -44,6 +45,7 @@ struct World {
     ZunRng* rng = nullptr;
     AnmLibrary* anm = nullptr;
     const ExeTables* tables = nullptr;
+    const English* english = nullptr;  // the English text mode, or null
     SoundPlayer* sound = nullptr;
     Effects* effects = nullptr;
     Player* player = nullptr;

@@ -6,6 +6,8 @@
 // menu descriptions (spec_flow_menus.md §3.1). More tables join as their systems are ported.
 
 #include <array>
+#include <functional>
+#include <optional>
 #include <cstdint>
 #include <span>
 #include <string>
@@ -149,5 +151,12 @@ struct ExeTables {
 // Reads the tables from th08.exe 1.00d (checked by SHA-256 unless `checkHash` is false, for
 // tests). False with `why` on failure.
 bool loadExeTables(std::span<const std::uint8_t> exe, ExeTables& out, std::string* why, bool checkHash = true);
+
+// The English text mode: the display strings read above (menu descriptions, Spell Card
+// Practice and Player Data texts, the Last Word conditions, the character and difficulty
+// names, the bomb names, the fake card name) replaced by `lookup`'s text for their address
+// where it has one (game text with the UTF-8 marker). File names and the replay texts stay.
+void translateExeTables(std::span<const std::uint8_t> exe, ExeTables& t,
+                        const std::function<std::optional<std::string>(std::uint32_t address)>& lookup);
 
 }  // namespace touhou::th08

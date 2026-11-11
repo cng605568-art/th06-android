@@ -32,6 +32,7 @@ class BgmPlayer;
 class SoundPlayer;
 struct ExeTables;
 struct GameConfig;
+class English;
 
 // The game's button word.
 enum Button : std::uint16_t {
@@ -90,6 +91,7 @@ struct FlowContext {
     BgmPlayer* music = nullptr;
     const ExeTables* tables = nullptr;
     GameConfig* config = nullptr;
+    const English* english = nullptr;  // the English text mode (thcrap's English patch), or null
 
     std::function<void(Scene)> request;  // acted on at the start of the next pass
     std::function<void()> saveConfig;    // writes th08.cfg
@@ -188,7 +190,11 @@ void renderSpriteText(TextureLibrary* textures, TextRenderer* text, AnmVm& vm, s
                       TextAlign align = TextAlign::Left);
 
 // printf into a string with a format read from the exe (Shift-JIS trail bytes are never '%').
+// Translated pieces (the English text mode) are tidied as below.
 std::string sjisPrintf(const char* format, ...);
+// Text put together from translated pieces (UTF-8 behind the marker) keeps one marker, at the
+// front when the format had it (an untranslated format drops its arguments' markers).
+std::string tidyGameText(std::string s);
 
 // A full-screen colour overlay (fades), colour 0xAARRGGBB.
 void fillScreen(SpriteSink& sink, const UiArt* ui, std::uint32_t argb);

@@ -1,5 +1,7 @@
 #include "th08/Spellcard.hpp"
 
+#include "th08/English.hpp"
+
 #include <algorithm>
 #include <cstring>
 
@@ -123,8 +125,13 @@ void Spellcard::begin(const World& w, Enemy& boss, const std::uint8_t* ins) {
     }
     std::memcpy(comment1_.data(), ins + 0x74, comment1_.size());
     std::memcpy(comment2_.data(), ins + 0xB4, comment2_.size());
-    // 7-11.
-    nameStart(w, rdI16(ins + 0x0C), name_, 0);
+    // 7-11. (The English text mode shows the card's name from spells.js; score.dat keeps the
+    // Shift-JIS name.)
+    std::string shown = name_;
+    if (w.english) {
+        if (const auto t = w.english->spellName(id_)) shown = English::gameText(*t);
+    }
+    nameStart(w, rdI16(ins + 0x0C), shown, 0);
     if (w.bullets) w.bullets->clearAll(w, 1);
     if (w.background && w.anm && w.rng) w.background->spellStart(*w.anm, *w.rng);
     boss.rankSpeedLow = -0.5f;

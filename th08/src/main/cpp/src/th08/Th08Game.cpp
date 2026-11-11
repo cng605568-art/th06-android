@@ -13,6 +13,7 @@
 #include "gfx/ProceduralArt.hpp"
 #include "gfx/SpriteSink.hpp"
 #include "io/Vfs.hpp"
+#include "platform/Platform.hpp"
 
 namespace touhou::th08 {
 
@@ -38,6 +39,57 @@ Th08Game::~Th08Game() {
     gameplay_.reset();
     musicRoom_.reset();
     if (music_) music_->shutdown();
+    if (vfs_) vfs_->setReadFilter(nullptr);  // (the files outlive the game)
+}
+
+void Th08Game::setUpEnglish(const GameContext& ctx) {
+    std::string root;
+    bool wanted = false;
+#if !defined(TOUHOU_PHONE)
+    // Desktop: --english reads the thcrap folder inside the game folder (the folder given
+    // first, as the data mount takes it, or $TH08_DATA, or ./gamedata); --thcrap DIR names a
+    // thcrap folder (the one holding repos/) and implies --english.
+    std::string gameDir = "gamedata";
+    if (ctx.argc > 1 && ctx.argv[1] && ctx.argv[1][0] != '-') gameDir = ctx.argv[1];
+    else if (const char* env = std::getenv("TH08_DATA")) gameDir = env;
+    for (int i = 1; i < ctx.argc; ++i) {
+        const std::string a = ctx.argv[i] ? ctx.argv[i] : "";
+        if (a == "--english") wanted = true;
+        else if (a == "--thcrap" && i + 1 < ctx.argc) root = ctx.argv[++i], wanted = true;
+    }
+    if (wanted && root.empty()) root = gameDir + "/thcrap";
+#else
+    // The launcher's game-text choice: GameActivity.getGameTextStack() names the patch folders
+    // (an imported thcrap English patch, or a downloaded Touhou Patch Center language), lowest
+    // priority first. An older launcher only has the "English text" option (the 7th game
+    // option) and the imported thcrap folder.
+    std::vector<std::string> chosen = readPlatformGameTextStack();
+    if (!chosen.empty()) {
+        log::info("Game text: {} translation patch folder(s), top {}", chosen.size(), chosen.back());
+        english_ = std::make_unique<English>(std::move(chosen));
+    } else {
+        const std::vector<int> options = platformIntArray("getGameOptions");
+        wanted = options.size() >= 7 && options[6] != 0;
+#if defined(TOUHOU_IOS)
+        root = iosGameDataDir() + "thcrap";  // iOS: the thcrap folder next to the game files
+#else
+        root = ctx.storageDir + "thcrap";
+#endif
+    }
+#endif
+    if (!english_ && wanted) {
+        auto stack = English::discoverStack(root);
+        if (stack.empty()) {
+            log::warn("English text: no thcrap English patch (repos/*/lang_en) in {}: the original text is shown", root);
+        } else {
+            english_ = std::make_unique<English>(std::move(stack));
+        }
+    }
+    if (!english_ || !ctx.vfs) return;
+    const English* e = english_.get();
+    ctx.vfs->setReadFilter([e](const std::string& name, std::optional<std::vector<std::uint8_t>> bytes) {
+        return e->filterFile(name, std::move(bytes));
+    });
 }
 
 namespace {
@@ -255,6 +307,8 @@ bool Th08Game::start(const GameContext& ctx) {
     log::info("th08.dat 1.00d: {}; th08.exe 1.00d: {}; thbgm.dat: {}; {} files", folder_.archive ? "mounted" : "missing",
               folder_.exe ? "found" : "missing", folder_.thbgm ? "found" : "missing", folder_.files);
     if (!folder_.archive || !ctx.vfs || !ctx.textures) return true;  // the status screen
+    vfs_ = ctx.vfs;
+    setUpEnglish(ctx);
 
     // th08.cfg (the port's own copy), re-initialised and written back when invalid.
     if (!storage_.empty()) {
@@ -285,6 +339,12 @@ bool Th08Game::start(const GameContext& ctx) {
         std::string why;
         tablesLoaded_ = loadExeTables(folder_.exeBytes, tables_, &why);
         if (!tablesLoaded_) log::warn("th08.exe tables: {}", why);
+        if (tablesLoaded_ && english_) {
+            translateExeTables(folder_.exeBytes, tables_, [this](std::uint32_t va) -> std::optional<std::string> {
+                if (const auto t = english_->exeString(va)) return English::gameText(*t);
+                return std::nullopt;
+            });
+        }
     }
     if (tablesLoaded_ && ctx.samples) {
         sound_ = std::make_unique<SoundPlayer>(ctx.samples, &tables_);
@@ -322,6 +382,7 @@ bool Th08Game::start(const GameContext& ctx) {
     if (!ctx.text) fallbackText_ = std::make_unique<FallbackTextRenderer>();
 
     flow_.vfs = ctx.vfs;
+    flow_.english = english_.get();
     flow_.textures = ctx.textures;
     flow_.text = ctx.text ? ctx.text : fallbackText_.get();
     flow_.ui = ctx.ui;

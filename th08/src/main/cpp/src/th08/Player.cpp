@@ -358,6 +358,7 @@ void Player::updateFamiliar(const World& w, Familiar& f, const Vec3f& oldest) {
 void Player::update(const World& w, std::uint16_t input) {
     if (!w.anm || !w.rng || !w.state) return;
     shootHeld_ = (input & BtnShoot) != 0;
+    youkai80_ = w.state->y80();
     // 0. Time stop: the focus effect hidden, nothing else runs.
     if (w.timeStop) {
         if (focusEffect_) focusEffect_->vm.set(AnmVm::Frozen, true);
@@ -794,6 +795,8 @@ bool Player::runShotUpdate(const World& w, Shot& s, int slot) {
             s.pos.z = 0.44f;
             s.boxH = 448.0f;
             s.pos.y -= 208.0f;
+            // (the beam's colour, every call: peach at youkai-80 %, else white)
+            s.vm.color = (s.vm.color & 0xFF000000u) | (w.state->y80() ? 0x00FFD0B0u : 0x00FFFFFFu);
             return true;
         }
         default: return true;
@@ -1204,21 +1207,12 @@ bool Player::deathStep(const World& w) {
 
 // ---- drawing ----------------------------------------------------------------------------
 
+// Draw priority 9 (0x44D530): the flying shots (each with its draw callback), the bomb, the
+// player, the familiars. Priority 10 (0x44D630): the shots in their hit animation, above them
+// (claude/th08-specs/spec_rotation.md §2.1).
 void Player::drawShots(SpriteSink& sink, const AnmDrawState& state) {
-    drawShotSprites(sink, state);
+    drawShotSprites(sink, state, 1);
     if (bomb_.active) drawBomb(sink, state);
-}
-
-void Player::drawShotSprites(SpriteSink& sink, const AnmDrawState& state) {
-    for (Shot& s : shotSlots_) {
-        if (s.state == 0) continue;
-        if (s.state == 1 && s.vm.autoRotate != 0) s.vm.rotation.z = s.angle + kZunPi / 2.0f;
-        s.vm.position = {s.pos.x + kPlayfieldX, s.pos.y + kPlayfieldY, s.pos.z};
-        drawVm(sink, s.vm, state);
-    }
-}
-
-void Player::drawPlayer(SpriteSink& sink, const AnmDrawState& state) {
     vm_.position = {pos_.x + kPlayfieldX, pos_.y + kPlayfieldY, pos_.z};
     drawVm(sink, vm_, state);
     for (Familiar& f : familiars_) {
@@ -1226,6 +1220,46 @@ void Player::drawPlayer(SpriteSink& sink, const AnmDrawState& state) {
         f.vm.position = {f.pos.x + kPlayfieldX, f.pos.y + kPlayfieldY, 0.49f};
         drawVm(sink, f.vm, state);
     }
+}
+
+void Player::drawPlayer(SpriteSink& sink, const AnmDrawState& state) { drawShotSprites(sink, state, 2); }
+
+// The shot passes (0x4512F0, 0x451400): an auto-rotating sprite (they all point right in their
+// textures) turned to the shot's angle as it is, in both states; the youkai-power tint every
+// drawn frame; in the flying pass, the doll laser's afterimages (draw kind 1).
+void Player::drawShotSprites(SpriteSink& sink, const AnmDrawState& state, int pass) {
+    for (Shot& s : shotSlots_) {
+        if (s.state != pass) continue;
+        if (s.vm.autoRotate != 0) {
+            s.vm.rotation.z = s.angle;
+            s.vm.set(AnmVm::RotationDirty, true);
+        }
+        s.vm.position = {s.pos.x + kPlayfieldX, s.pos.y + kPlayfieldY, s.pos.z};
+        if (s.youkaiPower) s.vm.color = (s.vm.color & 0xFF000000u) | 0x00FF4040u;
+        drawVm(sink, s.vm, state);
+        if (pass == 1 && s.drawKind == 1) drawDollTrail(sink, state, s);
+    }
+}
+
+// Draw kind 1 (0x450AD0): up to n copies at every second history entry (stopping at the first
+// unset one), the first at the sprite's alpha, the others fading from 3/4 of it; red at
+// youkai-80 % (kept); the alpha restored afterwards.
+void Player::drawDollTrail(SpriteSink& sink, const AnmDrawState& state, Shot& s) {
+    const std::uint32_t a0 = s.vm.color >> 24;
+    const std::uint32_t a = a0 * 3 / 4;
+    const int n = std::max(1, s.segments);
+    for (int i = 0; i <= 2 * n - 2 && i < 32; i += 2) {
+        const Vec3f& h = s.trail[static_cast<std::size_t>(i)];
+        if (h.x == -999.0f) break;
+        s.vm.position = {h.x + kPlayfieldX, h.y + kPlayfieldY, h.z};
+        if (i != 0) {
+            const std::uint32_t alpha = a - (a / 2) * static_cast<std::uint32_t>(i) / static_cast<std::uint32_t>(n);
+            s.vm.color = (s.vm.color & 0x00FFFFFFu) | (alpha << 24);
+        }
+        if (youkai80_) s.vm.color = (s.vm.color & 0xFF000000u) | 0x00FF4040u;
+        drawVm(sink, s.vm, state);
+    }
+    s.vm.color = (s.vm.color & 0x00FFFFFFu) | (a0 << 24);
 }
 
 }  // namespace touhou::th08

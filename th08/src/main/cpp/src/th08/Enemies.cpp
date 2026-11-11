@@ -1226,7 +1226,8 @@ EnemyManager::Exec EnemyManager::execute(Enemy& e, std::uint32_t& ip) {
         case 160: e.invincible.assign(o.I(0)); break;
         case 173: e.frozenWhileBombing = (o.I(0) & 1) != 0; break;
         case 183: e.intangibleWhileBombing = (o.I(0) & 1) != 0; break;
-        case 145: case 182: break;  // draw-only flags
+        case 145: e.headingRotation = (o.I(0) & 1) != 0; break;  // (a 1-bit flag: bit 0 of the value)
+        case 182: e.secondaryAtPrimaryOffset = (o.I(0) & 1) != 0; break;
         case 177: e.phaseLife = o.I(0); break;
         case 82: {
             const float r = o.F(0);
@@ -2731,8 +2732,31 @@ float trailMid(float a, float b) {
 
 // The enemy draw (visual): the primary VM and the two secondary ones at the enemy plus their
 // offsets; a youkai-state familiar dark at half alpha (spec 8.2 step 16); then the trail.
+// 0x42E140 (spec_rotation §4.3): secondary VM 0, the trail, the primary, secondary VM 1. A
+// secondary that auto-rotates is turned to the movement angle (VM 1 to minus it [QUIRK]); the
+// primary only with ECL 145.
 void EnemyManager::drawEnemy(SpriteSink& sink, Enemy& e, const AnmDrawState& state) {
     const float x = e.abs.x + kPlayfieldX, y = e.abs.y + kPlayfieldY;
+    auto secondary = [&](int k) {
+        if (e.vm2File[static_cast<std::size_t>(k)] < 0) return;
+        AnmVm& v = e.vms2[static_cast<std::size_t>(k)];
+        if (v.autoRotate != 0) {
+            v.rotation.z = k == 0 ? e.angle : -e.angle;
+            v.set(AnmVm::RotationDirty, true);
+        }
+        const Vec3f& off = e.secondaryAtPrimaryOffset ? e.vm.offset : v.offset;
+        v.position = {x + off.x, y + off.y, 0.0f};
+        drawVm(sink, v, state);
+    };
+    secondary(0);
+    if (e.headingRotation) {
+        e.vm.rotation.z = e.angle;
+        e.vm.set(AnmVm::RotationDirty, true);
+    }
+    if (e.trailFlags != 0) {
+        if (e.trailFlags & 8) drawTrailStrip(sink, e);
+        else drawTrailCopies(sink, e, state);
+    }
     const std::uint32_t altColor = e.vm.altColor;
     const bool useAlt = e.vm.has(AnmVm::UseAltColor);
     if (e.youkaiState) {
@@ -2743,16 +2767,7 @@ void EnemyManager::drawEnemy(SpriteSink& sink, Enemy& e, const AnmDrawState& sta
     if (!(e.trailFlags & 16)) drawVm(sink, e.vm, state);
     e.vm.altColor = altColor;
     e.vm.set(AnmVm::UseAltColor, useAlt);
-    for (int k = 0; k < 2; ++k) {
-        if (e.vm2File[static_cast<std::size_t>(k)] < 0) continue;
-        AnmVm& v = e.vms2[static_cast<std::size_t>(k)];
-        v.position = {x + v.offset.x, y + v.offset.y, 0.0f};
-        drawVm(sink, v, state);
-    }
-    if (e.trailFlags != 0) {
-        if (e.trailFlags & 8) drawTrailStrip(sink, e);
-        else drawTrailCopies(sink, e, state);
-    }
+    secondary(1);
 }
 
 // The sprite-copy trail (flag 8 clear; TH07 spec_enemy_trails 4): copies of the primary at
@@ -2763,10 +2778,16 @@ void EnemyManager::drawTrailCopies(SpriteSink& sink, Enemy& e, const AnmDrawStat
     const Vec2f scale0 = e.vm.scale;
     const std::uint32_t color0 = e.vm.color;
     const auto a = static_cast<std::int32_t>(color0 >> 24);
-    for (int j = step; j < count; j += step) {
+    // Oldest first: nodes count - 1, count - 1 - step, ... while above 0 (spec_rotation §4.3);
+    // with ECL 145 each copy at its node's angle (the rotation is not restored [QUIRK]).
+    for (int j = count - 1; j > 0; j -= step) {
         const TrailNode& n = e.trail[static_cast<std::size_t>(j)];
         if (n.pos.x < -990.0f) continue;
         AnmVm& vm = e.vm;
+        if (e.headingRotation) {
+            vm.rotation.z = n.angle;
+            vm.set(AnmVm::RotationDirty, true);
+        }
         if (e.trailFlags & 2) vm.scale.x = scale0.x - (static_cast<float>(j) * scale0.x) / static_cast<float>(count);
         if (e.trailFlags & 4) vm.color = (color0 & 0x00FFFFFFu) | (static_cast<std::uint32_t>(a - (a * j) / count) << 24);
         vm.position = {n.pos.x + vm.offset.x + kPlayfieldX, n.pos.y + vm.offset.y + kPlayfieldY, 0.0f};

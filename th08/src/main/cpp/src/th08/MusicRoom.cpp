@@ -1,5 +1,7 @@
 #include "th08/MusicRoom.hpp"
 
+#include "th08/English.hpp"
+
 #include <algorithm>
 #include <format>
 
@@ -101,6 +103,26 @@ bool MusicRoom::create(std::string* error) {
     if (const auto txt = ctx_.vfs->read("musiccmt.txt")) tracks_ = parseMusicComments(*txt);
     else log::warn("musiccmt.txt is missing: an empty Music Room");
     if (tracks_.size() > static_cast<std::size_t>(kTitles)) tracks_.resize(kTitles);  // one title VM each
+    if (ctx_.english) {
+        // The English text mode (thcrap's music_title and music_cmt): the title from themes.js
+        // with the patch's numbered-title format, the comment from musiccmt.js; its first entry
+        // goes to the line after the game's always empty line 0 ("@" is the numbered title).
+        const std::string numbered = ctx_.english->stringDef("Music Room Numbered Title").value_or("No.%2d %s");
+        for (std::size_t i = 0; i < tracks_.size(); ++i) {
+            MusicTrack& t = tracks_[i];
+            const int track = static_cast<int>(i) + 1;
+            if (const auto title = ctx_.english->musicTitle(track)) t.title = English::gameText(formatPatchString(numbered, track, *title));
+            const auto comment = ctx_.english->musicComment(track);
+            if (!comment) continue;
+            for (std::size_t l = 1; l < t.lines.size(); ++l) {
+                if (l - 1 >= comment->size()) {
+                    t.lines[l].clear();
+                } else if ((*comment)[l - 1]) {
+                    t.lines[l] = (*comment)[l - 1]->empty() ? std::string() : English::gameText(*(*comment)[l - 1]);
+                }
+            }
+        }
+    }
     deco_ = AnmVm{};
     deco_.startFresh(lib, *ctx_.rng, kSlotMusic, 0);
     const AnmFile* file = lib.file(kSlotMusic);
@@ -136,7 +158,8 @@ void MusicRoom::renderComment(int track) {
         std::string line = track >= 0 && track < static_cast<int>(tracks_.size())
                                ? tracks_[static_cast<std::size_t>(track)].lines[static_cast<std::size_t>(i)]
                                : std::string();
-        if (line.size() > 64) line.resize(64);  // each line limited to 64 bytes (TH07 §8.3)
+        const bool translated = !line.empty() && static_cast<std::uint8_t>(line[0]) == kUtf8TextMarker;
+        if (!translated && line.size() > 64) line.resize(64);  // each line limited to 64 bytes (TH07 §8.3)
         lineActive_[static_cast<std::size_t>(i)] = !line.empty();
         if (!line.empty()) renderSpriteText(ctx_.textures, ctx_.text, d, line, kLineColor);
     }
