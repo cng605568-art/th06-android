@@ -40,7 +40,7 @@ class Th08Game final : public Game {
     bool paused() const override { return false; }
     bool showsPlayfield() const override { return gameplay_ != nullptr; }
     bool practiceSpeedApplies() const override { return false; }
-    void pauseNow() override {}
+    void pauseNow() override;
     bool back() override;
     int takeVibration() override { return 0; }
 

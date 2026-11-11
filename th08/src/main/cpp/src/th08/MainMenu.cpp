@@ -144,7 +144,13 @@ void MainMenu::showDescription(int row) {
 
 void MainMenu::hideDescription() { desc_[static_cast<std::size_t>(currentDesc_)].interrupt(2); }
 
-void MainMenu::notPorted() { notice_ = 150; }
+void MainMenu::notPorted() { showNotice("NOT PORTED YET", 448.0f); }
+
+void MainMenu::showNotice(std::string text, float y) {
+    noticeText_ = std::move(text);
+    noticeY_ = y;
+    notice_ = 150;
+}
 
 void MainMenu::restartTitleSong() {
     if (!ctx_.music) return;
@@ -767,7 +773,8 @@ void MainMenu::draw(SpriteSink& sink) {
     if (state_ == State::Replays) drawReplays(sink);
     if (notice_ > 0) {
         const std::uint32_t a = static_cast<std::uint32_t>(std::min(255, notice_ * 8)) << 24;
-        ascii_.add(160, 448, "NOT PORTED YET", a | 0x00FFE0A0u);
+        const float x = std::max(0.0f, (640.0f - 13.0f * static_cast<float>(noticeText_.size())) * 0.5f);
+        ascii_.add(x, noticeY_, noticeText_, a | 0x00FFE0A0u);
     }
     if (ctx_.anm) ascii_.draw(sink, *ctx_.anm);
     if (fade_ > 0) fillScreen(sink, ctx_.ui, (static_cast<std::uint32_t>(fade_ * 255 / kFadeFrames) << 24) | 0x00FFFFFFu);

@@ -92,6 +92,10 @@ class Gameplay {
     int stageEndState() const { return stageEnd_; }
     // Android Back: what Menu does (opens the pause menu, or closes it).
     void requestPause() { pauseRequested_ = true; }
+    // The app going to the background: opens the pause menu unless a menu is already up.
+    void pauseNow() {
+        if (!menu_.active()) pauseRequested_ = true;
+    }
     const GameState& state() const { return state_; }
     const Background& background() const { return background_; }
     const Gui& gui() const { return gui_; }

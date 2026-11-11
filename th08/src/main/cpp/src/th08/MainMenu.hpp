@@ -119,6 +119,7 @@ class MainMenu {
     void sendAll(int interrupt);
     bool rowLocked(int row) const;
     void notPorted();
+    void showNotice(std::string text, float y);  // a port message at the bottom, about 5 s
     void loadBackground(const char* path);
     void restartTitleSong();
 
@@ -160,7 +161,9 @@ class MainMenu {
     bool firstEntry_ = true;
     std::uint8_t savedColour_ = 0, savedWindow_ = 0;  // the Option menu's comparison copy
     int fade_ = 0;          // the white fade-in: frames left of 70
-    int notice_ = 0;        // "not ported yet": frames left
+    int notice_ = 0;        // a port message ("not ported yet", the stage-list hint): frames left
+    std::string noticeText_;
+    float noticeY_ = 448.0f;
     bool removed_ = false;
 };
 

@@ -665,6 +665,9 @@ bool Gameplay::stageEndStep(const MenuInput& in) {
         }
         // The stage's bit in the clear records (no-continue only while no continue was used).
         if (ctx_.records) ctx_.records->markClear(state_.character, state_.difficulty, static_cast<std::uint16_t>(1u << state_.stage), state_.continues == 0);
+        // Port: written to score.dat at once (the original waits for the result screen or the
+        // program's exit, which a phone may never reach); the port's RNG, not the game's.
+        if (ctx_.saveScores) ctx_.saveScores(false);
         state_.guiScore = state_.score;
         if (state_.practice) {
             pending_ = Pending::Results;

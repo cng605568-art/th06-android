@@ -138,10 +138,21 @@ void Th08Game::saveScores(bool gameRng) {
         seed = static_cast<std::uint8_t>(bytesRng() & 0xFF);
         filler = static_cast<std::uint8_t>(bytesRng() & 0xFF);
     }
-    if (config_.slowMode != 0) scores_.cards = savedCards_;
-    savedCards_ = scores_.cards;
-    if (storage_.empty()) return;
-    std::vector<std::uint8_t> image = scores_.imageToSave();
+    // Slow mode keeps no spell-card records: the write puts back the cards of the last write.
+    // The port's extra writes (stage end, going to the background) leave the run's own
+    // in-memory cards alone and only write the old ones.
+    std::vector<std::uint8_t> image;
+    if (config_.slowMode != 0 && !gameRng) {
+        if (storage_.empty()) return;
+        ScoreData copy = scores_;
+        copy.cards = savedCards_;
+        image = copy.imageToSave();
+    } else {
+        if (config_.slowMode != 0) scores_.cards = savedCards_;
+        savedCards_ = scores_.cards;
+        if (storage_.empty()) return;
+        image = scores_.imageToSave();
+    }
     const auto bytes = encodeScoreFile(image, seed, filler);
     std::ofstream f(storage_ + "score.dat", std::ios::binary | std::ios::trunc);
     if (!f) {
@@ -333,6 +344,14 @@ bool Th08Game::start(const GameContext& ctx) {
                            scores_.extraUnlocked() ? "unlocked" : "locked", scores_.spellPracticeUnlocked() ? "unlocked" : "locked",
                            scores_.solosUnlocked() ? "unlocked" : "locked");
             savedCards_ = scores_.cards;
+        }
+        // Developer aid: TH08_DEV_CLEARS=1 marks stages 1-6B cleared for every character and
+        // difficulty (the practice stage list). It is saved like any record: use a scratch
+        // data folder.
+        if (const char* d = std::getenv("TH08_DEV_CLEARS"); d && *d == '1') {
+            for (ClearRecord& c : scores_.clears) {
+                for (std::uint16_t& w : c.reached) w = static_cast<std::uint16_t>(w | 0xFF);
+            }
         }
     }
     if (folder_.exe) {
@@ -693,6 +712,14 @@ Game::CaptureRect Th08Game::captureRect() const {
 // The "Press Shot Button" wait between stages draws over the last frame (the original copies
 // a capture of it back every frame).
 bool Th08Game::keepsPreviousFrame() const { return gameplay_ && gameplay_->stageEndState() == 1; }
+
+// The app is going to the background (a phone may end it there without notice): pause a game
+// in progress, and write score.dat now (port RNG, so the game's random numbers are untouched)
+// rather than only at the program's exit.
+void Th08Game::pauseNow() {
+    if (gameplay_) gameplay_->pauseNow();
+    if (anyScene()) saveScores(false);
+}
 
 bool Th08Game::back() {
     if (gameplay_) {
