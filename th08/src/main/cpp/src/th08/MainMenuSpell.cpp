@@ -95,7 +95,7 @@ void MainMenu::spellCharacter(const MenuInput& in) {
     ctx_.character = spellStep(ctx_.character, 1);
     cursor_ = ctx_.character;
     sendAll(8);
-    showCards(false, ctx_.character);
+    showCards(false, ctx_.character, false);
     setState(State::SpellStage);
     spellStage(in);
 }
@@ -111,7 +111,7 @@ void MainMenu::spellStage(const MenuInput& in) {
         }
         if (prevState_ != State::SpellCards) loadBackground("title/select00.png");
         ctx_.character = spellStep(ctx_.character, 1);
-        showCards(false, ctx_.character);
+        showCards(false, ctx_.character, false);
         cursor_ = std::clamp(ctx_.stage, 0, 9);
         for (int i = 0; i < 2; ++i) {
             AnmVm& v = listText_[static_cast<std::size_t>(i)];
@@ -159,7 +159,7 @@ void MainMenu::spellStage(const MenuInput& in) {
         const int columns = ctx_.solosUnlocked ? 12 : 4;
         ctx_.character = spellStep(wrapAround(ctx_.character + lr, columns), lr);
         ctx_.playSound(kSndMove);
-        showCards(true, ctx_.character);
+        showCards(false, ctx_.character, false);  // (only the portraits come back, as on entry)
         inputTimer_ = 0;  // (the rates ease again)
         return;
     }

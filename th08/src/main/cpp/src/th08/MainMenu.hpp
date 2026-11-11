@@ -85,7 +85,7 @@ class MainMenu {
     void difficulty(const MenuInput& in);
     void highlightDifficulty();
     void character(const MenuInput& in);
-    void showCards(bool afterMove, int character = -1);
+    void showCards(bool afterMove, int character = -1, bool withName = true);
     // Spell Card Practice (spec_flow_menus 4.6, claude/th08-specs/spec_spell_practice.md §2).
     void spellCharacter(const MenuInput& in);
     void spellStage(const MenuInput& in);

@@ -568,12 +568,12 @@ void MainMenu::difficulty(const MenuInput& in) {
 
 // ---- character select (states 5, 9, 13) -------------------------------------------------------
 
-void MainMenu::showCards(bool afterMove, int character) {
+void MainMenu::showCards(bool afterMove, int character, bool withName) {
     const Cards& c = kCards[std::clamp(character >= 0 ? character : cursor_, 0, 11)];
     for (int i = 111; i <= 130; ++i) {
         const auto k = static_cast<std::size_t>(i);
         if (!has_[k]) continue;
-        const bool main = i == c.name || i == c.first || i == c.second;
+        const bool main = (withName && i == c.name) || i == c.first || i == c.second;
         const bool partner = i == c.partner;
         if (!afterMove) {
             vm_[k].set(AnmVm::Visible, main || partner);
@@ -657,7 +657,9 @@ void MainMenu::practiceStage(const MenuInput& in) {
     if (sub_ == 0) {
         sendAll(18);
         cursor_ = std::clamp(cursor_, 0, 7);
-        showCards(false);
+        // Only the portraits come back: the name/description card stays hidden, its place
+        // taken by the stage list (the original's card loop starts at entry 1 here).
+        showCards(false, ctx_.character, false);
         ctx_.practice = true;
         sub_ = 1;
     }
@@ -672,10 +674,12 @@ void MainMenu::practiceStage(const MenuInput& in) {
             c = wrap(c + d, 8);
             if (stageSelectable(c)) break;
         }
-        if (c != cursor_) {
-            cursor_ = c;
-            ctx_.playSound(kSndMove);
-        }
+        cursor_ = c;
+        ctx_.playSound(kSndMove);  // (on every press, moved or not)
+        // Port: say why nothing moves when Stage 1 is the only open row.
+        int open = 0;
+        for (int k = 0; k < 8; ++k) open += stageSelectable(k) ? 1 : 0;
+        if (open == 1) showNotice("Clear a stage in the main game to practise it", 462.0f);
     }
     if (in.pressed(kSelect)) {
         ctx_.playSound(kSndSelect);
@@ -700,15 +704,13 @@ void MainMenu::practiceStage(const MenuInput& in) {
 // play count; the cursor row white, selectable rows grey, locked rows dark.
 void MainMenu::drawStageList() {
     static constexpr const char* kLabels[8] = {"Stage1 ", "Stage2 ", "Stage3 ", "Stage4A", "Stage4B", "Stage5 ", "Stage6A", "Stage6B"};
-    // (The spec anchors the list to VM 139, whose script stays at the top of the screen; VM
-    // 141, the same sprite, slides in to (256, 320) on interrupt 18. Until the anchor is
-    // settled the list sits left of the character's card, 96 px above that point.)
+    // Anchored to VM 141, an invisible copy of the "Choose Stage" picture that slides in from
+    // (640, 320) to (256, 320) on interrupt 18: the header 96 px above it, the rows below.
     float x = 256.0f, y = 320.0f;
     if (has_[141]) {
         x = vm_[141].position.x;
         y = vm_[141].position.y;
     }
-    x -= 208.0f;
     y -= 96.0f;
     ascii_.add(x, y, "Stage    HI-Score", 0xFFFFFFFFu);
     const int c = std::clamp(ctx_.character, 0, kCharacters - 1);
@@ -720,8 +722,10 @@ void MainMenu::drawStageList() {
             best = r.best[static_cast<std::size_t>(k) * 5 + d];
             plays = r.plays[static_cast<std::size_t>(k) * 5 + d];
         }
+        // The cursor row in the highlighted glyph set.
         const std::uint32_t color = k == cursor_ ? 0xFFFFFFFFu : stageSelectable(k) ? 0xFFA0A0A0u : 0xFF404040u;
-        ascii_.add(x, y + 16.0f * static_cast<float>(k + 1), std::format("{} {:9d}0 ({:3d})", kLabels[k], best, plays), color);
+        ascii_.add(x, y + 16.0f * static_cast<float>(k + 1), std::format("{} {:9d}0 ({:3d})", kLabels[k], best, plays), color, 1.0f,
+                   13.0f, -1.0f, k == cursor_);
     }
 }
 
