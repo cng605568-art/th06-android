@@ -10,6 +10,7 @@
 #if defined(__ANDROID__)
 #include "platform/AndroidStorage.hpp"
 #endif
+#include "platform/Platform.hpp"
 
 namespace touhou {
 
@@ -28,7 +29,8 @@ std::unique_ptr<Vfs> mountGameData(int argc, char** argv, const char* envPrefix)
         }
         std::string err;
         auto file = MappedFile::adoptFd(fd, &err);
-        if (src.format == "WAV" || src.format == "SCORE") {  // music ("bgm/th06_NN.wav") and score.dat: loose files
+        // Loose files: th06's music ("bgm/th06_NN.wav"), th07's (thbgm.dat) and score.dat.
+        if (src.format == "WAV" || src.format == "ZWAV" || src.format == "SCORE") {
             if (file) vfs->addLooseFile(src.name, std::move(file));
             continue;
         }
@@ -46,6 +48,13 @@ std::unique_ptr<Vfs> mountGameData(int argc, char** argv, const char* envPrefix)
     if (const char* ext = SDL_AndroidGetExternalStoragePath()) {
         vfs->mountDirectory(std::string(ext) + "/gamedata", false);
     }
+#elif defined(TOUHOU_IOS)
+    // iOS: the player copies the game folder into the app's Documents (the Files app shows
+    // it as "On My iPhone > TH07 Port"); the folder with the game's archive is mounted.
+    (void)argc;
+    (void)argv;
+    (void)envPrefix;
+    vfs->mountDirectory(iosGameDataDir(), false);
 #else
     const std::string prefix = envPrefix ? envPrefix : "";
     std::string dir = "gamedata";

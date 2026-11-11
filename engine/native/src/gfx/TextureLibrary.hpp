@@ -16,7 +16,9 @@ namespace touhou {
 
 class Vfs;
 
-enum class TextureFilter : std::uint8_t { Nearest, Linear };
+// Nearest wraps (th06 game art), Linear clamps (generated UI shapes), LinearWrap is
+// bilinear with wrapping (th07 game art, as Direct3D samples it there).
+enum class TextureFilter : std::uint8_t { Nearest, Linear, LinearWrap };
 
 // CPU-side registry of every texture the game uses. Each entry keeps a producer that
 // (re)builds its pixels: decoding from the player's archives on demand, or generating
@@ -37,7 +39,7 @@ class TextureLibrary {
     // A texture the game draws into at run time (rendered text): its pixels live here and
     // its version goes up on every change, so the GPU side re-uploads it. Same-name reuse
     // as for add().
-    std::uint16_t addDynamic(std::string name, int width, int height);
+    std::uint16_t addDynamic(std::string name, int width, int height, TextureFilter filter = TextureFilter::Nearest);
     Image* pixels(std::uint16_t id);  // null unless the texture is dynamic
     void touch(std::uint16_t id);     // after changing pixels()
     std::uint32_t version(std::uint16_t id) const { return items_.at(id).version; }

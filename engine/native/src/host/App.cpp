@@ -15,8 +15,10 @@
 #include "gfx/Gl.hpp"
 #include "platform/CrashHandler.hpp"
 #include "platform/DataMount.hpp"
-#if defined(__ANDROID__)
-#include "platform/AndroidStorage.hpp"
+#include "platform/Platform.hpp"
+#include "gfx/RenderTarget.hpp"
+#if defined(TOUHOU_IOS)
+#include <SDL_syswm.h>
 #endif
 
 namespace touhou {
@@ -46,8 +48,9 @@ int App::run(int argc, char** argv) {
 bool App::init(int argc, char** argv) {
     if (!game_) return false;
     const GameInfo& info = game_->info();
-#if defined(__ANDROID__)
-    display_ = readAndroidDisplayOptions();
+    log::setTag(info.id);
+#if defined(TOUHOU_PHONE)
+    display_ = readPlatformDisplayOptions();
 #else
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i] ? argv[i] : "";
@@ -60,15 +63,19 @@ bool App::init(int argc, char** argv) {
     // The session log and the crash report, kept in the app's storage for bug reports (the
     // launcher's "Save a log").
     std::string storage;  // the app's storage, ending in '/'
+#if defined(TOUHOU_IOS)
+    storage = iosStorageDir();  // Documents/Saves/: visible in the Files app
+#else
     if (char* pref = SDL_GetPrefPath(info.prefOrg, info.prefApp)) {
         storage = pref;
         SDL_free(pref);
     }
+#endif
     if (!storage.empty()) {
         const std::string logs = storage + "logs";
         std::error_code ec;
         std::filesystem::create_directories(logs, ec);
-        if (log::openFile(logs + "/session.log", logs + "/previous.log")) installCrashHandler(logs + "/crash.txt");
+        if (log::openFile(logs + "/session.log", logs + "/previous.log")) installCrashHandler(logs + "/crash.txt", info.id);
     }
     SDL_SetHint(SDL_HINT_ORIENTATIONS, display_.portrait ? "Portrait PortraitUpsideDown" : "LandscapeLeft LandscapeRight");
     SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
@@ -123,8 +130,11 @@ bool App::init(int argc, char** argv) {
 #endif
 
     Uint32 flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
-#if defined(__ANDROID__)
+#if defined(TOUHOU_PHONE)
     flags |= SDL_WINDOW_FULLSCREEN;
+#endif
+#if defined(TOUHOU_IOS)
+    flags |= SDL_WINDOW_BORDERLESS;  // no status bar
 #endif
     window_ = SDL_CreateWindow(info.windowTitle, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                windowWidth_, windowHeight_, flags);
@@ -138,6 +148,13 @@ bool App::init(int argc, char** argv) {
         return false;
     }
     SDL_GL_MakeCurrent(window_, context_);
+#if defined(TOUHOU_IOS)
+    {
+        const unsigned fbo = iosScreenFramebuffer(window_);  // SDL's, not 0
+        RenderTarget::setScreenFramebuffer(fbo);
+        log::info("iOS screen framebuffer {}", fbo);
+    }
+#endif
     vsync_ = SDL_GL_SetSwapInterval(1) == 0;
     SDL_DisplayMode mode;
     if (SDL_GetWindowDisplayMode(window_, &mode) == 0 && mode.refresh_rate > 0) refreshHz_ = mode.refresh_rate;
@@ -153,9 +170,9 @@ bool App::init(int argc, char** argv) {
     std::string err;
     if (!audio_.open(&err)) log::warn("Audio disabled: {}", err);
 
-#if defined(__ANDROID__)
-    text_ = makeAndroidTextRenderer();
-    controls_ = readAndroidControlOptions();
+#if defined(TOUHOU_PHONE)
+    text_ = makePlatformTextRenderer();
+    controls_ = readPlatformControlOptions();
 #endif
     {
         GameContext ctx;
@@ -187,7 +204,7 @@ bool App::init(int argc, char** argv) {
 
     if (!touch_.attach(&err)) log::warn("Touch controls unavailable: {}", err);
     touch_.setOptions(controls_);
-#if defined(__ANDROID__)
+#if defined(TOUHOU_PHONE)
     touch_.setVisible(true);
 #else
     touch_.setVisible(devTouch_ || hasFlag(argc, argv, "--touch") || SDL_GetNumTouchDevices() > 0);
@@ -300,10 +317,12 @@ void App::handleEvent(const SDL_Event& e) {
             if (game_) game_->pauseNow();
             audio_.setPaused(true);
             touch_.releaseAll();
+            background_ = true;  // iOS ends an app that draws while in the background
             break;
         case SDL_APP_DIDENTERFOREGROUND:
             audio_.setPaused(false);
             resetClock_ = true;
+            background_ = false;
             break;
         case SDL_APP_LOWMEMORY:
             log::warn("System reports low memory");
@@ -351,6 +370,10 @@ void App::loop() {
         SDL_Event e;
         while (SDL_PollEvent(&e)) handleEvent(e);
         if (!running_) break;
+        if (background_) {  // (Android blocks in SDL instead; iOS keeps calling)
+            SDL_Delay(50);
+            continue;
+        }
 
         const auto now = Clock::now();
         if (resetClock_) {
@@ -383,7 +406,14 @@ void App::loop() {
         if (game_->takeCaptureRequest()) game_->setCaptureReady(capturePlayfield());
         renderFrame(game_->paused() || devLockstep_ ? 1.0f : clock_.alpha());
         developerFrameHooks();
+#if defined(TOUHOU_IOS)
+        iosBindScreenRenderbuffer(window_);  // SDL presents the bound renderbuffer
+#endif
         SDL_GL_SwapWindow(window_);
+        if (glChecks_ > 0) {  // the first frames: GL errors named by the step that made them
+            gl::check("SDL_GL_SwapWindow");
+            --glChecks_;
+        }
 
         if (!vsync_) {
             // No vsync: sleep until the next tick is due rather than spinning.
@@ -411,8 +441,8 @@ void App::loop() {
 void App::haptics() {
     const int ms = game_->takeVibration();
     if (ms <= 0 || !controls_.vibrate) return;
-#if defined(__ANDROID__)
-    androidVibrate(ms);
+#if defined(TOUHOU_PHONE)
+    platformVibrate(ms);
 #else
     log::info("(vibrate {} ms)", ms);
 #endif
@@ -480,7 +510,7 @@ void App::developerFrameHooks() {
     running_ = false;
 }
 
-// --keys "30:shoot,60:down,...": presses a button once game tick N is reached, for one
+// --keys "30:shoot,60:down,90:bomb+focus,...": presses buttons once game tick N is reached, for one
 // input sample (one or more ticks), then releases everything for one sample before the
 // next key, so two presses never merge into one.
 void App::parseDevKeys(const std::string& spec) {
@@ -504,18 +534,27 @@ void App::applyDevKeys(InputState& in) {
         return;
     }
     if (devKeyNext_ >= devKeys_.size() || tickCount_ < devKeys_[devKeyNext_].tick) return;
-    const std::string& key = devKeys_[devKeyNext_].key;
+    const std::string& keys = devKeys_[devKeyNext_].key;
     devKeyHeld_ = true;
-    if (key == "up") in.up = true;
-    else if (key == "down") in.down = true;
-    else if (key == "left") in.left = true;
-    else if (key == "right") in.right = true;
-    else if (key == "shoot") in.shoot = true;
-    else if (key == "bomb") in.bomb = true;
-    else if (key == "pause") in.pause = true;
-    else if (key == "quit") in.quit = true;
-    else if (key == "save") in.saveState = true;
-    else if (key == "load") in.loadState = true;
+    // "a+b" presses several buttons in the same sample.
+    std::size_t at = 0;
+    while (at <= keys.size()) {
+        std::size_t end = keys.find('+', at);
+        if (end == std::string::npos) end = keys.size();
+        const std::string key = keys.substr(at, end - at);
+        if (key == "up") in.up = true;
+        else if (key == "down") in.down = true;
+        else if (key == "left") in.left = true;
+        else if (key == "right") in.right = true;
+        else if (key == "shoot") in.shoot = true;
+        else if (key == "bomb") in.bomb = true;
+        else if (key == "focus") in.focus = true;
+        else if (key == "pause") in.pause = true;
+        else if (key == "quit") in.quit = true;
+        else if (key == "save") in.saveState = true;
+        else if (key == "load") in.loadState = true;
+        at = end + 1;
+    }
 }
 
 bool App::capturePlayfield() {
@@ -523,15 +562,26 @@ bool App::capturePlayfield() {
     if (id < 0 || frameCount_ == 0) return false;  // no capture.anm, or nothing rendered yet
     const auto tid = static_cast<std::uint16_t>(id);
     const GLuint tex = gpu_.get(tid);
-    const int w = textures_.width(tid), h = textures_.height(tid);
+    const int texW = textures_.width(tid), texH = textures_.height(tid);
+    // The destination rectangle, clipped to the texture. Texture row y is framebuffer row y
+    // here (see below), so the rectangle needs no flip.
+    Game::CaptureRect r = game_->captureRect();
+    if (r.w <= 0 || r.h <= 0) r = {0, 0, texW, texH};
+    r.w = std::min(r.w, texW - r.x);
+    r.h = std::min(r.h, texH - r.y);
+    if (r.x < 0 || r.y < 0 || r.w <= 0 || r.h <= 0) return false;
+    const int w = r.w, h = r.h;
     if (!captureFbo_) glGenFramebuffers(1, &captureFbo_);
     glBindFramebuffer(GL_FRAMEBUFFER, captureFbo_);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
     const bool ok = glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
     if (ok) {
-        glViewport(0, 0, w, h);
+        glViewport(r.x, r.y, w, h);
+        glEnable(GL_SCISSOR_TEST);
+        glScissor(r.x, r.y, w, h);
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT);
+        glDisable(GL_SCISSOR_TEST);
         batch_.begin(static_cast<float>(w), static_cast<float>(h), &gpu_);
         // The game target still holds the last frame, bottom-up. Drawn into the texture's
         // framebuffer the quad's bottom edge becomes texture row 0, so it samples the
@@ -589,10 +639,11 @@ void App::renderFrame(float alpha) {
     glClearColor(0, 0, 0, 1);
     glDepthMask(GL_TRUE);
     glClearDepthf(1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glClear(game_->keepsPreviousFrame() ? GL_DEPTH_BUFFER_BIT : GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     batch_.begin(static_cast<float>(info.width), static_cast<float>(info.height), &gpu_);
     game_->render(batch_, alpha, frameInfo());
     batch_.end();
+    if (glChecks_ > 0) gl::check("renderFrame: the game picture");
 
     // 2) Onto the screen (letterboxed, or the portrait play view), sharp or smooth, with the
     //    optional scanlines, then the touch controls at full resolution.
@@ -623,6 +674,7 @@ void App::renderFrame(float alpha) {
     }
     touch_.draw(batch_, ui_);
     batch_.end();
+    if (glChecks_ > 0) gl::check("renderFrame: the screen");
     lastDrawCalls_ = batch_.takeDrawCalls();
 }
 

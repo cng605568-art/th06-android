@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dusk plum (primary) and cherry-blossom pink (accent), on a pale lilac paper. -->
+    <color name="th07_plum_deep">#2A1838</color>
+    <color name="th07_plum">#4A2A5E</color>
+    <color name="th07_sakura">#E8679A</color>
+    <color name="th07_sakura_soft">#FCE4EC</color>
+    <color name="th07_paper">#FBF8FC</color>
+    <color name="th07_ink">#24182B</color>
+    <color name="th07_muted">#6F6078</color>
+</resources>

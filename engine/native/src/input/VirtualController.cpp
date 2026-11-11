@@ -25,7 +25,7 @@ bool VirtualController::attach(std::string* error) {
     // All of A..DPAD_RIGHT present: SDL then maps virtual button i to
     // SDL_GameControllerButton i, so pushes below can use the enum directly.
     desc.button_mask = (1u << kVirtualButtons) - 1;
-    desc.name = "TH06 Touch Controls";
+    desc.name = "Touch Controls";
 
     const int deviceIndex = SDL_JoystickAttachVirtualEx(&desc);
     if (deviceIndex < 0) {

@@ -16,12 +16,15 @@ class RenderTarget {
 
     void bind() const;
     static void bindScreen();
+    // The window's own framebuffer: 0 on Android and desktop; SDL's on iOS.
+    static void setScreenFramebuffer(GLuint fbo) { screenFramebuffer_ = fbo; }
 
     GLuint texture() const { return texture_; }
     int width() const { return width_; }
     int height() const { return height_; }
 
   private:
+    static inline GLuint screenFramebuffer_ = 0;
     GLuint framebuffer_ = 0;
     GLuint depth_ = 0;
     GLuint texture_ = 0;

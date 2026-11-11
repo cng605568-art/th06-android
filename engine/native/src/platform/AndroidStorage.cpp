@@ -1,4 +1,5 @@
 #include "platform/AndroidStorage.hpp"
+#include "platform/Platform.hpp"
 
 #include <jni.h>
 
@@ -125,9 +126,11 @@ class AndroidTextRenderer final : public TextRenderer {
         if (!mid) return 0.0f;
         jbyteArray bytes = a.env->NewByteArray(static_cast<jsize>(utf8.size()));
         a.env->SetByteArrayRegion(bytes, 0, static_cast<jsize>(utf8.size()), reinterpret_cast<const jbyte*>(utf8.data()));
+        // The alignment's bit 4 asks for italics (th07's English text; th06 never sets it).
+        const jint alignFlags = static_cast<jint>(align) | (style.italic ? kItalicFlag : 0);
         auto pixels = static_cast<jintArray>(a.env->CallStaticObjectMethod(
             a.cls, mid, bytes, style.fontSize, static_cast<jint>(style.rgb), static_cast<jint>(style.shadow), left, width,
-            static_cast<jint>(align), band.width, band.height));
+            alignFlags, band.width, band.height));
         a.env->DeleteLocalRef(bytes);
         if (a.clearException() || !pixels) return 0.0f;
         jint drawn = 0;  // texels x 256
@@ -135,6 +138,33 @@ class AndroidTextRenderer final : public TextRenderer {
         a.env->DeleteLocalRef(pixels);
         return ok ? static_cast<float>(drawn) / 256.0f : 0.0f;
     }
+
+    // GameActivity.measureTextUtf8(bytes, fontSize, flags) where the activity has it (th07);
+    // otherwise a render into a scratch band.
+    float measureUtf8(std::string_view utf8, const TextStyle& style) override {
+        if (utf8.empty()) return 0.0f;
+        if (!measureChecked_) {
+            measureChecked_ = true;
+            ActivityClass probe;
+            hasMeasure_ = probe.method("measureTextUtf8", "([BII)F") != nullptr;
+        }
+        if (!hasMeasure_) return TextRenderer::measureUtf8(utf8, style);
+        ActivityClass a;
+        const jmethodID mid = a.method("measureTextUtf8", "([BII)F");
+        if (!mid) return 0.0f;
+        jbyteArray bytes = a.env->NewByteArray(static_cast<jsize>(utf8.size()));
+        a.env->SetByteArrayRegion(bytes, 0, static_cast<jsize>(utf8.size()), reinterpret_cast<const jbyte*>(utf8.data()));
+        const jfloat w = a.env->CallStaticFloatMethod(a.cls, mid, bytes, style.fontSize, style.italic ? kItalicFlag : 0);
+        a.env->DeleteLocalRef(bytes);
+        if (a.clearException()) return 0.0f;
+        return w;
+    }
+
+  private:
+    static constexpr jint kItalicFlag = 16;
+    bool measureChecked_ = false, hasMeasure_ = false;
+
+  public:
 
     bool render(std::span<const std::uint8_t> sjis, const TextStyle& style, float startX, Image& band) override {
         if (sjis.empty() || band.empty()) return false;
@@ -260,5 +290,13 @@ std::vector<int> androidIntArray(const char* method) {
     out.assign(v.begin(), v.end());
     return out;
 }
+
+// The platform-neutral names (platform/Platform.hpp) on Android.
+std::vector<int> platformIntArray(const char* name) { return androidIntArray(name); }
+ControlOptions readPlatformControlOptions() { return readAndroidControlOptions(); }
+DisplayOptions readPlatformDisplayOptions() { return readAndroidDisplayOptions(); }
+void platformVibrate(int milliseconds) { androidVibrate(milliseconds); }
+std::unique_ptr<TextRenderer> makePlatformTextRenderer() { return makeAndroidTextRenderer(); }
+std::vector<std::string> readPlatformGameTextStack() { return readAndroidGameTextStack(); }
 
 }  // namespace touhou

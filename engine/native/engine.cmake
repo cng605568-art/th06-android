@@ -42,7 +42,9 @@ add_library(thengine_core STATIC
   ${THENGINE_SRC}/io/Archive.cpp
   ${THENGINE_SRC}/io/Lzss.cpp
   ${THENGINE_SRC}/io/MappedFile.cpp
+  ${THENGINE_SRC}/io/PeImage.cpp
   ${THENGINE_SRC}/io/Pbg3Archive.cpp
+  ${THENGINE_SRC}/io/Pbg4Archive.cpp
   ${THENGINE_SRC}/io/PkglArchive.cpp
   ${THENGINE_SRC}/io/Vfs.cpp
   ${THENGINE_SRC}/gfx/Anm.cpp
@@ -67,6 +69,9 @@ endif()
 if(ANDROID)
   target_link_libraries(thengine_core PUBLIC log)
 endif()
+if(TOUHOU_IOS)
+  target_compile_definitions(thengine_core PUBLIC TOUHOU_IOS=1)
+endif()
 
 if(TARGET SDL2::SDL2)
   add_library(thengine_host STATIC
@@ -85,6 +90,12 @@ if(TARGET SDL2::SDL2)
   if(ANDROID)
     target_sources(thengine_host PRIVATE ${THENGINE_SRC}/platform/AndroidStorage.cpp)
     target_link_libraries(thengine_host PUBLIC GLESv3 EGL android log)
+  elseif(TOUHOU_IOS)
+    # iOS: Apple's OpenGL ES, and the Settings app, Files folder, Core Text and haptics.
+    target_sources(thengine_host PRIVATE ${THENGINE_SRC}/platform/IosPlatform.mm)
+    set_source_files_properties(${THENGINE_SRC}/platform/IosPlatform.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+    target_link_libraries(thengine_host PUBLIC "-framework OpenGLES" "-framework UIKit" "-framework Foundation"
+                          "-framework CoreText" "-framework CoreGraphics" "-framework QuartzCore")
   else()
     find_path(GLES3_INCLUDE_DIR GLES3/gl3.h REQUIRED)
     find_library(GLES_LIBRARY NAMES GLESv2 libGLESv2.so.2 REQUIRED)

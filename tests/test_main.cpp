@@ -3909,6 +3909,8 @@ struct RecordingMusic final : MusicBackend {
         ++stops;
     }
     void setMusicGain(float g) override { gain = g; }
+    void pauseMusic(bool p) override { paused = p; }
+    bool paused = false;
 };
 
 static void testMusic() {

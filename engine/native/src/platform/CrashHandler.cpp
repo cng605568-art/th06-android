@@ -27,6 +27,7 @@ constexpr int kSignals[] = {SIGSEGV, SIGABRT, SIGBUS, SIGFPE, SIGILL};
 constexpr int kSignalCount = sizeof(kSignals) / sizeof(kSignals[0]);
 struct sigaction g_previous[kSignalCount];
 char g_path[1024];
+const char* g_gameId = "touhou";  // the first word of the report
 constexpr std::size_t kAltStackSize = 64 * 1024;
 alignas(16) char g_altStack[kAltStackSize];
 
@@ -130,7 +131,8 @@ void putFrame(int fd, int index, std::uintptr_t pc) {
 void onFatalSignal(int sig, siginfo_t* info, void* context) {
     const int fd = ::open(g_path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
     if (fd >= 0) {
-        put(fd, "th06 native crash\nsignal ");
+        put(fd, g_gameId);
+        put(fd, " native crash\nsignal ");
         putDec(fd, sig);
         put(fd, " ");
         put(fd, signalName(sig));
@@ -176,9 +178,10 @@ void onTerminate() {
 
 }  // namespace
 
-void installCrashHandler(const std::string& path) {
+void installCrashHandler(const std::string& path, const char* gameId) {
     if (path.empty() || path.size() >= sizeof(g_path)) return;
     std::memcpy(g_path, path.c_str(), path.size() + 1);
+    if (gameId) g_gameId = gameId;
     // An alternate stack, so a stack overflow on this (the game's) thread is still reported.
     stack_t ss{};
     ss.ss_sp = g_altStack;
@@ -194,7 +197,7 @@ void installCrashHandler(const std::string& path) {
 
 #else
 
-void installCrashHandler(const std::string&) {}
+void installCrashHandler(const std::string&, const char*) {}
 
 #endif
 

@@ -17,7 +17,10 @@ std::unique_ptr<Archive> openArchive(std::string fileName, std::unique_ptr<Mappe
     if (bytes.size() >= 4 && std::memcmp(bytes.data(), "PKGL", 4) == 0) {
         return openPkgl(std::move(fileName), std::move(file), error);
     }
-    if (error) *error = fileName + ": not a PBG3 or PKGL archive";
+    if (bytes.size() >= 4 && std::memcmp(bytes.data(), "PBG4", 4) == 0) {
+        return openPbg4(std::move(fileName), std::move(file), error);
+    }
+    if (error) *error = fileName + ": not a PBG3, PBG4 or PKGL archive";
     return nullptr;
 }
 

@@ -22,7 +22,7 @@ bool RenderTarget::create(int width, int height, std::string* error) {
     glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depth_);
     const GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    bindScreen();
     if (status != GL_FRAMEBUFFER_COMPLETE) {
         if (error) *error = "offscreen framebuffer incomplete";
         destroy();
@@ -49,6 +49,6 @@ void RenderTarget::bind() const {
     glViewport(0, 0, width_, height_);
 }
 
-void RenderTarget::bindScreen() { glBindFramebuffer(GL_FRAMEBUFFER, 0); }
+void RenderTarget::bindScreen() { glBindFramebuffer(GL_FRAMEBUFFER, screenFramebuffer_); }
 
 }  // namespace touhou

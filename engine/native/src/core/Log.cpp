@@ -18,6 +18,7 @@ std::mutex g_fileMutex;
 std::FILE* g_file = nullptr;
 std::chrono::steady_clock::time_point g_opened;
 constexpr const char* kNames[] = {"D", "I", "W", "E"};
+const char* g_tag = "touhou";
 
 void writeFile(Level level, std::string_view message) {
     std::lock_guard lock(g_fileMutex);
@@ -28,6 +29,10 @@ void writeFile(Level level, std::string_view message) {
     std::fflush(g_file);  // a crash must not lose the last lines
 }
 }  // namespace
+
+void setTag(const char* tag) {
+    if (tag) g_tag = tag;
+}
 
 bool openFile(const std::string& path, const std::string& previousPath) {
     std::lock_guard lock(g_fileMutex);
@@ -55,7 +60,7 @@ void write(Level level, std::string_view message) {
         case Level::Error: priority = ANDROID_LOG_ERROR; break;
     }
     const std::string text(message);
-    __android_log_write(priority, "th06", text.c_str());
+    __android_log_write(priority, g_tag, text.c_str());
 #else
     std::fprintf(stderr, "[%s] %.*s\n", kNames[static_cast<int>(level)], static_cast<int>(message.size()), message.data());
 #endif

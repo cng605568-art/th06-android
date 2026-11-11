@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <span>
@@ -25,12 +26,21 @@ class Vfs {
     // Returns false if the archive was empty; ownership is taken either way.
     bool mount(std::unique_ptr<Archive> archive);
 
-    // Mounts every PBG3/PKGL archive found directly in `dir` and in `dir/data`.
-    // The 2002 format is mounted first unless preferNewClassic is set.
+    // Mounts every PBG3/PBG4/PKGL archive found directly in `dir` and in `dir/data`, and
+    // keeps th07's music (thbgm.dat, "ZWAV") as a loose file. The 2002 format is mounted
+    // first unless preferNewClassic is set.
     std::size_t mountDirectory(const std::string& dir, bool preferNewClassic);
 
     bool exists(std::string_view path) const;
     std::optional<std::vector<std::uint8_t>> read(std::string_view path) const;
+
+    // A game's own changes to members as they are read (th07's English text: the player's
+    // thcrap patch replaces or rewrites some files). read() passes the normalized name and
+    // the member's bytes (nullopt: not in the archives) and returns what the filter returns.
+    // exists() does not see it. Empty: no filter.
+    using ReadFilter = std::function<std::optional<std::vector<std::uint8_t>>(const std::string& name,
+                                                                             std::optional<std::vector<std::uint8_t>> bytes)>;
+    void setReadFilter(ReadFilter filter) { filter_ = std::move(filter); }
 
     std::size_t archiveCount() const { return archives_.size(); }
     std::size_t fileCount() const { return index_.size(); }
@@ -61,6 +71,7 @@ class Vfs {
     std::vector<std::pair<std::string, std::unique_ptr<MappedFile>>> executables_;
     std::unordered_map<std::string, std::unique_ptr<MappedFile>> loose_;
     std::unordered_map<std::string, Ref> index_;
+    ReadFilter filter_;
 };
 
 }  // namespace touhou

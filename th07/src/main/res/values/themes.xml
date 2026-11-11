@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The launcher: plum primary, sakura accent, drawn edge to edge under a plum header. -->
+    <style name="Th07.Launcher" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:colorPrimary">@color/th07_plum</item>
+        <item name="android:colorPrimaryDark">@color/th07_plum_deep</item>
+        <item name="android:colorAccent">@color/th07_sakura</item>
+        <item name="android:colorControlActivated">@color/th07_sakura</item>
+        <item name="android:colorControlHighlight">#33E8679A</item>
+        <item name="android:textColorPrimary">@color/th07_ink</item>
+        <item name="android:textColorSecondary">@color/th07_muted</item>
+        <item name="android:windowBackground">@color/th07_paper</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@color/th07_paper</item>
+    </style>
+</resources>

@@ -9,6 +9,6 @@ namespace touhou {
 // (on Android, the system's tombstone writer), so the crash itself proceeds as before. Also
 // logs an uncaught C++ exception's message before the program aborts. The launcher offers
 // the report (with the session log) for bug reports.
-void installCrashHandler(const std::string& path);
+void installCrashHandler(const std::string& path, const char* gameId);
 
 }  // namespace touhou

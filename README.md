@@ -78,8 +78,8 @@ is not bit-identical to the x87 code of 2002, so long runs can drift from real r
   artifact at the bottom of the page.
 * **A release:** **Releases → Draft a new release → Choose a tag →** type `v` + the version
   in the `VERSION` file (e.g. `v0.9.0`, or `v0.9.0-beta` for a pre-release) → **Publish**.
-  The workflow builds, signs and attaches the APK and `SHA256SUMS.txt` (a tag that does not
-  match `VERSION` is refused). Tags with a `-` become pre-releases. The launcher's
+  The workflow builds, signs and attaches both APKs (TH06 and TH07) with `SHA256SUMS.txt` and
+  `SHA256SUMS-th07.txt` (a tag that does not match `VERSION` is refused). Tags with a `-` become pre-releases. The launcher's
   **Check for updates** compares its own version with the newest full release.
 
 Versions: `VERSION` holds the next release's number; branch builds are named
@@ -114,6 +114,106 @@ to the launcher). Leaving the
 app also pauses. A Bluetooth/USB gamepad works too (the touch overlay hides itself until you touch the
 screen). Advanced: archives placed in `Android/data/io.github.cng605568art.th06/files/gamedata/`
 (e.g. with `adb push`) are also loaded.
+
+## Perfect Cherry Blossom (th07) app
+
+A second app, **TH07 Port** (`io.github.cng605568art.th07`, module `th07/`), runs on the same
+engine and installs next to the th06 app. **Play** opens the game's own title screen: Start,
+Extra Start (and Phantasm), Practice Start, Result (high scores per difficulty and shot, the
+spell card history, Player Data), Music Room, Option and Quit, with the original's select
+screens, unlock rules, name entry, result statistics, endings and staff roll. Scores, clear
+progress, spell history and play statistics are kept in `score.dat` (the PC game's format, in
+the app's storage) and the settings in `th07.cfg`. Every game is recorded in the PC game's
+`.rpy` format; after a game without continues the result screen offers to save it into one of
+15 slots (`replay/th7_01.rpy` … `th7_15.rpy` in the app's storage, named on the key grid).
+**Replay** on the title lists those and any `th7_ud????.rpy` copied into that folder, then the
+file's stages and the three playback modes (normal, the recorded slowdown, fast outside boss
+fights; dialogue always plays fast). Fifteen idle seconds on the title start the attract demo
+(the three demo replays in `th07.dat`, in turn). Files saved by the PC game load and play;
+whether they stay in sync for long depends on the simulation matching the PC's exactly.
+The FPS counter sits in the bottom-right corner as in the original (the game's speed in logic
+passes per second; replays also show their recorded FPS), and the slowdown on the result
+screen and in replays is measured from it. The menu descriptions are read from your
+`th07.exe`.
+
+* **Get it:** every CI run also builds it, signed with the same key, as its own artifact
+  `th07-android-<version>`, and every GitHub Release from v0.10.0 carries it. Locally, with the
+  Android SDK: `gradle :th07:assembleRelease` (APK in `th07/build/outputs/apk/release/`).
+* **Files from your own copy (version 1.00b):** `th07.dat` and `th07.exe` are needed (the
+  game data, and the program the sound effects and other tables are read from, recognised by
+  its SHA-256); `thbgm.dat` is optional and adds the music (its index, `thbgm.fmt`, is inside
+  `th07.dat`).
+* **Import:** copy your game folder to the phone, then **TH07 Port → Choose game folder** (or
+  **Choose files** to pick them one by one). Each file is recognised by its contents and
+  copied into the app's own storage (`files/gamedata/`), so the folder can be deleted
+  afterwards; the file list shows what is there and whether it is the right file, and
+  **Remove imported files** deletes the copies.
+* **Start options:** *Skip the title screen* (off by default) starts a stage directly
+  instead, with its choices: character and shot type (Reimu A/B, Marisa A/B, Sakuya A/B),
+  difficulty (Easy to Lunatic, or Extra and Phantasm with their own stage), stage 1–6, spare
+  lives 0–4 and a practice start; touch controls (drag or D-pad, drag speed, button size,
+  opacity, auto-fire, latching Focus, left-handed, vibration on a miss and a bomb) and display
+  (landscape or portrait, scaling, scanlines) work as in th06. Back opens the pause menu in a
+  game and cancels in the menus; on the title with the cursor on Quit it returns to the
+  launcher. Without a 1.00b `th07.dat` and `th07.exe` the game shows a status screen saying
+  what is missing.
+* **The th06 launcher's other settings:** the launcher in English, 日本語, 简体中文, 繁體中文 or
+  Bahasa Melayu; **practice tools** (game speed 75 % / 50 %, a hitbox marker, SAVE / LOAD save
+  states); **mischief** (infinite lives or bombs, invincible, power always MAX, unlimited
+  continues); **replace music** (any song with your own audio file, converted to WAV 44.1 kHz
+  stereo and looped, stored as `music/th07_NN.wav`). A game with mischief, slow motion or a
+  loaded save state saves no high scores, clears, spell history, practice bests or replay (the
+  side panel says so). **Help & updates:** an automatic or manual check for a newer release,
+  **Report an issue**, **Save a log**, and a banner after a crash.
+* **Backup:** **Back up to a file** saves `score.dat` (high scores, spell card history, play
+  records), `th07.cfg`, the replays and the launcher's settings as one ZIP wherever you choose;
+  **Restore from a backup** brings them back (same-name replays are replaced, other replays
+  kept), with your replaced music if you include it. The game files and the game text are
+  not in a backup: import or download them again.
+* **Game text in other languages (optional):** pick a language under **Language → Game text**
+  and **Download** it: the Touhou Patch Center translation's th07 files (and the patches it
+  depends on) are fetched into the app's storage. If you play with the English patch on the PC
+  (thcrap), keeping its `thcrap` folder in the game folder when you import it gives English
+  without a download (the patch's `.js` files and `th07` folders are copied). The game then reads the patch the way thcrap applies it: dialogue and the boss
+  introductions, spell card names (score.dat keeps the original names), endings and staff
+  roll text, Music Room titles and comments, bomb names, translators' notes beside the
+  playfield, and the patch's pictures over the game's (title and select menus, pause and
+  continue menus, side panel, stage titles, result screens, Music Room, staff roll). Nothing
+  of the patch ships with the app.
+* Desktop development build: `cmake -S th07/src/main/cpp -B build-th07 && cmake --build build-th07`,
+  then `./build-th07/th07_desktop /path/to/game/folder` (the title), or add `--play 1 --shot 0
+  --difficulty 1 [--practice] [--lives N]` to start a stage, `--ending SHOT [--continued]
+  [--score N]` to watch an ending, `--unlock-all` to unlock Extra, Phantasm and every practice
+  stage, `--replay FILE [--replay-stage 1-7] [--replay-mode 0-2]` to play a replay or `--demo
+  0-2` an attract demo; `--replay-check` compares every played frame's event flags with the
+  recorded ones and logs where they first differ, `--replay-log N` logs the state every N
+  frames. `--english` shows the English patch from the game folder's `thcrap` folder
+  (`--thcrap DIR` names another); `--test-msg N` / `--test-spell N` show dialogue script N or
+  spell card N's banner at the stage's frame 30.
+
+## Perfect Cherry Blossom on iPhone and iPad (unsigned IPA)
+
+Every CI run also builds TH07 for iOS (`th07-ios-<version>.ipa`, the **iOS app** job; tag
+releases carry it too). It is the same game code on the same engine (SDL2, OpenGL ES 3), built
+ahead of time for arm64: no JIT, no emulation. It needs iOS 16.3 or later (iPhone 8 and newer;
+Apple's C++ library has the number formatting the game uses from 16.3 on).
+
+* **Install:** the IPA is unsigned. Sideload it with your own Apple ID through AltStore,
+  SideStore or Sideloadly (free accounts re-sign every 7 days; AltStore and SideStore can do
+  that automatically), or sign it with a developer account for TestFlight.
+* **Game files:** open the **Files** app → **On My iPhone** → **TH07 Port** and copy your own
+  game folder there (th07.dat and th07.exe 1.00b, thbgm.dat for music; the folder may sit up to
+  four levels down, but not inside a .zip: tap a zip in Files to unpack it), then close the app
+  (swipe it away) and open it again: the files are looked for at start-up. Keep its `thcrap`
+  folder for English text. Nothing of the game ships with the app.
+* **Settings:** iOS Settings → **TH07 Port** has the launcher's options: English text, skip the
+  title (shot, difficulty, stage, lives, practice), touch controls (drag or D-pad, drag speed,
+  button size, opacity, auto-fire, latching Focus, left-handed, vibration), display (landscape
+  or portrait, scaling, scanlines), practice tools and mischief. They apply at the next start.
+* **Saves:** `Saves/` in the same Files folder holds score.dat, th07.cfg, replays and the logs
+  (`Saves/logs/session.log` for bug reports); copy it out to back up.
+* Not on iOS yet: the game-text downloads, replace music and the launcher's backup button
+  (copy the `Saves` folder instead).
 
 ## Languages
 
@@ -151,7 +251,8 @@ icon (the picture over shrine red) with round and square fallbacks for older lau
 ## Layout
 
 The code is split so more games can share it: a shared engine (`engine/`) and one module per
-game (`th06/` today). Each game is its own Android app; a fix in the engine reaches every game.
+game (`th06/`, and `th07/` in progress). Each game is its own Android app; a fix in the engine
+reaches every game.
 
 ```
 .github/workflows/build.yml   CI: tests, APK, signing, releases
@@ -195,7 +296,15 @@ th06/                         Embodiment of Scarlet Devil: the Android app modul
     src/th06/SoundPlayer      SoundIdx table, frame queue
     src/th06/Translation      which patch files th06 reads and how (dialogue box numbering)
     src/th06/Stage            loads a stage from the archives, runs one tick, draws
-tests/                        host tests run by CI before every APK build (engine core + th06)
+th07/                         Perfect Cherry Blossom: the second Android app module
+  build.gradle                same SDK, NDK, ABIs and signing as th06; app id ...th07
+  src/main/java/...           LauncherActivity (import, start options), GameFiles (copies and
+                              checks th07.dat / th07.exe / thbgm.dat), GameActivity (SDL host + JNI)
+  src/main/cpp/               CMakeLists.txt (libSDL2.so + libmain.so, desktop build), th07.cmake,
+                              src/th07/ (Th07Game hosts the Supervisor: title and select
+                              screens, games, results, ending, Music Room, score.dat,
+                              replays and the attract demo)
+tests/                        host tests run by CI before every APK build (engine core, th06, th07)
 ```
 
 Local builds (optional, Linux/macOS): `bash scripts/fetch_deps.sh`, then

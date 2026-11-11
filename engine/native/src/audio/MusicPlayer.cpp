@@ -49,11 +49,23 @@ bool MusicStream::open(std::span<const std::uint8_t> wav, std::int64_t loopStart
         at += 8 + size + (size & 1);
     }
     if (!haveFormat || dataSize == 0) return fail("no format or no data");
-    if (bits != 16 || channels_ < 1 || channels_ > 2 || rate_ < 8000 || rate_ > 192000) {
+    if (bits != 16) return fail("music must be 16-bit mono or stereo PCM");
+    return openPcm(wav.subspan(dataAt, dataSize), channels_, rate_, loopStart, loopEnd, error);
+}
+
+bool MusicStream::openPcm(std::span<const std::uint8_t> pcm, int channels, int sampleRate, std::int64_t loopStart,
+                          std::int64_t loopEnd, std::string* error) {
+    auto fail = [&](const char* why) {
+        if (error) *error = why;
+        return false;
+    };
+    channels_ = channels;
+    rate_ = sampleRate;
+    if (channels_ < 1 || channels_ > 2 || rate_ < 8000 || rate_ > 192000) {
         return fail("music must be 16-bit mono or stereo PCM");
     }
-    data_ = wav.data() + dataAt;
-    totalFrames_ = dataSize / (2 * static_cast<std::size_t>(channels_));
+    data_ = pcm.data();
+    totalFrames_ = pcm.size() / (2 * static_cast<std::size_t>(channels_));
     if (totalFrames_ == 0) return fail("empty data");
     // Loop end is absolute; past the data it is clamped; an end at or before the start loops
     // the whole song (the original would run off the data there).
@@ -128,7 +140,7 @@ bool MusicPlayer::play(std::string_view songPath) {
         if (!vfs_) return false;
         wav = vfs_->looseFile(withExtension(songPath, "wav"));
         if (wav.empty()) {
-            if (unported_) unported_->hit("background music (needs the bgm folder with th06_NN.wav)");
+            if (unported_) unported_->hit(missingMessage_.c_str());
             return false;
         }
         if (auto pos = vfs_->read(withExtension(songPath, "pos")); pos && pos->size() >= 8) {

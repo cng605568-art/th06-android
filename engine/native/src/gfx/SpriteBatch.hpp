@@ -30,6 +30,7 @@ class SpriteBatch final : public SpriteSink {
     void drawTexture(GLuint texture, Blend blend, const SpriteInstance& sprite);
     void setClip(float x, float y, float w, float h) override;
     void clearClip() override;
+    void clearRect(float x, float y, float w, float h, std::uint32_t color, bool colorToo) override;
     void end();
 
     std::uint32_t takeDrawCalls();

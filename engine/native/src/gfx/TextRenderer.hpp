@@ -18,6 +18,7 @@ struct TextStyle {
     int fontSize = 15;              // the original's font size F (glyph cell 2F at double resolution)
     std::uint32_t rgb = 0xffffff;   // as it should appear on screen (0xRRGGBB)
     std::uint32_t shadow = 0x000000;
+    bool italic = false;            // translations' <i$...> markup (UTF-8 text only)
 };
 
 enum class TextAlign { Left, Centre, Right };
@@ -34,19 +35,28 @@ class TextRenderer {
     // and narrowed to fit that width. Returns the width drawn in texels (0: nothing).
     virtual float renderUtf8(std::string_view utf8, const TextStyle& style, float left, float width, TextAlign align,
                              Image& band) = 0;
+    // The width UTF-8 text takes at its natural size, in texels (for laying out markup). The
+    // default renders it into a wide scratch band.
+    virtual float measureUtf8(std::string_view utf8, const TextStyle& style);
     // Draws `sjis` into `band` (cleared, band.width = texture width, 16 rows), starting
     // `startX` texels from the left. One byte is (F + 1) / 2 texels wide, so a full-width
     // character takes F + 1. Returns false if nothing could be rendered.
     virtual bool render(std::span<const std::uint8_t> sjis, const TextStyle& style, float startX, Image& band) = 0;
 };
 
-// Built-in fallback: ASCII bytes in the port's 5x7 font, other characters left blank.
+// Built-in fallback: ASCII bytes in the port's 5x7 font, other characters left blank. In
+// UTF-8 text, typographic punctuation and accented Latin letters are shown as their nearest
+// ASCII ("’" as "'", "…" as "...", "é" as "e"; an ideographic space as two spaces).
 class FallbackTextRenderer final : public TextRenderer {
   public:
     bool render(std::span<const std::uint8_t> sjis, const TextStyle& style, float startX, Image& band) override;
     float renderUtf8(std::string_view utf8, const TextStyle& style, float left, float width, TextAlign align,
                      Image& band) override;
+    float measureUtf8(std::string_view utf8, const TextStyle& style) override;
 };
+
+// UTF-8 as the fallback renderer shows it: one ASCII character per cell (see above).
+std::string asciiFallback(std::string_view utf8);
 
 // The original's look applied to a freshly rendered band: 5-bit colour channels, opaque
 // text over a transparent background (antialiased edges darkened toward the black the

@@ -1,0 +1,465 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>PreferenceSpecifiers</key>
+	<array>
+		<dict>
+			<key>FooterText</key>
+			<string>Changes apply the next time TH07 Port starts. Copy your own game folder (th07.dat and th07.exe 1.00b, thbgm.dat for music) into "On My iPhone &gt; TH07 Port" in the Files app.</string>
+			<key>Title</key>
+			<string>Game</string>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<true/>
+			<key>Key</key>
+			<string>english_text</string>
+			<key>Title</key>
+			<string>English text (thcrap folder next to the game)</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<false/>
+			<key>Key</key>
+			<string>skip_title</string>
+			<key>Title</key>
+			<string>Skip the title screen</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<integer>0</integer>
+			<key>Key</key>
+			<string>shot_type</string>
+			<key>Title</key>
+			<string>Shot type</string>
+			<key>Titles</key>
+			<array>
+				<string>Reimu A</string>
+				<string>Reimu B</string>
+				<string>Marisa A</string>
+				<string>Marisa B</string>
+				<string>Sakuya A</string>
+				<string>Sakuya B</string>
+			</array>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Values</key>
+			<array>
+				<integer>0</integer>
+				<integer>1</integer>
+				<integer>2</integer>
+				<integer>3</integer>
+				<integer>4</integer>
+				<integer>5</integer>
+			</array>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<integer>1</integer>
+			<key>Key</key>
+			<string>difficulty</string>
+			<key>Title</key>
+			<string>Difficulty</string>
+			<key>Titles</key>
+			<array>
+				<string>Easy</string>
+				<string>Normal</string>
+				<string>Hard</string>
+				<string>Lunatic</string>
+				<string>Extra</string>
+				<string>Phantasm</string>
+			</array>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Values</key>
+			<array>
+				<integer>0</integer>
+				<integer>1</integer>
+				<integer>2</integer>
+				<integer>3</integer>
+				<integer>4</integer>
+				<integer>5</integer>
+			</array>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<integer>1</integer>
+			<key>Key</key>
+			<string>stage</string>
+			<key>Title</key>
+			<string>Stage</string>
+			<key>Titles</key>
+			<array>
+				<string>Stage 1</string>
+				<string>Stage 2</string>
+				<string>Stage 3</string>
+				<string>Stage 4</string>
+				<string>Stage 5</string>
+				<string>Stage 6</string>
+			</array>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Values</key>
+			<array>
+				<integer>1</integer>
+				<integer>2</integer>
+				<integer>3</integer>
+				<integer>4</integer>
+				<integer>5</integer>
+				<integer>6</integer>
+			</array>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<integer>2</integer>
+			<key>Key</key>
+			<string>lives</string>
+			<key>Title</key>
+			<string>Spare lives</string>
+			<key>Titles</key>
+			<array>
+				<string>0</string>
+				<string>1</string>
+				<string>2</string>
+				<string>3</string>
+				<string>4</string>
+			</array>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Values</key>
+			<array>
+				<integer>0</integer>
+				<integer>1</integer>
+				<integer>2</integer>
+				<integer>3</integer>
+				<integer>4</integer>
+			</array>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<false/>
+			<key>Key</key>
+			<string>practice</string>
+			<key>Title</key>
+			<string>Practice start</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>Title</key>
+			<string>Touch controls</string>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<integer>0</integer>
+			<key>Key</key>
+			<string>move_mode</string>
+			<key>Title</key>
+			<string>Movement</string>
+			<key>Titles</key>
+			<array>
+				<string>Drag anywhere</string>
+				<string>D-pad</string>
+			</array>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Values</key>
+			<array>
+				<integer>0</integer>
+				<integer>1</integer>
+			</array>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<integer>150</integer>
+			<key>Key</key>
+			<string>drag_speed</string>
+			<key>Title</key>
+			<string>Drag speed</string>
+			<key>Titles</key>
+			<array>
+				<string>1×</string>
+				<string>1.25×</string>
+				<string>1.5×</string>
+				<string>2×</string>
+				<string>2.5×</string>
+				<string>3×</string>
+			</array>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Values</key>
+			<array>
+				<integer>100</integer>
+				<integer>125</integer>
+				<integer>150</integer>
+				<integer>200</integer>
+				<integer>250</integer>
+				<integer>300</integer>
+			</array>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<integer>100</integer>
+			<key>Key</key>
+			<string>button_size</string>
+			<key>Title</key>
+			<string>Button size</string>
+			<key>Titles</key>
+			<array>
+				<string>Small</string>
+				<string>Normal</string>
+				<string>Large</string>
+				<string>Extra large</string>
+			</array>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Values</key>
+			<array>
+				<integer>80</integer>
+				<integer>100</integer>
+				<integer>120</integer>
+				<integer>140</integer>
+			</array>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<integer>100</integer>
+			<key>Key</key>
+			<string>opacity</string>
+			<key>Title</key>
+			<string>Opacity</string>
+			<key>Titles</key>
+			<array>
+				<string>40%</string>
+				<string>60%</string>
+				<string>80%</string>
+				<string>100%</string>
+			</array>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Values</key>
+			<array>
+				<integer>40</integer>
+				<integer>60</integer>
+				<integer>80</integer>
+				<integer>100</integer>
+			</array>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<false/>
+			<key>Key</key>
+			<string>auto_fire</string>
+			<key>Title</key>
+			<string>Auto-fire</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<false/>
+			<key>Key</key>
+			<string>focus_toggle</string>
+			<key>Title</key>
+			<string>Focus button latches</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<false/>
+			<key>Key</key>
+			<string>left_handed</string>
+			<key>Title</key>
+			<string>Left-handed layout</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<true/>
+			<key>Key</key>
+			<string>vibrate</string>
+			<key>Title</key>
+			<string>Vibrate on a miss and on a bomb</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>Title</key>
+			<string>Display</string>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<integer>0</integer>
+			<key>Key</key>
+			<string>layout</string>
+			<key>Title</key>
+			<string>Screen</string>
+			<key>Titles</key>
+			<array>
+				<string>Landscape</string>
+				<string>Portrait</string>
+			</array>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Values</key>
+			<array>
+				<integer>0</integer>
+				<integer>1</integer>
+			</array>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<integer>0</integer>
+			<key>Key</key>
+			<string>scaling</string>
+			<key>Title</key>
+			<string>Scaling</string>
+			<key>Titles</key>
+			<array>
+				<string>Smooth</string>
+				<string>Sharp</string>
+				<string>Pixel-perfect</string>
+			</array>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Values</key>
+			<array>
+				<integer>0</integer>
+				<integer>1</integer>
+				<integer>2</integer>
+			</array>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<false/>
+			<key>Key</key>
+			<string>scanlines</string>
+			<key>Title</key>
+			<string>Scanlines</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>FooterText</key>
+			<string>Not in the original game. Slow motion, or loading a save state, means that game's scores are not saved; the hitbox marker changes nothing.</string>
+			<key>Title</key>
+			<string>Practice tools</string>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<integer>100</integer>
+			<key>Key</key>
+			<string>game_speed</string>
+			<key>Title</key>
+			<string>Game speed</string>
+			<key>Titles</key>
+			<array>
+				<string>Normal speed</string>
+				<string>75% (slow motion)</string>
+				<string>50% (slow motion)</string>
+			</array>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Values</key>
+			<array>
+				<integer>100</integer>
+				<integer>75</integer>
+				<integer>50</integer>
+			</array>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<false/>
+			<key>Key</key>
+			<string>show_hitbox</string>
+			<key>Title</key>
+			<string>Show the hitbox</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<false/>
+			<key>Key</key>
+			<string>save_states</string>
+			<key>Title</key>
+			<string>Save states (SAVE / LOAD buttons)</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>FooterText</key>
+			<string>Not in the original game. While any of these is on, scores, clears and spell cards are not saved.</string>
+			<key>Title</key>
+			<string>Mischief</string>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<false/>
+			<key>Key</key>
+			<string>mischief_lives</string>
+			<key>Title</key>
+			<string>Infinite lives</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<false/>
+			<key>Key</key>
+			<string>mischief_bombs</string>
+			<key>Title</key>
+			<string>Infinite bombs</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<false/>
+			<key>Key</key>
+			<string>mischief_invincible</string>
+			<key>Title</key>
+			<string>Invincible (nothing hits you)</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<false/>
+			<key>Key</key>
+			<string>mischief_power</string>
+			<key>Title</key>
+			<string>Power always MAX</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<false/>
+			<key>Key</key>
+			<string>mischief_continues</string>
+			<key>Title</key>
+			<string>Unlimited continues</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+	</array>
+</dict>
+</plist>
