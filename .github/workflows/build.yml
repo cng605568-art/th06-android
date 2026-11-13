@@ -187,6 +187,27 @@ jobs:
           echo "TH08_APK_BASENAME=th08-android-$v" >> "$GITHUB_ENV"
           echo "LAUNCHER_APK_BASENAME=touhou-launcher-android-$v" >> "$GITHUB_ENV"
 
+      # Touhou Launcher must open on its own picker (one home-screen entry), run each game in its
+      # own process and tell the games they are inside it; the standalone apps must not.
+      - name: Check Touhou Launcher's manifest and flags
+        run: |
+          a="$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/aapt2"
+          [ -x "$a" ] || { echo "::warning::aapt2 unavailable; launcher not checked"; exit 0; }
+          apk=launcher/build/outputs/apk/release/launcher-release.apk
+          "$a" dump badging "$apk" | grep -E "^(application-label|launchable-activity):" || true
+          n=$("$a" dump badging "$apk" | grep -c "^launchable-activity:" || true)
+          [ "$n" = 1 ] || { echo "::error::Touhou Launcher has $n home-screen activities (want 1)"; exit 1; }
+          tree=$("$a" dump xmltree --file AndroidManifest.xml "$apk")
+          res=$("$a" dump resources "$apk")
+          for g in th06 th07 th08; do
+            grep -q "\":$g\"" <<< "$tree" || { echo "::error::$g's game activity has no process of its own"; exit 1; }
+            grep -A1 "bool/${g}_in_touhou_launcher" <<< "$res" | grep -q "true" \
+              || { echo "::error::${g}_in_touhou_launcher is not true in Touhou Launcher"; exit 1; }
+            grep -A1 "bool/${g}_in_touhou_launcher" < <("$a" dump resources "apps/$g/build/outputs/apk/release/$g-app-release.apk") | grep -q "false" \
+              || { echo "::error::${g}_in_touhou_launcher is not false in the standalone $g app"; exit 1; }
+          done
+          echo "Touhou Launcher: one picker, three game processes, flags set"
+
       # Unstripped native libraries, to turn the addresses in a player's crash log
       # (libth08main.so+0x...) back into function names and lines. Touhou Launcher packages
       # the same libraries, so these serve its crash logs too.
