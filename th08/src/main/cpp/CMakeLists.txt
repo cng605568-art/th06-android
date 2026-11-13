@@ -1,7 +1,7 @@
 # Native build of the th08 app, driven by Gradle's externalNativeBuild on Android (AGP
 # passes the NDK toolchain, ABI and TOUHOU_THIRD_PARTY). Produces libSDL2.so and
-# libmain.so: the shared engine (engine/native/engine.cmake) with Imperishable Night's
-# game code, which GameActivity in the :th08 app module (th08/build.gradle) loads.
+# libth08main.so: the shared engine (engine/native/engine.cmake) with Imperishable Night's
+# game code, which GameActivity in the :th08 game library (th08/build.gradle) loads.
 #
 # The same file also builds a Linux desktop executable for development
 # (needs libgles-dev + an EGL driver):
@@ -62,10 +62,11 @@ set(TH08_APP_SOURCES
   src/th08/Th08Game.cpp)
 
 if(ANDROID)
-  # SDLActivity loads "libmain.so" and calls SDL_main() in it.
-  add_library(main SHARED ${TH08_APP_SOURCES})
-  target_link_options(main PRIVATE -Wl,--gc-sections)
-  set(TH08_APP_TARGET main)
+  # GameActivity names "libth08main.so" (one name per game, so the three can share Touhou
+  # Launcher's APK); SDLActivity loads it and calls SDL_main() in it.
+  add_library(th08main SHARED ${TH08_APP_SOURCES})
+  target_link_options(th08main PRIVATE -Wl,--gc-sections)
+  set(TH08_APP_TARGET th08main)
 elseif(TOUHOU_IOS)
   # The iOS app bundle (unsigned; sideloading tools sign it). Info.plist comes from
   # th08/ios; scripts/package_ios.sh adds Settings.bundle and the icon and makes the .ipa.

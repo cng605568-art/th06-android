@@ -26,7 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Hosts the SDL2 native engine (libmain.so). The static methods below are called from
+ * Hosts the SDL2 native engine (libth08main.so). The static methods below are called from
  * native code over JNI (engine/native/src/platform/AndroidStorage.cpp, and th08's start
  * options in Th08Game.cpp) to reach the game files imported in {@link LauncherActivity}.
  */
@@ -35,7 +35,21 @@ public class GameActivity extends SDLActivity {
 
     @Override
     protected String[] getLibraries() {
-        return new String[] {"SDL2", "main"};
+        return new String[] {"SDL2", "th08main"};
+    }
+
+    @Override
+    protected void attachBaseContext(Context base) {
+        super.attachBaseContext(GameStorage.wrap(base));  // (its own folder inside Touhou Launcher)
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        // Inside Touhou Launcher each game runs in a process of its own (see the launcher's
+        // manifest). It ends with the game, so the next start, of this game or another, begins
+        // from scratch: SDL, the engine's state and the launcher's latest settings.
+        if (isFinishing() && GameStorage.inLauncher(this)) android.os.Process.killProcess(android.os.Process.myPid());
     }
 
     @Override

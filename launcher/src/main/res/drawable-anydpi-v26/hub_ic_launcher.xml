@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive icon (Android 8+): the yin-yang orb over deep ink, cropped by the launcher's mask. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/hub_ink" />
+    <foreground android:drawable="@drawable/hub_ic_launcher_foreground" />
+</adaptive-icon>

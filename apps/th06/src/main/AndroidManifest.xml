@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The standalone TH06 app. Its activities, features and permissions come from the :th06 game
+     library (th06/src/main/AndroidManifest.xml); this adds the application's name, label and icon
+     and puts the launcher on the home screen. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:name="io.github.cng605568art.th06.Th06App"
+        android:label="@string/th06_app_name"
+        android:icon="@mipmap/th06_ic_launcher"
+        android:roundIcon="@mipmap/th06_ic_launcher_round"
+        android:allowBackup="false"
+        android:appCategory="game"
+        android:isGame="true"
+        android:hardwareAccelerated="true"
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+
+        <activity
+            android:name="io.github.cng605568art.th06.ImportActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

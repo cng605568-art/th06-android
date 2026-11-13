@@ -2,209 +2,209 @@
 <!-- Launcher text in five languages: values (English), values-ja, values-zh-rCN, values-zh-rTW
      and values-ms have the same keys and placeholders (keep the files in step). -->
 <resources>
-    <string name="app_name" translatable="false">TH07 Port</string>
-    <string name="header_title" translatable="false">東方妖々夢</string>
-    <string name="header_subtitle" translatable="false">Perfect Cherry Blossom</string>
-    <string name="header_tag">Android port  ·  plays your own copy of the game (version 1.00b)</string>
-    <string name="play">Play</string>
-    <string name="hint_import">Import th07.dat and th07.exe first (Game files, below). Without them the game only shows which files are missing.</string>
-    <string name="hint_importing">Importing your files…</string>
-    <string name="hint_gametext_downloading">Downloading the game text…</string>
-    <string name="hint_backup">Backing up or restoring…</string>
-    <string name="hint_title">Opens the title screen</string>
-    <string name="hint_stage">Starts at stage %1$d  ·  %2$s  ·  %3$s</string>
-    <string name="hint_extra">Starts the Extra stage  ·  %1$s</string>
-    <string name="hint_phantasm">Starts the Phantasm stage  ·  %1$s</string>
-    <string name="hint_gametext">"  ·  %1$s text"</string>
+    <string name="th07_app_name" translatable="false">TH07 Port</string>
+    <string name="th07_header_title" translatable="false">東方妖々夢</string>
+    <string name="th07_header_subtitle" translatable="false">Perfect Cherry Blossom</string>
+    <string name="th07_header_tag">Android port  ·  plays your own copy of the game (version 1.00b)</string>
+    <string name="th07_play">Play</string>
+    <string name="th07_hint_import">Import th07.dat and th07.exe first (Game files, below). Without them the game only shows which files are missing.</string>
+    <string name="th07_hint_importing">Importing your files…</string>
+    <string name="th07_hint_gametext_downloading">Downloading the game text…</string>
+    <string name="th07_hint_backup">Backing up or restoring…</string>
+    <string name="th07_hint_title">Opens the title screen</string>
+    <string name="th07_hint_stage">Starts at stage %1$d  ·  %2$s  ·  %3$s</string>
+    <string name="th07_hint_extra">Starts the Extra stage  ·  %1$s</string>
+    <string name="th07_hint_phantasm">Starts the Phantasm stage  ·  %1$s</string>
+    <string name="th07_hint_gametext">"  ·  %1$s text"</string>
 
-    <string name="lang_title">Language</string>
-    <string name="lang_body">For this launcher and for the game’s own text (dialogue, spell cards, endings, music titles and comments).</string>
-    <string name="lang_system">Phone setting</string>
-    <string name="gametext_caption">Game text (dialogue, spell cards, endings, music)</string>
-    <string name="gametext_same">Same as the app</string>
-    <string name="gametext_original">The game\'s own Japanese text.</string>
-    <string name="gametext_not_installed">Download the translation from Touhou Patch Center (thpatch.net). Only TH07\'s text and its translated text pictures are fetched (a few MB).</string>
-    <string name="gametext_not_installed_en">Download the translation from Touhou Patch Center (thpatch.net): only TH07\'s text and its translated text pictures are fetched (a few MB). Or, if you play with the English patch on the PC, keep its thcrap folder in your game folder and import that folder again (Game files, below).</string>
-    <string name="gametext_installed">Installed: %1$d files, dialogue for %2$d of 8 stages, updated %3$s.</string>
-    <string name="gametext_imported">From your imported thcrap folder: %1$d files, dialogue for %2$d of 8 stages.</string>
-    <string name="gametext_download">Download translation</string>
-    <string name="gametext_update">Check for a newer translation</string>
-    <string name="gametext_remove">Remove the downloaded translation</string>
-    <string name="gametext_connecting">Connecting to thpatch.net…</string>
-    <string name="gametext_downloading">Downloading %1$s: file %2$d of %3$d…</string>
-    <string name="gametext_done">Done (%1$d new files). The game uses the translation from its next start.</string>
-    <string name="gametext_failed">Could not download: %1$s</string>
-    <string name="gametext_unavailable">Touhou Patch Center has no translation of this game\'s text in this language yet, so it stays in Japanese.</string>
-    <string name="gametext_removed">The downloaded translation was removed.</string>
-    <string name="gametext_busy">Wait for the import, download or backup that is running.</string>
-    <string name="gametext_credit">Game text translations: Touhou Patch Center contributors (thpatch.net), CC BY-SA 3.0, applied the way the thcrap patcher applies them.</string>
+    <string name="th07_lang_title">Language</string>
+    <string name="th07_lang_body">For this launcher and for the game’s own text (dialogue, spell cards, endings, music titles and comments).</string>
+    <string name="th07_lang_system">Phone setting</string>
+    <string name="th07_gametext_caption">Game text (dialogue, spell cards, endings, music)</string>
+    <string name="th07_gametext_same">Same as the app</string>
+    <string name="th07_gametext_original">The game\'s own Japanese text.</string>
+    <string name="th07_gametext_not_installed">Download the translation from Touhou Patch Center (thpatch.net). Only TH07\'s text and its translated text pictures are fetched (a few MB).</string>
+    <string name="th07_gametext_not_installed_en">Download the translation from Touhou Patch Center (thpatch.net): only TH07\'s text and its translated text pictures are fetched (a few MB). Or, if you play with the English patch on the PC, keep its thcrap folder in your game folder and import that folder again (Game files, below).</string>
+    <string name="th07_gametext_installed">Installed: %1$d files, dialogue for %2$d of 8 stages, updated %3$s.</string>
+    <string name="th07_gametext_imported">From your imported thcrap folder: %1$d files, dialogue for %2$d of 8 stages.</string>
+    <string name="th07_gametext_download">Download translation</string>
+    <string name="th07_gametext_update">Check for a newer translation</string>
+    <string name="th07_gametext_remove">Remove the downloaded translation</string>
+    <string name="th07_gametext_connecting">Connecting to thpatch.net…</string>
+    <string name="th07_gametext_downloading">Downloading %1$s: file %2$d of %3$d…</string>
+    <string name="th07_gametext_done">Done (%1$d new files). The game uses the translation from its next start.</string>
+    <string name="th07_gametext_failed">Could not download: %1$s</string>
+    <string name="th07_gametext_unavailable">Touhou Patch Center has no translation of this game\'s text in this language yet, so it stays in Japanese.</string>
+    <string name="th07_gametext_removed">The downloaded translation was removed.</string>
+    <string name="th07_gametext_busy">Wait for the import, download or backup that is running.</string>
+    <string name="th07_gametext_credit">Game text translations: Touhou Patch Center contributors (thpatch.net), CC BY-SA 3.0, applied the way the thcrap patcher applies them.</string>
 
-    <string name="files_title">Game files</string>
-    <string name="files_body">Copy your own Perfect Cherry Blossom (version 1.00b) to this phone, then choose its folder here, or pick the files themselves. th07.dat and th07.exe are needed; thbgm.dat adds the music. Your PC\'s score.dat (scores and unlocks) and replays (the replay folder) come along too, and so does the English patch if you play with it on the PC (the thcrap folder in the game folder). The files are copied into the app\'s own storage, so you can delete the folder afterwards.</string>
-    <string name="files_choose_folder">Choose game folder</string>
-    <string name="files_choose_files">Choose files</string>
-    <string name="files_remove">Remove imported files</string>
-    <string name="files_remove_title">Remove the imported game files?</string>
-    <string name="files_remove_body">th07.dat, th07.exe, thbgm.dat and the imported English patch are deleted from the app\'s storage (game text downloaded under Language stays). Your own copy is not touched; import it again to play.</string>
-    <string name="files_remove_ok">Remove</string>
-    <string name="files_removed">The imported files were removed.</string>
-    <string name="files_no_picker">This phone has no file picker for that.</string>
-    <string name="cancel">Cancel</string>
+    <string name="th07_files_title">Game files</string>
+    <string name="th07_files_body">Copy your own Perfect Cherry Blossom (version 1.00b) to this phone, then choose its folder here, or pick the files themselves. th07.dat and th07.exe are needed; thbgm.dat adds the music. Your PC\'s score.dat (scores and unlocks) and replays (the replay folder) come along too, and so does the English patch if you play with it on the PC (the thcrap folder in the game folder). The files are copied into the app\'s own storage, so you can delete the folder afterwards.</string>
+    <string name="th07_files_choose_folder">Choose game folder</string>
+    <string name="th07_files_choose_files">Choose files</string>
+    <string name="th07_files_remove">Remove imported files</string>
+    <string name="th07_files_remove_title">Remove the imported game files?</string>
+    <string name="th07_files_remove_body">th07.dat, th07.exe, thbgm.dat and the imported English patch are deleted from the app\'s storage (game text downloaded under Language stays). Your own copy is not touched; import it again to play.</string>
+    <string name="th07_files_remove_ok">Remove</string>
+    <string name="th07_files_removed">The imported files were removed.</string>
+    <string name="th07_files_no_picker">This phone has no file picker for that.</string>
+    <string name="th07_cancel">Cancel</string>
 
-    <string name="status_ok_size">%1$.1f MB</string>
-    <string name="status_ok_exe">version 1.00b</string>
-    <string name="status_missing_needed">missing (needed)</string>
-    <string name="status_missing_optional">missing (optional: music)</string>
-    <string name="status_bad_dat">damaged (not a PBG4 archive)</string>
-    <string name="status_bad_exe">not version 1.00b</string>
-    <string name="status_bad_bgm">not the game\'s music file</string>
-    <string name="status_english_ok">English patch (%1$d files)</string>
-    <string name="status_english_missing">no English patch (optional)</string>
-    <string name="status_music_replaced">%1$d song(s) replaced (Replace music, below)</string>
-    <string name="status_ready">Ready to play, with music.</string>
-    <string name="status_ready_no_music">Ready to play (no music: thbgm.dat is optional).</string>
-    <string name="status_not_ready">th07.dat and th07.exe are needed to play.</string>
+    <string name="th07_status_ok_size">%1$.1f MB</string>
+    <string name="th07_status_ok_exe">version 1.00b</string>
+    <string name="th07_status_missing_needed">missing (needed)</string>
+    <string name="th07_status_missing_optional">missing (optional: music)</string>
+    <string name="th07_status_bad_dat">damaged (not a PBG4 archive)</string>
+    <string name="th07_status_bad_exe">not version 1.00b</string>
+    <string name="th07_status_bad_bgm">not the game\'s music file</string>
+    <string name="th07_status_english_ok">English patch (%1$d files)</string>
+    <string name="th07_status_english_missing">no English patch (optional)</string>
+    <string name="th07_status_music_replaced">%1$d song(s) replaced (Replace music, below)</string>
+    <string name="th07_status_ready">Ready to play, with music.</string>
+    <string name="th07_status_ready_no_music">Ready to play (no music: thbgm.dat is optional).</string>
+    <string name="th07_status_not_ready">th07.dat and th07.exe are needed to play.</string>
 
-    <string name="import_starting">Reading your files…</string>
-    <string name="import_scanning_path">Looking in %1$s</string>
-    <string name="import_checking">Checking %1$s…</string>
-    <string name="import_copying">Copying %1$s…  %2$d of %3$d MB</string>
-    <string name="import_copying_unknown">Copying %1$s…  %2$d MB</string>
-    <string name="import_done_file">%1$s: imported (%2$.1f MB).</string>
-    <string name="import_done_exe">%1$s: imported (version 1.00b).</string>
-    <string name="import_exe_wrong">%1$s is not version 1.00b of th07.exe, so it was not imported (this port reads the 1.00b program).</string>
-    <string name="import_not_found">%1$s: not found (needed to play).</string>
-    <string name="import_bgm_not_found">thbgm.dat: not found (optional: it adds the music).</string>
-    <string name="import_kept">%1$s: not found; the copy imported before is kept.</string>
-    <string name="import_nothing">None of the game\'s files (th07.dat, th07.exe, thbgm.dat, score.dat, replays) were found there.</string>
-    <string name="import_done_score">score.dat: your PC scores, unlocks and spell card history imported.</string>
-    <string name="import_done_score_kept">score.dat: your PC scores, unlocks and spell card history imported (the port\'s earlier score.dat is kept as score.dat.bak).</string>
-    <string name="import_done_replays">Replays: %1$d imported, %2$d already here.</string>
-    <string name="import_replays_full">Replays: no free replay names left; the rest were not imported.</string>
-    <string name="import_done_english">English patch: %1$d files imported (%2$s).</string>
-    <string name="import_english_none">thcrap: no English patch (lang_en) in its repos folder.</string>
-    <string name="import_copying_english">Copying the English patch…  %1$d files</string>
-    <string name="import_skipped">Skipped (not one of the game\'s files): %1$s</string>
-    <string name="import_failed">The import stopped: %1$s</string>
-    <string name="import_no_space">Not enough free space for %1$s: %2$d MB needed, %3$d MB free.</string>
-    <string name="import_cannot_read">cannot read %1$s</string>
-    <string name="import_cannot_store">cannot create the app\'s game folder</string>
-    <string name="import_busy">An import is still running.</string>
+    <string name="th07_import_starting">Reading your files…</string>
+    <string name="th07_import_scanning_path">Looking in %1$s</string>
+    <string name="th07_import_checking">Checking %1$s…</string>
+    <string name="th07_import_copying">Copying %1$s…  %2$d of %3$d MB</string>
+    <string name="th07_import_copying_unknown">Copying %1$s…  %2$d MB</string>
+    <string name="th07_import_done_file">%1$s: imported (%2$.1f MB).</string>
+    <string name="th07_import_done_exe">%1$s: imported (version 1.00b).</string>
+    <string name="th07_import_exe_wrong">%1$s is not version 1.00b of th07.exe, so it was not imported (this port reads the 1.00b program).</string>
+    <string name="th07_import_not_found">%1$s: not found (needed to play).</string>
+    <string name="th07_import_bgm_not_found">thbgm.dat: not found (optional: it adds the music).</string>
+    <string name="th07_import_kept">%1$s: not found; the copy imported before is kept.</string>
+    <string name="th07_import_nothing">None of the game\'s files (th07.dat, th07.exe, thbgm.dat, score.dat, replays) were found there.</string>
+    <string name="th07_import_done_score">score.dat: your PC scores, unlocks and spell card history imported.</string>
+    <string name="th07_import_done_score_kept">score.dat: your PC scores, unlocks and spell card history imported (the port\'s earlier score.dat is kept as score.dat.bak).</string>
+    <string name="th07_import_done_replays">Replays: %1$d imported, %2$d already here.</string>
+    <string name="th07_import_replays_full">Replays: no free replay names left; the rest were not imported.</string>
+    <string name="th07_import_done_english">English patch: %1$d files imported (%2$s).</string>
+    <string name="th07_import_english_none">thcrap: no English patch (lang_en) in its repos folder.</string>
+    <string name="th07_import_copying_english">Copying the English patch…  %1$d files</string>
+    <string name="th07_import_skipped">Skipped (not one of the game\'s files): %1$s</string>
+    <string name="th07_import_failed">The import stopped: %1$s</string>
+    <string name="th07_import_no_space">Not enough free space for %1$s: %2$d MB needed, %3$d MB free.</string>
+    <string name="th07_import_cannot_read">cannot read %1$s</string>
+    <string name="th07_import_cannot_store">cannot create the app\'s game folder</string>
+    <string name="th07_import_busy">An import is still running.</string>
 
-    <string name="start_title">Start</string>
-    <string name="start_body">Play opens the game\'s title screen: choose the difficulty, character and shot there; scores and play data are saved (replays are not ported yet). For testing, a stage can be started directly instead.</string>
-    <string name="start_skip_title">Skip the title screen (start the chosen stage directly)</string>
-    <string name="start_shot">Character and shot type</string>
-    <string name="start_difficulty">Difficulty (Extra and Phantasm have their own stage)</string>
-    <string name="start_stage">Stage</string>
-    <string name="start_lives">Spare lives</string>
-    <string name="start_practice">Practice start (full power from stage 2 on; practice runs start with 8 spare lives)</string>
+    <string name="th07_start_title">Start</string>
+    <string name="th07_start_body">Play opens the game\'s title screen: choose the difficulty, character and shot there; scores and play data are saved (replays are not ported yet). For testing, a stage can be started directly instead.</string>
+    <string name="th07_start_skip_title">Skip the title screen (start the chosen stage directly)</string>
+    <string name="th07_start_shot">Character and shot type</string>
+    <string name="th07_start_difficulty">Difficulty (Extra and Phantasm have their own stage)</string>
+    <string name="th07_start_stage">Stage</string>
+    <string name="th07_start_lives">Spare lives</string>
+    <string name="th07_start_practice">Practice start (full power from stage 2 on; practice runs start with 8 spare lives)</string>
 
-    <string name="controls_title">Controls</string>
-    <string name="controls_body">Touch controls for the game (a Bluetooth or USB gamepad works too).</string>
-    <string name="controls_movement">Movement</string>
-    <string name="controls_drag_speed">Drag speed (how far your character moves for your finger\'s travel)</string>
-    <string name="controls_button_size">Button size</string>
-    <string name="controls_opacity">Button opacity</string>
-    <string name="controls_autofire">Auto-fire (Shot is always held while you play)</string>
-    <string name="controls_focus_toggle">Focus button toggles (tap on, tap off)</string>
-    <string name="controls_left">Left-handed (buttons on the left)</string>
-    <string name="controls_vibrate">Vibrate on a miss and on a bomb</string>
+    <string name="th07_controls_title">Controls</string>
+    <string name="th07_controls_body">Touch controls for the game (a Bluetooth or USB gamepad works too).</string>
+    <string name="th07_controls_movement">Movement</string>
+    <string name="th07_controls_drag_speed">Drag speed (how far your character moves for your finger\'s travel)</string>
+    <string name="th07_controls_button_size">Button size</string>
+    <string name="th07_controls_opacity">Button opacity</string>
+    <string name="th07_controls_autofire">Auto-fire (Shot is always held while you play)</string>
+    <string name="th07_controls_focus_toggle">Focus button toggles (tap on, tap off)</string>
+    <string name="th07_controls_left">Left-handed (buttons on the left)</string>
+    <string name="th07_controls_vibrate">Vibrate on a miss and on a bomb</string>
 
-    <string name="display_title">Display</string>
-    <string name="display_body">Upright play puts the playfield across the whole width with the score below it and the controls underneath.</string>
-    <string name="display_screen">Screen</string>
-    <string name="display_scaling">Scaling</string>
-    <string name="display_scanlines">CRT scanlines</string>
+    <string name="th07_display_title">Display</string>
+    <string name="th07_display_body">Upright play puts the playfield across the whole width with the score below it and the controls underneath.</string>
+    <string name="th07_display_screen">Screen</string>
+    <string name="th07_display_scaling">Scaling</string>
+    <string name="th07_display_scanlines">CRT scanlines</string>
 
-    <string name="practice_title">Practice tools</string>
-    <string name="practice_body">Not in the original game. Slow motion, or loading a save state, means that game\'s scores are not saved; the hitbox marker changes nothing.</string>
-    <string name="practice_speed">Game speed</string>
-    <string name="practice_hitbox">Show your character\'s hitbox</string>
-    <string name="practice_states">Save states (SAVE / LOAD buttons; F5 / F9 on a keyboard, L3 / R3 on a gamepad)</string>
+    <string name="th07_practice_title">Practice tools</string>
+    <string name="th07_practice_body">Not in the original game. Slow motion, or loading a save state, means that game\'s scores are not saved; the hitbox marker changes nothing.</string>
+    <string name="th07_practice_speed">Game speed</string>
+    <string name="th07_practice_hitbox">Show your character\'s hitbox</string>
+    <string name="th07_practice_states">Save states (SAVE / LOAD buttons; F5 / F9 on a keyboard, L3 / R3 on a gamepad)</string>
 
-    <string name="mischief_title">Mischief</string>
-    <string name="mischief_body">Not in the original game. While any of these is on, scores, clears, spell cards and play records are not saved.</string>
+    <string name="th07_mischief_title">Mischief</string>
+    <string name="th07_mischief_body">Not in the original game. While any of these is on, scores, clears, spell cards and play records are not saved.</string>
 
-    <string name="music_title">Replace music</string>
-    <string name="music_body">Play your own audio file (MP3, AAC, OGG, FLAC, WAV …) in place of one of the game\'s songs. It is converted to WAV (44,100 Hz, stereo) and loops like the game\'s music; thbgm.dat is not changed.</string>
-    <string name="music_song">Song</string>
-    <string name="music_replaced_mark">(replaced)</string>
-    <string name="music_loop">Loop from (seconds into your song; empty or 0 = the whole song)</string>
-    <string name="music_choose">Choose audio file</string>
-    <string name="music_restore">Restore the game\'s song</string>
-    <string name="music_restored">Restored: the game\'s own song plays again.</string>
-    <string name="music_now_yours">Now: your music (%1$s)</string>
-    <string name="music_now_game">Now: the game\'s own song</string>
-    <string name="music_loop_nan">The loop point must be a number of seconds.</string>
-    <string name="music_reading">Reading your file…</string>
-    <string name="music_done">Done: %1$s now plays your music (%2$s).</string>
-    <string name="music_failed">Could not use that file: %1$s</string>
-    <string name="music_busy">Wait for the conversion or backup that is running.</string>
-    <string name="music_converting">Converting to WAV (44,100 Hz, stereo)…</string>
-    <string name="music_converting_pct">Converting… %1$d%%</string>
-    <string name="music_decoding_pct">Decoding… %1$d%%</string>
-    <string name="music_describe">%1$s, loops from %2$s, %3$.1f MB</string>
-    <string name="music_err_no_audio">That file has no audio track</string>
-    <string name="music_err_nothing">Nothing could be decoded from that file</string>
-    <string name="music_err_cannot">This file cannot be decoded: %1$s</string>
+    <string name="th07_music_title">Replace music</string>
+    <string name="th07_music_body">Play your own audio file (MP3, AAC, OGG, FLAC, WAV …) in place of one of the game\'s songs. It is converted to WAV (44,100 Hz, stereo) and loops like the game\'s music; thbgm.dat is not changed.</string>
+    <string name="th07_music_song">Song</string>
+    <string name="th07_music_replaced_mark">(replaced)</string>
+    <string name="th07_music_loop">Loop from (seconds into your song; empty or 0 = the whole song)</string>
+    <string name="th07_music_choose">Choose audio file</string>
+    <string name="th07_music_restore">Restore the game\'s song</string>
+    <string name="th07_music_restored">Restored: the game\'s own song plays again.</string>
+    <string name="th07_music_now_yours">Now: your music (%1$s)</string>
+    <string name="th07_music_now_game">Now: the game\'s own song</string>
+    <string name="th07_music_loop_nan">The loop point must be a number of seconds.</string>
+    <string name="th07_music_reading">Reading your file…</string>
+    <string name="th07_music_done">Done: %1$s now plays your music (%2$s).</string>
+    <string name="th07_music_failed">Could not use that file: %1$s</string>
+    <string name="th07_music_busy">Wait for the conversion or backup that is running.</string>
+    <string name="th07_music_converting">Converting to WAV (44,100 Hz, stereo)…</string>
+    <string name="th07_music_converting_pct">Converting… %1$d%%</string>
+    <string name="th07_music_decoding_pct">Decoding… %1$d%%</string>
+    <string name="th07_music_describe">%1$s, loops from %2$s, %3$.1f MB</string>
+    <string name="th07_music_err_no_audio">That file has no audio track</string>
+    <string name="th07_music_err_nothing">Nothing could be decoded from that file</string>
+    <string name="th07_music_err_cannot">This file cannot be decoded: %1$s</string>
 
-    <string name="backup_title">Backup</string>
-    <string name="backup_body">Keep your high scores and play records, game options, replays, launcher settings and, if you like, your replaced music in one file (in Downloads, a cloud drive …), and bring them back after reinstalling or on a new phone. Your game files and downloaded game text are not in it: import or download them again.</string>
-    <string name="backup_music">Include replaced music (bigger file)</string>
-    <string name="backup_save">Back up to a file</string>
-    <string name="backup_restore">Restore from a backup</string>
-    <string name="backup_busy">Wait for the import, conversion or backup that is running.</string>
-    <string name="backup_saving">Saving…</string>
-    <string name="backup_saved">Saved: %1$s.</string>
-    <string name="backup_save_failed">Could not save the backup: %1$s</string>
-    <string name="backup_confirm_title">Restore this backup?</string>
-    <string name="backup_confirm_body">Your current high scores, game options and launcher settings are replaced by the backup\'s (and your replaced music too, if the backup has music). Replays with the same name are replaced; your other replays are kept.</string>
-    <string name="backup_confirm_ok">Restore</string>
-    <string name="backup_restoring">Restoring…</string>
-    <string name="backup_reading">Reading %1$s…</string>
-    <string name="backup_saving_music">Saving music: %1$s…</string>
-    <string name="backup_reading_music">Reading music: %1$s…</string>
-    <string name="backup_restored">Restored: %1$s.</string>
-    <string name="backup_restore_failed">Could not restore: %1$s</string>
-    <string name="backup_part_scores">high scores and records</string>
-    <string name="backup_part_options">game options</string>
-    <string name="backup_part_settings">launcher settings</string>
-    <string name="backup_empty">nothing (the backup was empty)</string>
-    <string name="backup_err_not_backup">this is not a TH07 port backup</string>
-    <string name="backup_err_newer">this backup comes from a newer version of the app; update the app first</string>
-    <string name="backup_err_damaged">the backup is damaged</string>
+    <string name="th07_backup_title">Backup</string>
+    <string name="th07_backup_body">Keep your high scores and play records, game options, replays, launcher settings and, if you like, your replaced music in one file (in Downloads, a cloud drive …), and bring them back after reinstalling or on a new phone. Your game files and downloaded game text are not in it: import or download them again.</string>
+    <string name="th07_backup_music">Include replaced music (bigger file)</string>
+    <string name="th07_backup_save">Back up to a file</string>
+    <string name="th07_backup_restore">Restore from a backup</string>
+    <string name="th07_backup_busy">Wait for the import, conversion or backup that is running.</string>
+    <string name="th07_backup_saving">Saving…</string>
+    <string name="th07_backup_saved">Saved: %1$s.</string>
+    <string name="th07_backup_save_failed">Could not save the backup: %1$s</string>
+    <string name="th07_backup_confirm_title">Restore this backup?</string>
+    <string name="th07_backup_confirm_body">Your current high scores, game options and launcher settings are replaced by the backup\'s (and your replaced music too, if the backup has music). Replays with the same name are replaced; your other replays are kept.</string>
+    <string name="th07_backup_confirm_ok">Restore</string>
+    <string name="th07_backup_restoring">Restoring…</string>
+    <string name="th07_backup_reading">Reading %1$s…</string>
+    <string name="th07_backup_saving_music">Saving music: %1$s…</string>
+    <string name="th07_backup_reading_music">Reading music: %1$s…</string>
+    <string name="th07_backup_restored">Restored: %1$s.</string>
+    <string name="th07_backup_restore_failed">Could not restore: %1$s</string>
+    <string name="th07_backup_part_scores">high scores and records</string>
+    <string name="th07_backup_part_options">game options</string>
+    <string name="th07_backup_part_settings">launcher settings</string>
+    <string name="th07_backup_empty">nothing (the backup was empty)</string>
+    <string name="th07_backup_err_not_backup">this is not a TH07 port backup</string>
+    <string name="th07_backup_err_newer">this backup comes from a newer version of the app; update the app first</string>
+    <string name="th07_backup_err_damaged">the backup is damaged</string>
 
-    <string name="crash_title">The game closed unexpectedly</string>
-    <string name="crash_body">Sorry about that. A log of what happened was kept on this phone; you can save it and attach it to a bug report on GitHub. Nothing is sent automatically.</string>
-    <string name="crash_save">Save the log</string>
-    <string name="crash_dismiss">Dismiss</string>
-    <string name="update_title">Version %1$s is available</string>
-    <string name="update_body">You have %1$s. Download the new APK from its release page and install it over this one (your scores and settings stay).</string>
-    <string name="update_open">Open the release page</string>
-    <string name="no_browser">No browser found to open %1$s</string>
+    <string name="th07_crash_title">The game closed unexpectedly</string>
+    <string name="th07_crash_body">Sorry about that. A log of what happened was kept on this phone; you can save it and attach it to a bug report on GitHub. Nothing is sent automatically.</string>
+    <string name="th07_crash_save">Save the log</string>
+    <string name="th07_crash_dismiss">Dismiss</string>
+    <string name="th07_update_title">Version %1$s is available</string>
+    <string name="th07_update_body">You have %1$s. Download the new APK from its release page and install it over this one (your scores and settings stay).</string>
+    <string name="th07_update_open">Open the release page</string>
+    <string name="th07_no_browser">No browser found to open %1$s</string>
 
-    <string name="help_title">Help &amp; updates</string>
-    <string name="help_version">Version %1$s (build %2$d).</string>
-    <string name="help_auto">Check for a new version once a day</string>
-    <string name="help_check">Check for updates now</string>
-    <string name="help_checking">Checking…</string>
-    <string name="help_none_published">No release has been published yet.</string>
-    <string name="help_newer">Version %1$s is available (see the top of this page).</string>
-    <string name="help_latest">You have the newest version (%1$s is the latest release).</string>
-    <string name="help_check_failed">Could not check: %1$s</string>
-    <string name="help_bug">Found a bug? Save the log (it stays on your phone until you share it) and attach it to an issue on GitHub.</string>
-    <string name="help_save_log">Save a log for a bug report</string>
-    <string name="help_report">Report an issue on GitHub</string>
-    <string name="help_log_saved">Log saved. Attach it to your bug report.</string>
-    <string name="help_log_failed">Could not save the log: %1$s</string>
-    <string name="err_cannot_write">cannot write there</string>
-    <string name="err_cannot_read">cannot read that file</string>
-    <string name="list_separator">", "</string>
+    <string name="th07_help_title">Help &amp; updates</string>
+    <string name="th07_help_version">Version %1$s (build %2$d).</string>
+    <string name="th07_help_auto">Check for a new version once a day</string>
+    <string name="th07_help_check">Check for updates now</string>
+    <string name="th07_help_checking">Checking…</string>
+    <string name="th07_help_none_published">No release has been published yet.</string>
+    <string name="th07_help_newer">Version %1$s is available (see the top of this page).</string>
+    <string name="th07_help_latest">You have the newest version (%1$s is the latest release).</string>
+    <string name="th07_help_check_failed">Could not check: %1$s</string>
+    <string name="th07_help_bug">Found a bug? Save the log (it stays on your phone until you share it) and attach it to an issue on GitHub.</string>
+    <string name="th07_help_save_log">Save a log for a bug report</string>
+    <string name="th07_help_report">Report an issue on GitHub</string>
+    <string name="th07_help_log_saved">Log saved. Attach it to your bug report.</string>
+    <string name="th07_help_log_failed">Could not save the log: %1$s</string>
+    <string name="th07_err_cannot_write">cannot write there</string>
+    <string name="th07_err_cannot_read">cannot read that file</string>
+    <string name="th07_list_separator">", "</string>
 
-    <string name="footer">A fan-made port for your own copy of 東方妖々夢 ～ Perfect Cherry Blossom (Team Shanghai Alice). No game files are included.</string>
+    <string name="th07_footer">A fan-made port for your own copy of 東方妖々夢 ～ Perfect Cherry Blossom (Team Shanghai Alice). No game files are included.</string>
 
-    <string-array name="shot_types" translatable="false">
+    <string-array name="th07_shot_types" translatable="false">
         <item>Reimu A</item>
         <item>Reimu B</item>
         <item>Marisa A</item>
@@ -212,7 +212,7 @@
         <item>Sakuya A</item>
         <item>Sakuya B</item>
     </string-array>
-    <string-array name="difficulties" translatable="false">
+    <string-array name="th07_difficulties" translatable="false">
         <item>Easy</item>
         <item>Normal</item>
         <item>Hard</item>
@@ -220,7 +220,7 @@
         <item>Extra</item>
         <item>Phantasm</item>
     </string-array>
-    <string-array name="stages">
+    <string-array name="th07_stages">
         <item>Stage 1</item>
         <item>Stage 2</item>
         <item>Stage 3</item>
@@ -228,45 +228,45 @@
         <item>Stage 5</item>
         <item>Stage 6</item>
     </string-array>
-    <string-array name="lives">
+    <string-array name="th07_lives">
         <item>0</item>
         <item>1</item>
         <item>2 (the game\'s default)</item>
         <item>3</item>
         <item>4</item>
     </string-array>
-    <string-array name="move_modes">
+    <string-array name="th07_move_modes">
         <item>Drag anywhere (touchpad)</item>
         <item>D-pad</item>
     </string-array>
-    <string-array name="button_sizes">
+    <string-array name="th07_button_sizes">
         <item>Small</item>
         <item>Normal</item>
         <item>Large</item>
         <item>Extra large</item>
     </string-array>
-    <string-array name="opacities">
+    <string-array name="th07_opacities">
         <item>Faint</item>
         <item>Light</item>
         <item>Normal</item>
         <item>Solid</item>
     </string-array>
-    <string-array name="layouts">
+    <string-array name="th07_layouts">
         <item>Landscape (sideways)</item>
         <item>Portrait (upright; playfield fills the width)</item>
     </string-array>
-    <string-array name="scalings">
+    <string-array name="th07_scalings">
         <item>Smooth</item>
         <item>Sharp pixels</item>
         <item>Pixel-perfect (whole multiples)</item>
     </string-array>
-    <string-array name="speeds">
+    <string-array name="th07_speeds">
         <item>Normal speed</item>
         <item formatted="false">75% (slow motion)</item>
         <item formatted="false">50% (slow motion)</item>
     </string-array>
     <!-- The order of Options.MISCHIEF bits. -->
-    <string-array name="mischief">
+    <string-array name="th07_mischief">
         <item>Infinite lives</item>
         <item>Infinite bombs</item>
         <item>Invincible (nothing hits you)</item>
@@ -274,7 +274,7 @@
         <item>Unlimited continues</item>
     </string-array>
     <!-- th07_01 .. th07_20 (thbgm.fmt, the Music Room's order). -->
-    <string-array name="track_titles">
+    <string-array name="th07_track_titles">
         <item>Mystic Dream ~ Snow or Cherry Petal</item>
         <item>Paradise ~ Deep Mountain</item>
         <item>Crystallized Silver</item>
@@ -297,7 +297,7 @@
         <item>Sakura Sakura ~ Japanize Dream...</item>
     </string-array>
     <!-- Where each song plays, in the same order. -->
-    <string-array name="track_places">
+    <string-array name="th07_track_places">
         <item>Title screen</item>
         <item>Stage 1</item>
         <item>Stage 1 boss (Letty)</item>
@@ -319,11 +319,11 @@
         <item>Ending</item>
         <item>Staff roll</item>
     </string-array>
-    <plurals name="backup_part_replays">
+    <plurals name="th07_backup_part_replays">
         <item quantity="one">%d replay</item>
         <item quantity="other">%d replays</item>
     </plurals>
-    <plurals name="backup_part_songs">
+    <plurals name="th07_backup_part_songs">
         <item quantity="one">%d replaced song</item>
         <item quantity="other">%d replaced songs</item>
     </plurals>

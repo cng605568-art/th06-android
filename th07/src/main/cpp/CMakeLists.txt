@@ -1,7 +1,7 @@
 # Native build of the th07 app, driven by Gradle's externalNativeBuild on Android (AGP
 # passes the NDK toolchain, ABI and TOUHOU_THIRD_PARTY). Produces libSDL2.so and
-# libmain.so: the shared engine (engine/native/engine.cmake) with Perfect Cherry Blossom's
-# game code, which GameActivity in the :th07 app module (th07/build.gradle) loads.
+# libth07main.so: the shared engine (engine/native/engine.cmake) with Perfect Cherry Blossom's
+# game code, which GameActivity in the :th07 game library (th07/build.gradle) loads.
 #
 # The same file also builds a Linux desktop executable for development
 # (needs libgles-dev + an EGL driver):
@@ -62,10 +62,11 @@ set(TH07_APP_SOURCES
   src/th07/Th07Game.cpp)
 
 if(ANDROID)
-  # SDLActivity loads "libmain.so" and calls SDL_main() in it.
-  add_library(main SHARED ${TH07_APP_SOURCES})
-  target_link_options(main PRIVATE -Wl,--gc-sections)
-  set(TH07_APP_TARGET main)
+  # GameActivity names "libth07main.so" (one name per game, so the three can share Touhou
+  # Launcher's APK); SDLActivity loads it and calls SDL_main() in it.
+  add_library(th07main SHARED ${TH07_APP_SOURCES})
+  target_link_options(th07main PRIVATE -Wl,--gc-sections)
+  set(TH07_APP_TARGET th07main)
 elseif(TOUHOU_IOS)
   # The iOS app bundle (unsigned; sideloading tools sign it). Info.plist comes from
   # th07/ios; scripts/package_ios.sh adds Settings.bundle and the icon and makes the .ipa.

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hub_choose">選擇遊戲</string>
+    <string name="hub_ready">可以開始遊戲</string>
+    <string name="hub_needs_files">請加入遊戲檔案</string>
+    <string name="hub_note">每個遊戲的檔案、分數、錄影和設定各自分開保存。每個遊戲都需要你自己的遊戲副本。</string>
+    <string name="hub_version">版本 %1$s</string>
+</resources>

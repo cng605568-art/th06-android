@@ -1,153 +1,153 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Generated: launcher text in five languages (keep the files in step). -->
 <resources>
-    <string name="header_tag">Port Android  ·  main dengan fail permainan 2002 anda sendiri</string>
-    <string name="play">Main</string>
-    <string name="hint_choose_folder">Pilih folder permainan anda dahulu (Fail permainan, di bawah).</string>
-    <string name="hint_extra">Bermula di peringkat Extra  ·  latihan, tiada apa disimpan</string>
-    <string name="hint_stage">Bermula di peringkat %1$d  ·  latihan, tiada apa disimpan</string>
-    <string name="hint_title">Membuka skrin tajuk permainan</string>
-    <string name="lang_title">Bahasa</string>
-    <string name="lang_body">Untuk pelancar ini dan teks dalam permainan (cerita, kad mantera, ulasan muzik).</string>
-    <string name="lang_system">Ikut tetapan telefon</string>
-    <string name="files_title">Fail permainan</string>
-    <string name="files_body">Salin folder permainan anda sendiri ke telefon (versi asal 2002 dengan fail 紅魔郷**.DAT / KOUMAKYO_**.dat, atau folder data New Classic dengan th06**.dat), kemudian pilih di sini. Fail dibaca di tempatnya; tiada apa yang disalin.</string>
-    <string name="files_choose">Pilih folder permainan</string>
-    <string name="files_prefer_nc">Jika kedua-dua versi ditemui, utamakan aset New Classic</string>
-    <string name="files_denied">Android tidak memberi akses kekal kepada folder itu: %1$s</string>
-    <string name="files_scanning">Mengimbas…</string>
-    <string name="files_scanning_path">Mengimbas %1$s</string>
-    <string name="files_none_found">Tiada arkib permainan (fail .dat bermula dengan PBG3 atau PKGL) ditemui dalam folder itu atau subfoldernya.</string>
-    <string name="files_none_selected">Belum ada data permainan dipilih. Pilih folder permainan 2002 (紅魔郷CM.DAT, 紅魔郷ST.DAT … atau KOUMAKYO_*.dat).</string>
-    <string name="files_kind_classic">Classic</string>
-    <string name="files_kind_program">Program</string>
-    <string name="files_kind_nc">New Classic</string>
-    <string name="files_music">Muzik: %1$d lagu dari bgm/ (%2$.0f MB)</string>
-    <string name="files_music_none">Muzik: tiada (salin juga folder bgm permainan untuk muzik)</string>
-    <string name="files_replaced">Muzik diganti: %1$d lagu (lihat di bawah)</string>
-    <string name="files_scores">Markah tertinggi: score.dat dari PC anda (markah baharu disimpan dalam aplikasi)</string>
-    <string name="files_nc_only">Enjin peringkat menggunakan fail data 2002; arkib New Classic sahaja belum boleh memulakan peringkat.</string>
-    <string name="select_title">Pilih peringkat</string>
-    <string name="select_body">Langkau skrin tajuk dan mula di mana-mana peringkat. Latihan sahaja: tiada apa daripada permainan ini disimpan.</string>
-    <string name="select_check">Mula di mana-mana peringkat (markah tidak disimpan)</string>
-    <string name="select_shot">Jenis tembakan</string>
-    <string name="select_difficulty">Tahap kesukaran</string>
-    <string name="select_start">Mula di (Extra menggunakan tahap kesukarannya sendiri)</string>
-    <string name="controls_title">Kawalan</string>
-    <string name="controls_body">Kawalan sentuh untuk permainan (alat kawalan permainan Bluetooth atau USB juga boleh).</string>
-    <string name="controls_movement">Pergerakan</string>
-    <string name="controls_drag_speed">Kelajuan seret (sejauh mana kapal bergerak mengikut gerakan jari anda)</string>
-    <string name="controls_button_size">Saiz butang</string>
-    <string name="controls_opacity">Kelegapan butang</string>
-    <string name="controls_autofire">Tembak automatik (Tembak sentiasa ditekan semasa bermain)</string>
-    <string name="controls_focus_toggle">Butang Fokus bertogol (ketik untuk hidup, ketik untuk mati)</string>
-    <string name="controls_left">Kidal (butang di sebelah kiri)</string>
-    <string name="controls_vibrate">Bergetar apabila terkena dan apabila guna bom</string>
-    <string name="display_title">Paparan</string>
-    <string name="display_body">Main secara tegak meletakkan kawasan permainan merentasi seluruh lebar dengan markah di bawahnya dan kawalan di bawah lagi; menu dan skrin cerita kekal penuh.</string>
-    <string name="display_screen">Skrin</string>
-    <string name="display_scaling">Penskalaan</string>
-    <string name="display_scanlines">Garis imbasan CRT</string>
-    <string name="practice_title">Alat latihan</string>
-    <string name="practice_body">Tiada dalam permainan asal. Gerak perlahan, atau memuatkan simpanan keadaan, bermakna markah permainan itu tidak disimpan; penanda kotak kena tidak mengubah apa-apa.</string>
-    <string name="practice_speed">Kelajuan permainan</string>
-    <string name="practice_hitbox">Tunjukkan kotak kena kapal</string>
-    <string name="practice_states">Simpan keadaan (butang SAVE / LOAD; F5 / F9 pada papan kekunci, L3 / R3 pada alat kawalan permainan)</string>
-    <string name="mischief_title">Nakal</string>
-    <string name="mischief_body">Tiada dalam permainan asal. Selagi mana-mana satu dihidupkan, markah, tamat peringkat dan kad mantera tidak disimpan.</string>
-    <string name="music_title">Ganti muzik</string>
-    <string name="music_body">Mainkan fail audio anda sendiri (MP3, AAC, OGG, FLAC, WAV …) menggantikan salah satu lagu permainan. Ia ditukar kepada WAV (44,100 Hz, stereo) dan berulang seperti muzik permainan.</string>
-    <string name="music_song">Lagu</string>
-    <string name="music_replaced_mark">(diganti)</string>
-    <string name="music_loop">Ulang dari (saat dalam lagu anda; kosong atau 0 = seluruh lagu)</string>
-    <string name="music_choose">Pilih fail audio</string>
-    <string name="music_restore">Pulihkan lagu permainan</string>
-    <string name="music_restored">Dipulihkan: lagu asal permainan dimainkan semula.</string>
-    <string name="music_now_yours">Kini: muzik anda (%1$s)</string>
-    <string name="music_now_game">Kini: lagu asal permainan</string>
-    <string name="music_loop_nan">Titik ulangan mestilah bilangan saat.</string>
-    <string name="music_reading">Membaca fail anda…</string>
-    <string name="music_done">Selesai: %1$s kini memainkan muzik anda (%2$s).</string>
-    <string name="music_failed">Fail itu tidak dapat digunakan: %1$s</string>
-    <string name="music_converting">Menukar kepada WAV (44,100 Hz, stereo)…</string>
-    <string name="music_converting_pct">Menukar… %1$d%%</string>
-    <string name="music_decoding_pct">Menyahkod… %1$d%%</string>
-    <string name="music_describe">%1$s, berulang dari %2$s, %3$.1f MB</string>
-    <string name="music_err_no_audio">Fail itu tiada trek audio</string>
-    <string name="music_err_nothing">Tiada apa yang dapat dinyahkod daripada fail itu</string>
-    <string name="music_err_cannot">Fail ini tidak dapat dinyahkod: %1$s</string>
-    <string name="backup_title">Sandaran</string>
-    <string name="backup_body">Simpan markah tertinggi, tetapan permainan, main semula dan tetapan pelancar dalam satu fail (dalam Muat Turun, storan awan …), dan pulihkannya selepas memasang semula atau pada telefon baharu.</string>
-    <string name="backup_music">Sertakan muzik yang diganti (fail lebih besar)</string>
-    <string name="backup_save">Sandarkan ke fail</string>
-    <string name="backup_restore">Pulihkan daripada sandaran</string>
-    <string name="backup_saving">Menyimpan…</string>
-    <string name="backup_saved">Disimpan: %1$s.</string>
-    <string name="backup_save_failed">Sandaran tidak dapat disimpan: %1$s</string>
-    <string name="backup_confirm_title">Pulihkan sandaran ini?</string>
-    <string name="backup_confirm_body">Markah tertinggi, tetapan permainan dan tetapan pelancar semasa anda akan diganti dengan yang dalam sandaran (begitu juga muzik yang diganti, jika sandaran ada muzik).</string>
-    <string name="backup_confirm_ok">Pulihkan</string>
-    <string name="cancel">Batal</string>
-    <string name="backup_restoring">Memulihkan…</string>
-    <string name="backup_restored">Dipulihkan: %1$s.</string>
-    <string name="backup_restore_failed">Tidak dapat dipulihkan: %1$s</string>
-    <string name="backup_part_scores">markah tertinggi</string>
-    <string name="backup_part_options">tetapan permainan</string>
-    <string name="backup_part_settings">tetapan pelancar</string>
-    <string name="backup_empty">tiada (sandaran kosong)</string>
-    <string name="backup_saving_music">Menyimpan muzik: %1$s…</string>
-    <string name="backup_reading_music">Membaca muzik: %1$s…</string>
-    <string name="err_cannot_write">tidak dapat menulis di situ</string>
-    <string name="err_cannot_read">tidak dapat membaca fail itu</string>
-    <string name="backup_err_not_backup">ini bukan sandaran port TH06</string>
-    <string name="backup_err_newer">sandaran ini daripada versi aplikasi yang lebih baharu; kemas kini aplikasi dahulu</string>
-    <string name="backup_err_damaged">sandaran rosak</string>
-    <string name="list_separator">", "</string>
-    <string name="crash_title">Permainan tertutup tanpa diduga</string>
-    <string name="crash_body">Maaf tentang itu. Log tentang apa yang berlaku disimpan dalam telefon ini; anda boleh menyimpannya dan melampirkannya pada laporan pepijat di GitHub. Tiada apa dihantar secara automatik.</string>
-    <string name="crash_save">Simpan log</string>
-    <string name="crash_dismiss">Tutup</string>
-    <string name="update_title">Versi %1$s tersedia</string>
-    <string name="update_body">Anda mempunyai %1$s. Muat turun APK baharu dari halaman keluarannya dan pasang di atas yang ini (markah dan tetapan anda kekal).</string>
-    <string name="update_open">Buka halaman keluaran</string>
-    <string name="no_browser">Tiada pelayar ditemui untuk membuka %1$s</string>
-    <string name="help_title">Bantuan &amp; kemas kini</string>
-    <string name="help_version">Versi %1$s (binaan %2$d).</string>
-    <string name="help_auto">Semak versi baharu sekali sehari</string>
-    <string name="help_check">Semak kemas kini sekarang</string>
-    <string name="help_checking">Menyemak…</string>
-    <string name="help_none_published">Belum ada keluaran diterbitkan.</string>
-    <string name="help_newer">Versi %1$s tersedia (lihat bahagian atas halaman ini).</string>
-    <string name="help_latest">Anda mempunyai versi terbaharu (%1$s ialah keluaran terkini).</string>
-    <string name="help_check_failed">Tidak dapat menyemak: %1$s</string>
-    <string name="help_bug">Jumpa pepijat? Simpan log (ia kekal dalam telefon anda sehingga anda berkongsi) dan lampirkan pada isu di GitHub.</string>
-    <string name="help_save_log">Simpan log untuk laporan pepijat</string>
-    <string name="help_report">Laporkan masalah di GitHub</string>
-    <string name="help_log_saved">Log disimpan. Lampirkannya pada laporan pepijat anda.</string>
-    <string name="help_log_failed">Log tidak dapat disimpan: %1$s</string>
-    <string name="footer">Port buatan peminat untuk salinan 東方紅魔郷 ～ the Embodiment of Scarlet Devil (Team Shanghai Alice) anda sendiri. Tiada fail permainan disertakan.\nFon: Yuji Syuku dan Zen Antique (SIL Open Font License 1.1).</string>
-    <string name="gametext_caption">Teks permainan (cerita, kad mantera, muzik)</string>
-    <string name="gametext_same">Sama seperti aplikasi</string>
-    <string name="gametext_original">Teks asal permainan dalam bahasa Jepun.</string>
-    <string name="gametext_not_installed">Muat turun terjemahan daripada Touhou Patch Center (thpatch.net). Hanya fail teks permainan diambil (kecil).</string>
-    <string name="gametext_installed">Dipasang: %1$d fail, dialog untuk %2$d daripada 7 peringkat, dikemas kini %3$s.</string>
-    <string name="gametext_download">Muat turun terjemahan</string>
-    <string name="gametext_update">Semak terjemahan lebih baharu</string>
-    <string name="gametext_remove">Buang terjemahan</string>
-    <string name="gametext_connecting">Menyambung ke thpatch.net…</string>
-    <string name="gametext_downloading">Memuat turun %1$s: fail %2$d daripada %3$d…</string>
-    <string name="gametext_done">Selesai (%1$d fail baharu). Permainan menggunakan terjemahan mulai permulaan seterusnya.</string>
-    <string name="gametext_failed">Tidak dapat dimuat turun: %1$s</string>
-    <string name="gametext_unavailable">Touhou Patch Center belum ada terjemahan teks permainan dalam bahasa ini, jadi ia kekal dalam bahasa Jepun.</string>
-    <string name="gametext_removed">Dibuang. Permainan memaparkan teks asal dalam bahasa Jepun.</string>
-    <string name="gametext_credit">Terjemahan teks permainan: penyumbang Touhou Patch Center (thpatch.net), CC BY-SA 3.0. Gambar dalam permainan tidak diubah.</string>
-    <string-array name="shot_types">
+    <string name="th06_header_tag">Port Android  ·  main dengan fail permainan 2002 anda sendiri</string>
+    <string name="th06_play">Main</string>
+    <string name="th06_hint_choose_folder">Pilih folder permainan anda dahulu (Fail permainan, di bawah).</string>
+    <string name="th06_hint_extra">Bermula di peringkat Extra  ·  latihan, tiada apa disimpan</string>
+    <string name="th06_hint_stage">Bermula di peringkat %1$d  ·  latihan, tiada apa disimpan</string>
+    <string name="th06_hint_title">Membuka skrin tajuk permainan</string>
+    <string name="th06_lang_title">Bahasa</string>
+    <string name="th06_lang_body">Untuk pelancar ini dan teks dalam permainan (cerita, kad mantera, ulasan muzik).</string>
+    <string name="th06_lang_system">Ikut tetapan telefon</string>
+    <string name="th06_files_title">Fail permainan</string>
+    <string name="th06_files_body">Salin folder permainan anda sendiri ke telefon (versi asal 2002 dengan fail 紅魔郷**.DAT / KOUMAKYO_**.dat, atau folder data New Classic dengan th06**.dat), kemudian pilih di sini. Fail dibaca di tempatnya; tiada apa yang disalin.</string>
+    <string name="th06_files_choose">Pilih folder permainan</string>
+    <string name="th06_files_prefer_nc">Jika kedua-dua versi ditemui, utamakan aset New Classic</string>
+    <string name="th06_files_denied">Android tidak memberi akses kekal kepada folder itu: %1$s</string>
+    <string name="th06_files_scanning">Mengimbas…</string>
+    <string name="th06_files_scanning_path">Mengimbas %1$s</string>
+    <string name="th06_files_none_found">Tiada arkib permainan (fail .dat bermula dengan PBG3 atau PKGL) ditemui dalam folder itu atau subfoldernya.</string>
+    <string name="th06_files_none_selected">Belum ada data permainan dipilih. Pilih folder permainan 2002 (紅魔郷CM.DAT, 紅魔郷ST.DAT … atau KOUMAKYO_*.dat).</string>
+    <string name="th06_files_kind_classic">Classic</string>
+    <string name="th06_files_kind_program">Program</string>
+    <string name="th06_files_kind_nc">New Classic</string>
+    <string name="th06_files_music">Muzik: %1$d lagu dari bgm/ (%2$.0f MB)</string>
+    <string name="th06_files_music_none">Muzik: tiada (salin juga folder bgm permainan untuk muzik)</string>
+    <string name="th06_files_replaced">Muzik diganti: %1$d lagu (lihat di bawah)</string>
+    <string name="th06_files_scores">Markah tertinggi: score.dat dari PC anda (markah baharu disimpan dalam aplikasi)</string>
+    <string name="th06_files_nc_only">Enjin peringkat menggunakan fail data 2002; arkib New Classic sahaja belum boleh memulakan peringkat.</string>
+    <string name="th06_select_title">Pilih peringkat</string>
+    <string name="th06_select_body">Langkau skrin tajuk dan mula di mana-mana peringkat. Latihan sahaja: tiada apa daripada permainan ini disimpan.</string>
+    <string name="th06_select_check">Mula di mana-mana peringkat (markah tidak disimpan)</string>
+    <string name="th06_select_shot">Jenis tembakan</string>
+    <string name="th06_select_difficulty">Tahap kesukaran</string>
+    <string name="th06_select_start">Mula di (Extra menggunakan tahap kesukarannya sendiri)</string>
+    <string name="th06_controls_title">Kawalan</string>
+    <string name="th06_controls_body">Kawalan sentuh untuk permainan (alat kawalan permainan Bluetooth atau USB juga boleh).</string>
+    <string name="th06_controls_movement">Pergerakan</string>
+    <string name="th06_controls_drag_speed">Kelajuan seret (sejauh mana kapal bergerak mengikut gerakan jari anda)</string>
+    <string name="th06_controls_button_size">Saiz butang</string>
+    <string name="th06_controls_opacity">Kelegapan butang</string>
+    <string name="th06_controls_autofire">Tembak automatik (Tembak sentiasa ditekan semasa bermain)</string>
+    <string name="th06_controls_focus_toggle">Butang Fokus bertogol (ketik untuk hidup, ketik untuk mati)</string>
+    <string name="th06_controls_left">Kidal (butang di sebelah kiri)</string>
+    <string name="th06_controls_vibrate">Bergetar apabila terkena dan apabila guna bom</string>
+    <string name="th06_display_title">Paparan</string>
+    <string name="th06_display_body">Main secara tegak meletakkan kawasan permainan merentasi seluruh lebar dengan markah di bawahnya dan kawalan di bawah lagi; menu dan skrin cerita kekal penuh.</string>
+    <string name="th06_display_screen">Skrin</string>
+    <string name="th06_display_scaling">Penskalaan</string>
+    <string name="th06_display_scanlines">Garis imbasan CRT</string>
+    <string name="th06_practice_title">Alat latihan</string>
+    <string name="th06_practice_body">Tiada dalam permainan asal. Gerak perlahan, atau memuatkan simpanan keadaan, bermakna markah permainan itu tidak disimpan; penanda kotak kena tidak mengubah apa-apa.</string>
+    <string name="th06_practice_speed">Kelajuan permainan</string>
+    <string name="th06_practice_hitbox">Tunjukkan kotak kena kapal</string>
+    <string name="th06_practice_states">Simpan keadaan (butang SAVE / LOAD; F5 / F9 pada papan kekunci, L3 / R3 pada alat kawalan permainan)</string>
+    <string name="th06_mischief_title">Nakal</string>
+    <string name="th06_mischief_body">Tiada dalam permainan asal. Selagi mana-mana satu dihidupkan, markah, tamat peringkat dan kad mantera tidak disimpan.</string>
+    <string name="th06_music_title">Ganti muzik</string>
+    <string name="th06_music_body">Mainkan fail audio anda sendiri (MP3, AAC, OGG, FLAC, WAV …) menggantikan salah satu lagu permainan. Ia ditukar kepada WAV (44,100 Hz, stereo) dan berulang seperti muzik permainan.</string>
+    <string name="th06_music_song">Lagu</string>
+    <string name="th06_music_replaced_mark">(diganti)</string>
+    <string name="th06_music_loop">Ulang dari (saat dalam lagu anda; kosong atau 0 = seluruh lagu)</string>
+    <string name="th06_music_choose">Pilih fail audio</string>
+    <string name="th06_music_restore">Pulihkan lagu permainan</string>
+    <string name="th06_music_restored">Dipulihkan: lagu asal permainan dimainkan semula.</string>
+    <string name="th06_music_now_yours">Kini: muzik anda (%1$s)</string>
+    <string name="th06_music_now_game">Kini: lagu asal permainan</string>
+    <string name="th06_music_loop_nan">Titik ulangan mestilah bilangan saat.</string>
+    <string name="th06_music_reading">Membaca fail anda…</string>
+    <string name="th06_music_done">Selesai: %1$s kini memainkan muzik anda (%2$s).</string>
+    <string name="th06_music_failed">Fail itu tidak dapat digunakan: %1$s</string>
+    <string name="th06_music_converting">Menukar kepada WAV (44,100 Hz, stereo)…</string>
+    <string name="th06_music_converting_pct">Menukar… %1$d%%</string>
+    <string name="th06_music_decoding_pct">Menyahkod… %1$d%%</string>
+    <string name="th06_music_describe">%1$s, berulang dari %2$s, %3$.1f MB</string>
+    <string name="th06_music_err_no_audio">Fail itu tiada trek audio</string>
+    <string name="th06_music_err_nothing">Tiada apa yang dapat dinyahkod daripada fail itu</string>
+    <string name="th06_music_err_cannot">Fail ini tidak dapat dinyahkod: %1$s</string>
+    <string name="th06_backup_title">Sandaran</string>
+    <string name="th06_backup_body">Simpan markah tertinggi, tetapan permainan, main semula dan tetapan pelancar dalam satu fail (dalam Muat Turun, storan awan …), dan pulihkannya selepas memasang semula atau pada telefon baharu.</string>
+    <string name="th06_backup_music">Sertakan muzik yang diganti (fail lebih besar)</string>
+    <string name="th06_backup_save">Sandarkan ke fail</string>
+    <string name="th06_backup_restore">Pulihkan daripada sandaran</string>
+    <string name="th06_backup_saving">Menyimpan…</string>
+    <string name="th06_backup_saved">Disimpan: %1$s.</string>
+    <string name="th06_backup_save_failed">Sandaran tidak dapat disimpan: %1$s</string>
+    <string name="th06_backup_confirm_title">Pulihkan sandaran ini?</string>
+    <string name="th06_backup_confirm_body">Markah tertinggi, tetapan permainan dan tetapan pelancar semasa anda akan diganti dengan yang dalam sandaran (begitu juga muzik yang diganti, jika sandaran ada muzik).</string>
+    <string name="th06_backup_confirm_ok">Pulihkan</string>
+    <string name="th06_cancel">Batal</string>
+    <string name="th06_backup_restoring">Memulihkan…</string>
+    <string name="th06_backup_restored">Dipulihkan: %1$s.</string>
+    <string name="th06_backup_restore_failed">Tidak dapat dipulihkan: %1$s</string>
+    <string name="th06_backup_part_scores">markah tertinggi</string>
+    <string name="th06_backup_part_options">tetapan permainan</string>
+    <string name="th06_backup_part_settings">tetapan pelancar</string>
+    <string name="th06_backup_empty">tiada (sandaran kosong)</string>
+    <string name="th06_backup_saving_music">Menyimpan muzik: %1$s…</string>
+    <string name="th06_backup_reading_music">Membaca muzik: %1$s…</string>
+    <string name="th06_err_cannot_write">tidak dapat menulis di situ</string>
+    <string name="th06_err_cannot_read">tidak dapat membaca fail itu</string>
+    <string name="th06_backup_err_not_backup">ini bukan sandaran port TH06</string>
+    <string name="th06_backup_err_newer">sandaran ini daripada versi aplikasi yang lebih baharu; kemas kini aplikasi dahulu</string>
+    <string name="th06_backup_err_damaged">sandaran rosak</string>
+    <string name="th06_list_separator">", "</string>
+    <string name="th06_crash_title">Permainan tertutup tanpa diduga</string>
+    <string name="th06_crash_body">Maaf tentang itu. Log tentang apa yang berlaku disimpan dalam telefon ini; anda boleh menyimpannya dan melampirkannya pada laporan pepijat di GitHub. Tiada apa dihantar secara automatik.</string>
+    <string name="th06_crash_save">Simpan log</string>
+    <string name="th06_crash_dismiss">Tutup</string>
+    <string name="th06_update_title">Versi %1$s tersedia</string>
+    <string name="th06_update_body">Anda mempunyai %1$s. Muat turun APK baharu dari halaman keluarannya dan pasang di atas yang ini (markah dan tetapan anda kekal).</string>
+    <string name="th06_update_open">Buka halaman keluaran</string>
+    <string name="th06_no_browser">Tiada pelayar ditemui untuk membuka %1$s</string>
+    <string name="th06_help_title">Bantuan &amp; kemas kini</string>
+    <string name="th06_help_version">Versi %1$s (binaan %2$d).</string>
+    <string name="th06_help_auto">Semak versi baharu sekali sehari</string>
+    <string name="th06_help_check">Semak kemas kini sekarang</string>
+    <string name="th06_help_checking">Menyemak…</string>
+    <string name="th06_help_none_published">Belum ada keluaran diterbitkan.</string>
+    <string name="th06_help_newer">Versi %1$s tersedia (lihat bahagian atas halaman ini).</string>
+    <string name="th06_help_latest">Anda mempunyai versi terbaharu (%1$s ialah keluaran terkini).</string>
+    <string name="th06_help_check_failed">Tidak dapat menyemak: %1$s</string>
+    <string name="th06_help_bug">Jumpa pepijat? Simpan log (ia kekal dalam telefon anda sehingga anda berkongsi) dan lampirkan pada isu di GitHub.</string>
+    <string name="th06_help_save_log">Simpan log untuk laporan pepijat</string>
+    <string name="th06_help_report">Laporkan masalah di GitHub</string>
+    <string name="th06_help_log_saved">Log disimpan. Lampirkannya pada laporan pepijat anda.</string>
+    <string name="th06_help_log_failed">Log tidak dapat disimpan: %1$s</string>
+    <string name="th06_footer">Port buatan peminat untuk salinan 東方紅魔郷 ～ the Embodiment of Scarlet Devil (Team Shanghai Alice) anda sendiri. Tiada fail permainan disertakan.\nFon: Yuji Syuku dan Zen Antique (SIL Open Font License 1.1).</string>
+    <string name="th06_gametext_caption">Teks permainan (cerita, kad mantera, muzik)</string>
+    <string name="th06_gametext_same">Sama seperti aplikasi</string>
+    <string name="th06_gametext_original">Teks asal permainan dalam bahasa Jepun.</string>
+    <string name="th06_gametext_not_installed">Muat turun terjemahan daripada Touhou Patch Center (thpatch.net). Hanya fail teks permainan diambil (kecil).</string>
+    <string name="th06_gametext_installed">Dipasang: %1$d fail, dialog untuk %2$d daripada 7 peringkat, dikemas kini %3$s.</string>
+    <string name="th06_gametext_download">Muat turun terjemahan</string>
+    <string name="th06_gametext_update">Semak terjemahan lebih baharu</string>
+    <string name="th06_gametext_remove">Buang terjemahan</string>
+    <string name="th06_gametext_connecting">Menyambung ke thpatch.net…</string>
+    <string name="th06_gametext_downloading">Memuat turun %1$s: fail %2$d daripada %3$d…</string>
+    <string name="th06_gametext_done">Selesai (%1$d fail baharu). Permainan menggunakan terjemahan mulai permulaan seterusnya.</string>
+    <string name="th06_gametext_failed">Tidak dapat dimuat turun: %1$s</string>
+    <string name="th06_gametext_unavailable">Touhou Patch Center belum ada terjemahan teks permainan dalam bahasa ini, jadi ia kekal dalam bahasa Jepun.</string>
+    <string name="th06_gametext_removed">Dibuang. Permainan memaparkan teks asal dalam bahasa Jepun.</string>
+    <string name="th06_gametext_credit">Terjemahan teks permainan: penyumbang Touhou Patch Center (thpatch.net), CC BY-SA 3.0. Gambar dalam permainan tidak diubah.</string>
+    <string-array name="th06_shot_types">
         <item>Reimu A (azimat pemburu)</item>
         <item>Reimu B (jarum)</item>
         <item>Marisa A (peluru berpandu)</item>
         <item>Marisa B (laser)</item>
     </string-array>
-    <string-array name="stages">
+    <string-array name="th06_stages">
         <item>Peringkat 1</item>
         <item>Peringkat 2</item>
         <item>Peringkat 3</item>
@@ -156,44 +156,44 @@
         <item>Peringkat 6</item>
         <item>Extra</item>
     </string-array>
-    <string-array name="mischief">
+    <string-array name="th06_mischief">
         <item>Nyawa tanpa had</item>
         <item>Bom tanpa had</item>
         <item>Kebal (tiada apa yang mengenai anda)</item>
         <item>Kuasa sentiasa MAX</item>
         <item>Sambung tanpa had</item>
     </string-array>
-    <string-array name="move_modes">
+    <string-array name="th06_move_modes">
         <item>Seret di mana-mana (pad sentuh)</item>
         <item>Pad arah</item>
     </string-array>
-    <string-array name="button_sizes">
+    <string-array name="th06_button_sizes">
         <item>Kecil</item>
         <item>Biasa</item>
         <item>Besar</item>
         <item>Sangat besar</item>
     </string-array>
-    <string-array name="opacities">
+    <string-array name="th06_opacities">
         <item>Samar</item>
         <item>Ringan</item>
         <item>Biasa</item>
         <item>Pekat</item>
     </string-array>
-    <string-array name="speeds">
+    <string-array name="th06_speeds">
         <item>Kelajuan biasa</item>
         <item formatted="false">75% (gerak perlahan)</item>
         <item formatted="false">50% (gerak perlahan)</item>
     </string-array>
-    <string-array name="layouts">
+    <string-array name="th06_layouts">
         <item>Landskap (mengiring)</item>
         <item>Potret (tegak; kawasan permainan memenuhi lebar)</item>
     </string-array>
-    <string-array name="scalings">
+    <string-array name="th06_scalings">
         <item>Licin</item>
         <item>Piksel tajam</item>
         <item>Piksel sempurna (gandaan penuh)</item>
     </string-array>
-    <string-array name="track_names">
+    <string-array name="th06_track_names">
         <item>Skrin tajuk</item>
         <item>Peringkat 1</item>
         <item>Bos peringkat 1</item>
@@ -212,13 +212,13 @@
         <item>Pengakhiran</item>
         <item>Senarai kru</item>
     </string-array>
-    <plurals name="files_in_use">
+    <plurals name="th06_files_in_use">
         <item quantity="other">%d fail digunakan:</item>
     </plurals>
-    <plurals name="backup_part_replays">
+    <plurals name="th06_backup_part_replays">
         <item quantity="other">%d main semula</item>
     </plurals>
-    <plurals name="backup_part_songs">
+    <plurals name="th06_backup_part_songs">
         <item quantity="other">%d lagu diganti</item>
     </plurals>
 </resources>

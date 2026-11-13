@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The picker: drawn edge to edge on deep ink. -->
+    <style name="Hub.Theme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:colorPrimary">@color/hub_ink_light</item>
+        <item name="android:colorPrimaryDark">@color/hub_ink</item>
+        <item name="android:colorAccent">@color/hub_red</item>
+        <item name="android:colorControlHighlight">#33F6EFE2</item>
+        <item name="android:windowBackground">@color/hub_ink</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@color/hub_ink</item>
+    </style>
+</resources>

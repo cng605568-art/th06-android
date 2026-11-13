@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The icon on Android 7 (API 24-25), before adaptive icons: the orb on an ink disc. Android 8+
+     uses drawable-anydpi-v26/hub_ic_launcher.xml instead. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#FF120F1C" android:pathData="M54,2 A52,52 0 1,1 54,106 A52,52 0 1,1 54,2 Z" />
+    <group android:pivotX="54" android:pivotY="54" android:scaleX="1.35" android:scaleY="1.35" android:rotation="-30">
+        <!-- A gold rim, the white orb, its red half, and the two eyes. -->
+        <path android:fillColor="#FFE3C77D" android:pathData="M54,22 A32,32 0 1,1 54,86 A32,32 0 1,1 54,22 Z" />
+        <path android:fillColor="#FFFBF7EE" android:pathData="M54,24 A30,30 0 1,1 54,84 A30,30 0 1,1 54,24 Z" />
+        <path android:fillColor="#FFC8102E" android:pathData="M54,24 A30,30 0 0,1 54,84 A15,15 0 0,1 54,54 A15,15 0 0,0 54,24 Z" />
+        <path android:fillColor="#FFC8102E" android:pathData="M54,34.5 A4.5,4.5 0 1,1 54,43.5 A4.5,4.5 0 1,1 54,34.5 Z" />
+        <path android:fillColor="#FFFBF7EE" android:pathData="M54,64.5 A4.5,4.5 0 1,1 54,73.5 A4.5,4.5 0 1,1 54,64.5 Z" />
+    </group>
+</vector>

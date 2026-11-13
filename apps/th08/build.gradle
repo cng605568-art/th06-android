@@ -1,0 +1,20 @@
+plugins {
+    id 'com.android.application'
+}
+
+// The standalone Imperishable Night app (TH08 alone, as before Touhou Launcher): the :th08 game
+// library under the app id the released TH08 app has always had, so it updates in place.
+
+android {
+    namespace = 'io.github.cng605568art.th08.app'  // (the game library owns io.github.cng605568art.th08)
+
+    defaultConfig {
+        applicationId = 'io.github.cng605568art.th08'
+    }
+}
+
+dependencies {
+    implementation project(':th08')
+}
+
+apply from: rootProject.file('gradle/touhou-app.gradle')

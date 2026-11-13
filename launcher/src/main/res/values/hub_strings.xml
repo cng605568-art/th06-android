@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hub_app_name" translatable="false">Touhou Launcher</string>
+    <string name="hub_th06_title" translatable="false">東方紅魔郷</string>
+    <string name="hub_th07_title" translatable="false">東方妖々夢</string>
+    <string name="hub_th08_title" translatable="false">東方永夜抄</string>
+    <string name="hub_th06_subtitle" translatable="false">the Embodiment of Scarlet Devil</string>
+    <string name="hub_th07_subtitle" translatable="false">Perfect Cherry Blossom</string>
+    <string name="hub_th08_subtitle" translatable="false">Imperishable Night</string>
+    <string name="hub_choose">Choose a game</string>
+    <string name="hub_ready">Ready to play</string>
+    <string name="hub_needs_files">Add your game files</string>
+    <string name="hub_note">Each game keeps its own files, scores, replays and settings. You need your own copy of each game.</string>
+    <string name="hub_version">Version %1$s</string>
+</resources>

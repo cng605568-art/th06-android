@@ -184,7 +184,7 @@ final class GameText {
     static int download(Context ctx, String code, Progress progress) throws IOException {
         String id = patchFor(code);
         if (id == null) throw new NotAvailable();
-        progress.update(ctx.getString(R.string.gametext_connecting));
+        progress.update(ctx.getString(R.string.th06_gametext_connecting));
         JSONObject repo = null;
         String repoBase = null;
         IOException last = null;
@@ -266,7 +266,7 @@ final class GameText {
             }
             long crc = remote.optLong(path, -1);
             if (crc >= 0 && local.optLong(path, -2) == crc && target.isFile()) continue;
-            progress.update(ctx.getString(R.string.gametext_downloading, id, n, wanted.size()));
+            progress.update(ctx.getString(R.string.th06_gametext_downloading, id, n, wanted.size()));
             byte[] bytes = fetchFile(ctx, servers, id + "/" + escape(path) + String.format(Locale.ROOT, "?crc32=%08x", crc));
             CRC32 check = new CRC32();
             check.update(bytes);

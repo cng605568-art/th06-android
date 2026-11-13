@@ -1,0 +1,20 @@
+plugins {
+    id 'com.android.application'
+}
+
+// The standalone The Embodiment of Scarlet Devil app (TH06 alone, as before Touhou Launcher): the :th06 game
+// library under the app id the released TH06 app has always had, so it updates in place.
+
+android {
+    namespace = 'io.github.cng605568art.th06.app'  // (the game library owns io.github.cng605568art.th06)
+
+    defaultConfig {
+        applicationId = 'io.github.cng605568art.th06'
+    }
+}
+
+dependencies {
+    implementation project(':th06')
+}
+
+apply from: rootProject.file('gradle/touhou-app.gradle')

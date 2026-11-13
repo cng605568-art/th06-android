@@ -15,30 +15,20 @@
          sent. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <application
-        android:name=".Th07App"
-        android:label="@string/app_name"
-        android:icon="@drawable/ic_launcher"
-        android:allowBackup="false"
-        android:appCategory="game"
-        android:isGame="true"
-        android:hardwareAccelerated="true"
-        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+    <!-- The app (the standalone app in apps/th07, or Touhou Launcher) sets the application's
+         name, label, icon and theme, and which activity the home screen opens. -->
+    <application>
 
         <!-- Launcher: imports the player's own game files and sets the start options. It
              handles rotation itself so an import running in the background keeps its page. -->
         <activity
             android:name=".LauncherActivity"
-            android:exported="true"
+            android:label="@string/th07_app_name"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
-            android:theme="@style/Th07.Launcher">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
+            android:theme="@style/Th07.Launcher" />
 
-        <!-- The SDL game activity (native code runs in libmain.so). -->
+        <!-- The SDL game activity (native code runs in libth07main.so). Touhou Launcher runs it in a
+             process of its own. -->
         <activity
             android:name=".GameActivity"
             android:exported="false"

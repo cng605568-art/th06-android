@@ -22,7 +22,7 @@ final class Lang {
 
     /** The picker's labels: each language in its own words. */
     static String[] labels(Context ctx) {
-        return new String[] {ctx.getString(R.string.lang_system), "English", "日本語 (Original)", "简体中文", "繁體中文",
+        return new String[] {ctx.getString(R.string.th06_lang_system), "English", "日本語 (Original)", "简体中文", "繁體中文",
                 "Bahasa Melayu"};
     }
 

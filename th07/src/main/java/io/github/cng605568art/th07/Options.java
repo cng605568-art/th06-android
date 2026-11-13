@@ -81,7 +81,7 @@ final class Options {
     static final int[] DRAG_SPEED_PCT = {100, 125, 150, 200, 250, 300};
     static final int[] BUTTON_SIZE_PCT = {80, 100, 120, 140};
     static final int[] OPACITY_PCT = {40, 60, 80, 100};
-    /** Game speed (R.array.speeds): normal, or slow motion. */
+    /** Game speed (R.array.th07_speeds): normal, or slow motion. */
     static final int[] SPEED_PCT = {100, 75, 50};
 
     static int controlChoice(Context ctx, String name, int fallback) { return prefs(ctx).getInt(KEY_CONTROLS + name, fallback); }

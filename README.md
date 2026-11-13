@@ -72,19 +72,35 @@ is not bit-identical to the x87 code of 2002, so long runs can drift from real r
    Keep the `.jks` file and password safe and never commit them: losing them means users
    must uninstall before installing future updates.
 
+## Touhou Launcher: all three games in one app
+
+**Touhou Launcher** (`io.github.cng605568art.touhou`, module `launcher/`) holds TH06, TH07 and
+TH08 in one app. Its first screen has a card per game (with whether that game's files are in
+place yet); a card opens that game's own launcher, exactly as in the game's standalone app:
+importing your files, start options, translation, music, backups, logs. Each game keeps its
+files and settings in a folder of its own inside the app (`th06/`, `th07/`, `th08/`: game
+files, `score.dat`, replays, the translation, logs) and plays in a process of its own that ends
+with the game, so the games never share state. It installs next to the standalone apps, which
+CI keeps building; to bring a game's settings and saves over, use **Back up** in the standalone
+app and **Restore** in that game inside Touhou Launcher (backups of a game work in either app).
+
+* **Get it:** every CI run builds it as `touhou-launcher-android-<version>`, signed with the
+  same key as the other apps. Locally: `gradle :launcher:assembleRelease` (APK in
+  `launcher/build/outputs/apk/release/`).
+
 ## Get an APK
 
 * **Every push to `main`:** open the **Actions** tab → the latest run → download the APK
   artifact at the bottom of the page.
 * **A release:** **Releases → Draft a new release → Choose a tag →** type `v` + the version
   in the `VERSION` file (e.g. `v0.9.0`, or `v0.9.0-beta` for a pre-release) → **Publish**.
-  The workflow builds, signs and attaches both APKs (TH06 and TH07) with `SHA256SUMS.txt` and
-  `SHA256SUMS-th07.txt` (a tag that does not match `VERSION` is refused). Tags with a `-` become pre-releases. The launcher's
+  The workflow builds, signs and attaches the four APKs (Touhou Launcher and the TH06, TH07 and
+  TH08 apps) with their `SHA256SUMS*.txt` (a tag that does not match `VERSION` is refused). Tags with a `-` become pre-releases. The launcher's
   **Check for updates** compares its own version with the newest full release.
 
 Versions: `VERSION` holds the next release's number; branch builds are named
 `<VERSION>-dev+<commit>` (shown in the launcher's *Help & updates*). Each run also keeps
-`debug-symbols-…` (the unstripped `libmain.so`) for 30 days, to decode the addresses in a
+`debug-symbols-…` (each game's unstripped `lib<game>main.so`, e.g. `libth07main.so`) for 30 days, to decode the addresses in a
 player's crash log.
 
 Without the keystore secrets, branch builds are signed with a throwaway debug key (file name
@@ -138,7 +154,8 @@ screen and in replays is measured from it. The menu descriptions are read from y
 
 * **Get it:** every CI run also builds it, signed with the same key, as its own artifact
   `th07-android-<version>`, and every GitHub Release from v0.10.0 carries it. Locally, with the
-  Android SDK: `gradle :th07:assembleRelease` (APK in `th07/build/outputs/apk/release/`).
+  Android SDK: `gradle :th07-app:assembleRelease` (APK in `apps/th07/build/outputs/apk/release/`).
+  Touhou Launcher holds it too.
 * **Files from your own copy (version 1.00b):** `th07.dat` and `th07.exe` are needed (the
   game data, and the program the sound effects and other tables are read from, recognised by
   its SHA-256); `thbgm.dat` is optional and adds the music (its index, `thbgm.fmt`, is inside
@@ -218,7 +235,7 @@ Apple's C++ library has the number formatting the game uses from 16.3 on).
 ## Imperishable Night (th08) app: in progress
 
 `:th08` (app id `io.github.cng605568art.th08`, "TH08 Port") is the next game on the same
-engine. CI builds it as **th08-android-<version>** (releases do not carry it yet). The
+engine. CI builds it as **th08-android-<version>**, and Touhou Launcher holds it too. The
 launcher imports your files (th08.dat, th08.exe **1.00d**, thbgm.dat). Ported so far: the
 title and its menus (Game Start, Extra Start, Spell Card Practice, Practice Start, Replay,
 Player Data, Music Room, Option), every stage with its dialogue, bosses, spell cards and Last
@@ -267,13 +284,21 @@ icon (the picture over shrine red) with round and square fallbacks for older lau
 
 ## Layout
 
-The code is split so more games can share it: a shared engine (`engine/`) and one module per
-game (`th06/`, and `th07/` in progress). Each game is its own Android app; a fix in the engine
-reaches every game.
+The code is split so more games can share it: a shared engine (`engine/`) and one Android
+library per game (`th06/`, `th07/`, `th08/`: activities, resources and the native engine, every
+resource name starting with the game's code). Two kinds of app package them: each game on its
+own (`apps/th06`, `apps/th07`, `apps/th08`, the app ids the releases have always had) and Touhou
+Launcher (`launcher/`, all three). A fix in the engine reaches every game and app.
 
 ```
-.github/workflows/build.yml   CI: tests, APK, signing, releases
+.github/workflows/build.yml   CI: tests, the four APKs, signing, releases
 scripts/fetch_deps.sh         pinned SDL2 2.32.10, zstd 1.5.7, stb_image, bcdec (SHA-256 checked)
+scripts/stage_apk.sh          CI: checks an APK (signature, app id, native libraries) and stages it
+gradle/touhou-app.gradle      what the four apps share: SDK levels, ABIs, version, signing
+sdl/                          SDL2's Java glue (org.libsdl.app) as a library, one copy for all
+apps/th06, th07, th08         the standalone apps: application name, icon, home-screen entry
+launcher/                     Touhou Launcher: HubActivity (the game picker), TouhouApp; runs
+                              each game's GameActivity in its own process (":th06" ...)
 engine/native/                the shared engine (C++, namespace touhou)
   engine.cmake                thengine_core (no SDL/GL, unit-tested) and thengine_host (SDL host)
   src/host/Game               the interface a game implements (start, tick, render, ...)
@@ -287,11 +312,12 @@ engine/native/                the shared engine (C++, namespace touhou)
   src/text/PatchStack         Touhou Patch Center translation patches: stacking, variants, markup
   src/core/                   ZunMath (ZUN's RNG, angles), FixedTimestep (60 Hz), Json, Sha256, Log
   src/platform/               data mounting, crash handler, Android JNI glue
-th06/                         Embodiment of Scarlet Devil: the Android app module
-  build.gradle                AGP config, externalNativeBuild → CMake, signing from env vars
-  src/main/java/...           ImportActivity (launcher), GameActivity (SDL host + JNI), DataSources
+th06/                         Embodiment of Scarlet Devil: the game library
+  build.gradle                AGP config, externalNativeBuild → CMake
+  src/main/java/...           ImportActivity (launcher), GameActivity (SDL host + JNI), DataSources,
+                              GameStorage (its own folder inside Touhou Launcher)
   src/main/cpp/
-    CMakeLists.txt            libSDL2.so + libmain.so (also a Linux desktop dev build)
+    CMakeLists.txt            libSDL2.so + libth06main.so (also a Linux desktop dev build)
     th06.cmake                th06_game: the game code, shared with the tests
     src/th06/Th06Game         the game as the host runs it: options, saves, haptics
     src/th06/Ecl              ECL file layout (packed structs), opcode tables
@@ -313,11 +339,11 @@ th06/                         Embodiment of Scarlet Devil: the Android app modul
     src/th06/SoundPlayer      SoundIdx table, frame queue
     src/th06/Translation      which patch files th06 reads and how (dialogue box numbering)
     src/th06/Stage            loads a stage from the archives, runs one tick, draws
-th07/                         Perfect Cherry Blossom: the second Android app module
-  build.gradle                same SDK, NDK, ABIs and signing as th06; app id ...th07
+th07/                         Perfect Cherry Blossom: the second game library (th08/ likewise)
+  build.gradle                same SDK, NDK and ABIs as th06
   src/main/java/...           LauncherActivity (import, start options), GameFiles (copies and
                               checks th07.dat / th07.exe / thbgm.dat), GameActivity (SDL host + JNI)
-  src/main/cpp/               CMakeLists.txt (libSDL2.so + libmain.so, desktop build), th07.cmake,
+  src/main/cpp/               CMakeLists.txt (libSDL2.so + libth07main.so, desktop build), th07.cmake,
                               src/th07/ (Th07Game hosts the Supervisor: title and select
                               screens, games, results, ending, Music Room, score.dat,
                               replays and the attract demo)
@@ -326,7 +352,8 @@ tests/                        host tests run by CI before every APK build (engin
 
 Local builds (optional, Linux/macOS): `bash scripts/fetch_deps.sh`, then
 `cmake -S tests -B build-tests && cmake --build build-tests && ctest --test-dir build-tests`.
-With Gradle 9.4.1 and the Android SDK installed: `gradle :th06:assembleRelease`. A Linux desktop
+With Gradle 9.4.1 and the Android SDK installed: `gradle :launcher:assembleRelease` (or
+`:th06-app:assembleRelease` and so on for one game). A Linux desktop
 build for development: `cmake -S th06/src/main/cpp -B build-desktop && cmake --build build-desktop`,
 then `./build-desktop/th06_desktop /path/to/game/folder` (`--seed N --lockstep` make runs
 repeatable; see `engine/native/src/host/App.hpp` for the other developer options).

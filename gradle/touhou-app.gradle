@@ -1,0 +1,68 @@
+// Shared by the four apps (the standalone TH06, TH07 and TH08 apps in apps/ and Touhou Launcher
+// in launcher/): SDK levels, ABIs, the version, release signing and packaging. Each app's
+// build.gradle applies the application plugin, sets its namespace and applicationId, depends on
+// its game libraries, then applies this file.
+
+// -Pth06.abis=... (CI passes it; gradle.properties has the default) picks the ABIs to package.
+def abiList = (project.findProperty('th06.abis') ?: 'arm64-v8a').toString()
+        .split(',').collect { it.trim() }.findAll { !it.isEmpty() }
+
+// Release signing comes only from environment variables (set by CI from GitHub Secrets). Every
+// app is signed with the same key, so the variables keep their TH06_ names.
+def keystorePath = System.getenv('TH06_KEYSTORE_PATH')
+def hasReleaseKey = keystorePath != null && !keystorePath.isEmpty() && new File(keystorePath).exists()
+
+android {
+    compileSdk = 36
+    ndkVersion = '28.2.13676358'  // (strips the games' native libraries when packaging)
+
+    defaultConfig {
+        minSdk = 24
+        targetSdk = 36
+        versionCode = (System.getenv('TH06_VERSION_CODE') ?: '1').toInteger()
+        // One version for the repository (the VERSION file); CI adds "-dev+<commit>" for
+        // branch builds and uses the tag's version for releases.
+        versionName = System.getenv('TH06_VERSION_NAME') ?: (rootProject.file('VERSION').text.trim() + '-local')
+
+        ndk {
+            abiFilters.addAll(abiList)
+        }
+    }
+
+    signingConfigs {
+        release {
+            if (hasReleaseKey) {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv('TH06_KEYSTORE_PASSWORD')
+                keyAlias = System.getenv('TH06_KEY_ALIAS') ?: 'release'
+                keyPassword = System.getenv('TH06_KEY_PASSWORD') ?: System.getenv('TH06_KEYSTORE_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled = false
+            // No release key (forks, local builds): sign with the debug key so the APK still
+            // installs for testing. CI refuses to publish tags in that state.
+            signingConfig = hasReleaseKey ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    packaging {
+        jniLibs {
+            // Keep .so files uncompressed and 16 KB page-aligned inside the APK.
+            useLegacyPackaging = false
+        }
+    }
+
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
+    }
+}

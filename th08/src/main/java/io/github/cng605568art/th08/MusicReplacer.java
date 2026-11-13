@@ -67,15 +67,15 @@ final class MusicReplacer {
         return BUSY.get();
     }
 
-    /** The song's title (R.array.track_titles). */
+    /** The song's title (R.array.th08_track_titles). */
     static String trackName(Context ctx, int track) {
-        return ctx.getResources().getStringArray(R.array.track_titles)[track];
+        return ctx.getResources().getStringArray(R.array.th08_track_titles)[track];
     }
 
     /** "03  Stirring an Autumn Moon ~ Mooned Insect  ·  Stage 1 boss (Wriggle)" */
     static String trackLabel(Context ctx, int track) {
         return String.format(Locale.ROOT, "%02d  ", track + 1) + trackName(ctx, track) + "  ·  "
-                + ctx.getResources().getStringArray(R.array.track_places)[track];
+                + ctx.getResources().getStringArray(R.array.th08_track_places)[track];
     }
 
     /** Where the engine looks (SDL's preference path on Android is the app's files folder). */
@@ -126,7 +126,7 @@ final class MusicReplacer {
         } catch (IOException ignored) {
             // No loop file: the whole song loops.
         }
-        return ctx.getString(R.string.music_describe, time(frames), time(loopStart), w.length() / 1048576.0);
+        return ctx.getString(R.string.th08_music_describe, time(frames), time(loopStart), w.length() / 1048576.0);
     }
 
     private static String time(long frames) {
@@ -147,12 +147,12 @@ final class MusicReplacer {
         File tmp = new File(folder, "replace.tmp");
         try {
             int[] format = decode(ctx, source, raw, progress);
-            progress.update(ctx.getString(R.string.music_converting));
+            progress.update(ctx.getString(R.string.th08_music_converting));
             final long total = raw.length() / (2L * format[1]);
             long frames;
             try (InputStream in = new FileInputStream(raw)) {
                 frames = PcmConverter.convert(in, format[0], format[1], tmp, consumed ->
-                        progress.update(ctx.getString(R.string.music_converting_pct, (int) (total > 0 ? consumed * 100 / total : 0))));
+                        progress.update(ctx.getString(R.string.th08_music_converting_pct, (int) (total > 0 ? consumed * 100 / total : 0))));
             }
             long loopStart = Math.round(Math.max(0, loopStartSeconds) * PcmConverter.RATE);
             if (loopStart >= frames) loopStart = 0;
@@ -191,7 +191,7 @@ final class MusicReplacer {
                     break;
                 }
             }
-            if (format == null) throw new IOException(ctx.getString(R.string.music_err_no_audio));
+            if (format == null) throw new IOException(ctx.getString(R.string.th08_music_err_no_audio));
             String mime = format.getString(MediaFormat.KEY_MIME);
             int rate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE);
             int channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
@@ -222,7 +222,7 @@ final class MusicReplacer {
                                     int percent = (int) Math.min(100, t * 100 / durationUs);
                                     if (percent != lastPercent) {
                                         lastPercent = percent;
-                                        progress.update(ctx.getString(R.string.music_decoding_pct, percent));
+                                        progress.update(ctx.getString(R.string.th08_music_decoding_pct, percent));
                                     }
                                 }
                             }
@@ -246,10 +246,10 @@ final class MusicReplacer {
                     }
                 }
             }
-            if (raw.length() == 0) throw new IOException(ctx.getString(R.string.music_err_nothing));
+            if (raw.length() == 0) throw new IOException(ctx.getString(R.string.th08_music_err_nothing));
             return new int[] {rate, channels};
         } catch (IllegalStateException | IllegalArgumentException e) {
-            throw new IOException(ctx.getString(R.string.music_err_cannot, e.getMessage()), e);
+            throw new IOException(ctx.getString(R.string.th08_music_err_cannot, e.getMessage()), e);
         } finally {
             if (codec != null) {
                 try {

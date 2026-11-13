@@ -1,205 +1,205 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Launcher text in Traditional Chinese: the same keys and placeholders as values/strings.xml. -->
 <resources>
-    <string name="header_tag">Android 移植版  ·  使用你自己的遊戲副本（1.00d 版）遊玩</string>
-    <string name="play">開始遊戲</string>
-    <string name="hint_import">請先匯入 th08.dat 和 th08.exe（見下方「遊戲檔案」）。沒有它們時，遊戲只會顯示缺少哪些檔案。</string>
-    <string name="hint_importing">正在匯入你的檔案…</string>
-    <string name="hint_gametext_downloading">正在下載遊戲文字…</string>
-    <string name="hint_backup">正在備份或還原…</string>
-    <string name="hint_title">開啟標題畫面</string>
-    <string name="hint_stage">從%1$s開始  ·  %2$s  ·  %3$s</string>
-    <string name="hint_extra">從 Extra 關卡開始  ·  %1$s</string>
-    <string name="hint_gametext">"  ·  文字：%1$s"</string>
+    <string name="th08_header_tag">Android 移植版  ·  使用你自己的遊戲副本（1.00d 版）遊玩</string>
+    <string name="th08_play">開始遊戲</string>
+    <string name="th08_hint_import">請先匯入 th08.dat 和 th08.exe（見下方「遊戲檔案」）。沒有它們時，遊戲只會顯示缺少哪些檔案。</string>
+    <string name="th08_hint_importing">正在匯入你的檔案…</string>
+    <string name="th08_hint_gametext_downloading">正在下載遊戲文字…</string>
+    <string name="th08_hint_backup">正在備份或還原…</string>
+    <string name="th08_hint_title">開啟標題畫面</string>
+    <string name="th08_hint_stage">從%1$s開始  ·  %2$s  ·  %3$s</string>
+    <string name="th08_hint_extra">從 Extra 關卡開始  ·  %1$s</string>
+    <string name="th08_hint_gametext">"  ·  文字：%1$s"</string>
 
-    <string name="lang_title">語言</string>
-    <string name="lang_body">用於本啟動器以及遊戲內的文字（劇情對話、符卡名稱、結局、曲名與音樂評論）。</string>
-    <string name="lang_system">跟隨系統</string>
-    <string name="gametext_caption">遊戲內文字（劇情、符卡、結局、音樂）</string>
-    <string name="gametext_same">與應用程式相同</string>
-    <string name="gametext_original">遊戲原本的日文文字。</string>
-    <string name="gametext_not_installed">從 Touhou Patch Center（thpatch.net）下載翻譯。只取得 TH08 的文字和翻譯過的文字圖片（幾 MB）。</string>
-    <string name="gametext_not_installed_en">從 Touhou Patch Center（thpatch.net）下載翻譯：只取得 TH08 的文字和翻譯過的文字圖片（幾 MB）。如果你在電腦上使用英文補丁遊玩，也可以把它的 thcrap 資料夾留在遊戲資料夾中，再次匯入該資料夾（見下方「遊戲檔案」）。</string>
-    <string name="gametext_installed">已安裝：%1$d 個檔案，8 個關卡中 %2$d 個關卡的對話，更新於 %3$s。</string>
-    <string name="gametext_imported">來自你匯入的 thcrap 資料夾：%1$d 個檔案，8 個關卡中 %2$d 個關卡的對話。</string>
-    <string name="gametext_download">下載翻譯</string>
-    <string name="gametext_update">檢查翻譯更新</string>
-    <string name="gametext_remove">刪除已下載的翻譯</string>
-    <string name="gametext_connecting">正在連線 thpatch.net…</string>
-    <string name="gametext_downloading">正在下載 %1$s：第 %2$d 個，共 %3$d 個…</string>
-    <string name="gametext_done">完成（%1$d 個新檔案）。下次啟動遊戲時開始使用翻譯。</string>
-    <string name="gametext_failed">無法下載：%1$s</string>
-    <string name="gametext_unavailable">Touhou Patch Center 目前還沒有本作在該語言下的文字翻譯，因此維持日文。</string>
-    <string name="gametext_removed">已刪除下載的翻譯。</string>
-    <string name="gametext_busy">請等待正在進行的匯入、下載或備份完成。</string>
-    <string name="gametext_credit">遊戲文字翻譯：Touhou Patch Center 貢獻者（thpatch.net），CC BY-SA 3.0，依 thcrap 補丁工具的方式套用。</string>
+    <string name="th08_lang_title">語言</string>
+    <string name="th08_lang_body">用於本啟動器以及遊戲內的文字（劇情對話、符卡名稱、結局、曲名與音樂評論）。</string>
+    <string name="th08_lang_system">跟隨系統</string>
+    <string name="th08_gametext_caption">遊戲內文字（劇情、符卡、結局、音樂）</string>
+    <string name="th08_gametext_same">與應用程式相同</string>
+    <string name="th08_gametext_original">遊戲原本的日文文字。</string>
+    <string name="th08_gametext_not_installed">從 Touhou Patch Center（thpatch.net）下載翻譯。只取得 TH08 的文字和翻譯過的文字圖片（幾 MB）。</string>
+    <string name="th08_gametext_not_installed_en">從 Touhou Patch Center（thpatch.net）下載翻譯：只取得 TH08 的文字和翻譯過的文字圖片（幾 MB）。如果你在電腦上使用英文補丁遊玩，也可以把它的 thcrap 資料夾留在遊戲資料夾中，再次匯入該資料夾（見下方「遊戲檔案」）。</string>
+    <string name="th08_gametext_installed">已安裝：%1$d 個檔案，8 個關卡中 %2$d 個關卡的對話，更新於 %3$s。</string>
+    <string name="th08_gametext_imported">來自你匯入的 thcrap 資料夾：%1$d 個檔案，8 個關卡中 %2$d 個關卡的對話。</string>
+    <string name="th08_gametext_download">下載翻譯</string>
+    <string name="th08_gametext_update">檢查翻譯更新</string>
+    <string name="th08_gametext_remove">刪除已下載的翻譯</string>
+    <string name="th08_gametext_connecting">正在連線 thpatch.net…</string>
+    <string name="th08_gametext_downloading">正在下載 %1$s：第 %2$d 個，共 %3$d 個…</string>
+    <string name="th08_gametext_done">完成（%1$d 個新檔案）。下次啟動遊戲時開始使用翻譯。</string>
+    <string name="th08_gametext_failed">無法下載：%1$s</string>
+    <string name="th08_gametext_unavailable">Touhou Patch Center 目前還沒有本作在該語言下的文字翻譯，因此維持日文。</string>
+    <string name="th08_gametext_removed">已刪除下載的翻譯。</string>
+    <string name="th08_gametext_busy">請等待正在進行的匯入、下載或備份完成。</string>
+    <string name="th08_gametext_credit">遊戲文字翻譯：Touhou Patch Center 貢獻者（thpatch.net），CC BY-SA 3.0，依 thcrap 補丁工具的方式套用。</string>
 
-    <string name="files_title">遊戲檔案</string>
-    <string name="files_body">把你自己的《東方妖妖夢》（1.00d 版）複製到這支手機上，然後在這裡選擇它的資料夾，或直接選擇檔案本身。需要 th08.dat 和 th08.exe；有 thbgm.dat 才有音樂。電腦上的 score.dat（分數與解鎖紀錄）和錄像（replay 資料夾）也會一併匯入；如果你在電腦上使用英文補丁遊玩，補丁也會一起匯入（遊戲資料夾中的 thcrap 資料夾）。檔案會複製到應用程式自己的儲存空間，匯入後可以刪除原資料夾。</string>
-    <string name="files_choose_folder">選擇遊戲資料夾</string>
-    <string name="files_choose_files">選擇檔案</string>
-    <string name="files_remove">刪除已匯入的檔案</string>
-    <string name="files_remove_title">要刪除已匯入的遊戲檔案嗎？</string>
-    <string name="files_remove_body">th08.dat、th08.exe、thbgm.dat 以及匯入的英文補丁將從應用程式的儲存空間中刪除（在「語言」中下載的遊戲文字會保留）。你自己的副本不受影響；重新匯入即可遊玩。</string>
-    <string name="files_remove_ok">刪除</string>
-    <string name="files_removed">已刪除匯入的檔案。</string>
-    <string name="files_no_picker">這支手機沒有可用於此操作的檔案選擇器。</string>
-    <string name="cancel">取消</string>
+    <string name="th08_files_title">遊戲檔案</string>
+    <string name="th08_files_body">把你自己的《東方妖妖夢》（1.00d 版）複製到這支手機上，然後在這裡選擇它的資料夾，或直接選擇檔案本身。需要 th08.dat 和 th08.exe；有 thbgm.dat 才有音樂。電腦上的 score.dat（分數與解鎖紀錄）和錄像（replay 資料夾）也會一併匯入；如果你在電腦上使用英文補丁遊玩，補丁也會一起匯入（遊戲資料夾中的 thcrap 資料夾）。檔案會複製到應用程式自己的儲存空間，匯入後可以刪除原資料夾。</string>
+    <string name="th08_files_choose_folder">選擇遊戲資料夾</string>
+    <string name="th08_files_choose_files">選擇檔案</string>
+    <string name="th08_files_remove">刪除已匯入的檔案</string>
+    <string name="th08_files_remove_title">要刪除已匯入的遊戲檔案嗎？</string>
+    <string name="th08_files_remove_body">th08.dat、th08.exe、thbgm.dat 以及匯入的英文補丁將從應用程式的儲存空間中刪除（在「語言」中下載的遊戲文字會保留）。你自己的副本不受影響；重新匯入即可遊玩。</string>
+    <string name="th08_files_remove_ok">刪除</string>
+    <string name="th08_files_removed">已刪除匯入的檔案。</string>
+    <string name="th08_files_no_picker">這支手機沒有可用於此操作的檔案選擇器。</string>
+    <string name="th08_cancel">取消</string>
 
-    <string name="status_ok_size">%1$.1f MB</string>
-    <string name="status_ok_exe">1.00d 版</string>
-    <string name="status_missing_needed">缺少（必需）</string>
-    <string name="status_missing_optional">缺少（可選：音樂）</string>
-    <string name="status_bad_dat">已損毀（不是 PBGZ 封存檔）</string>
-    <string name="status_bad_exe">不是 1.00d 版</string>
-    <string name="status_bad_bgm">不是遊戲的音樂檔</string>
-    <string name="status_english_ok">英文補丁（%1$d 個檔案）</string>
-    <string name="status_english_missing">無英文補丁（可選）</string>
-    <string name="status_music_replaced">已替換 %1$d 首曲子（見下方「替換音樂」）</string>
-    <string name="status_ready">可以遊玩，有音樂。</string>
-    <string name="status_ready_no_music">可以遊玩（無音樂：thbgm.dat 為可選）。</string>
-    <string name="status_not_ready">需要 th08.dat 和 th08.exe 才能遊玩。</string>
+    <string name="th08_status_ok_size">%1$.1f MB</string>
+    <string name="th08_status_ok_exe">1.00d 版</string>
+    <string name="th08_status_missing_needed">缺少（必需）</string>
+    <string name="th08_status_missing_optional">缺少（可選：音樂）</string>
+    <string name="th08_status_bad_dat">已損毀（不是 PBGZ 封存檔）</string>
+    <string name="th08_status_bad_exe">不是 1.00d 版</string>
+    <string name="th08_status_bad_bgm">不是遊戲的音樂檔</string>
+    <string name="th08_status_english_ok">英文補丁（%1$d 個檔案）</string>
+    <string name="th08_status_english_missing">無英文補丁（可選）</string>
+    <string name="th08_status_music_replaced">已替換 %1$d 首曲子（見下方「替換音樂」）</string>
+    <string name="th08_status_ready">可以遊玩，有音樂。</string>
+    <string name="th08_status_ready_no_music">可以遊玩（無音樂：thbgm.dat 為可選）。</string>
+    <string name="th08_status_not_ready">需要 th08.dat 和 th08.exe 才能遊玩。</string>
 
-    <string name="import_starting">正在讀取你的檔案…</string>
-    <string name="import_scanning_path">正在尋找 %1$s</string>
-    <string name="import_checking">正在檢查 %1$s…</string>
-    <string name="import_copying">正在複製 %1$s…  %2$d / %3$d MB</string>
-    <string name="import_copying_unknown">正在複製 %1$s…  %2$d MB</string>
-    <string name="import_done_file">%1$s：已匯入（%2$.1f MB）。</string>
-    <string name="import_done_exe">%1$s：已匯入（1.00d 版）。</string>
-    <string name="import_exe_wrong">%1$s 不是 1.00d 版的 th08.exe，因此沒有匯入（本移植版讀取 1.00d 版的程式）。</string>
-    <string name="import_not_found">%1$s：找不到（遊玩所必需）。</string>
-    <string name="import_bgm_not_found">thbgm.dat：找不到（可選：有它才有音樂）。</string>
-    <string name="import_kept">%1$s：找不到；保留之前匯入的副本。</string>
-    <string name="import_nothing">在那裡沒有找到任何遊戲檔案（th08.dat、th08.exe、thbgm.dat、score.dat、錄像）。</string>
-    <string name="import_done_score">score.dat：已匯入電腦上的分數、解鎖紀錄和符卡紀錄。</string>
-    <string name="import_done_score_kept">score.dat：已匯入電腦上的分數、解鎖紀錄和符卡紀錄（移植版原本的 score.dat 保留為 score.dat.bak）。</string>
-    <string name="import_done_replays">錄像：匯入 %1$d 個，%2$d 個已存在。</string>
-    <string name="import_replays_full">錄像：已沒有可用的錄像檔名，其餘的沒有匯入。</string>
-    <string name="import_done_english">英文補丁：已匯入 %1$d 個檔案（%2$s）。</string>
-    <string name="import_english_none">thcrap：其 repos 資料夾中沒有英文補丁（lang_en）。</string>
-    <string name="import_copying_english">正在複製英文補丁…  %1$d 個檔案</string>
-    <string name="import_skipped">已略過（不是遊戲的檔案）：%1$s</string>
-    <string name="import_failed">匯入中斷：%1$s</string>
-    <string name="import_no_space">沒有足夠的空間存放 %1$s：需要 %2$d MB，剩餘 %3$d MB。</string>
-    <string name="import_cannot_read">無法讀取 %1$s</string>
-    <string name="import_cannot_store">無法建立應用程式的遊戲資料夾</string>
-    <string name="import_busy">匯入仍在進行中。</string>
+    <string name="th08_import_starting">正在讀取你的檔案…</string>
+    <string name="th08_import_scanning_path">正在尋找 %1$s</string>
+    <string name="th08_import_checking">正在檢查 %1$s…</string>
+    <string name="th08_import_copying">正在複製 %1$s…  %2$d / %3$d MB</string>
+    <string name="th08_import_copying_unknown">正在複製 %1$s…  %2$d MB</string>
+    <string name="th08_import_done_file">%1$s：已匯入（%2$.1f MB）。</string>
+    <string name="th08_import_done_exe">%1$s：已匯入（1.00d 版）。</string>
+    <string name="th08_import_exe_wrong">%1$s 不是 1.00d 版的 th08.exe，因此沒有匯入（本移植版讀取 1.00d 版的程式）。</string>
+    <string name="th08_import_not_found">%1$s：找不到（遊玩所必需）。</string>
+    <string name="th08_import_bgm_not_found">thbgm.dat：找不到（可選：有它才有音樂）。</string>
+    <string name="th08_import_kept">%1$s：找不到；保留之前匯入的副本。</string>
+    <string name="th08_import_nothing">在那裡沒有找到任何遊戲檔案（th08.dat、th08.exe、thbgm.dat、score.dat、錄像）。</string>
+    <string name="th08_import_done_score">score.dat：已匯入電腦上的分數、解鎖紀錄和符卡紀錄。</string>
+    <string name="th08_import_done_score_kept">score.dat：已匯入電腦上的分數、解鎖紀錄和符卡紀錄（移植版原本的 score.dat 保留為 score.dat.bak）。</string>
+    <string name="th08_import_done_replays">錄像：匯入 %1$d 個，%2$d 個已存在。</string>
+    <string name="th08_import_replays_full">錄像：已沒有可用的錄像檔名，其餘的沒有匯入。</string>
+    <string name="th08_import_done_english">英文補丁：已匯入 %1$d 個檔案（%2$s）。</string>
+    <string name="th08_import_english_none">thcrap：其 repos 資料夾中沒有英文補丁（lang_en）。</string>
+    <string name="th08_import_copying_english">正在複製英文補丁…  %1$d 個檔案</string>
+    <string name="th08_import_skipped">已略過（不是遊戲的檔案）：%1$s</string>
+    <string name="th08_import_failed">匯入中斷：%1$s</string>
+    <string name="th08_import_no_space">沒有足夠的空間存放 %1$s：需要 %2$d MB，剩餘 %3$d MB。</string>
+    <string name="th08_import_cannot_read">無法讀取 %1$s</string>
+    <string name="th08_import_cannot_store">無法建立應用程式的遊戲資料夾</string>
+    <string name="th08_import_busy">匯入仍在進行中。</string>
 
-    <string name="start_title">開始</string>
-    <string name="start_body">永夜抄仍在移植中：目前「開始遊戲」只會顯示找到了哪些遊戲檔案。下面的選項會在遊戲本體能執行後使用。</string>
-    <string name="start_skip_title">跳過標題畫面（直接從所選關卡開始）</string>
-    <string name="start_shot">角色與機體類型</string>
-    <string name="start_difficulty">難度（Extra 有自己的關卡）</string>
-    <string name="start_stage">關卡</string>
-    <string name="start_lives">殘機</string>
-    <string name="start_practice">以練習模式開始</string>
+    <string name="th08_start_title">開始</string>
+    <string name="th08_start_body">永夜抄仍在移植中：目前「開始遊戲」只會顯示找到了哪些遊戲檔案。下面的選項會在遊戲本體能執行後使用。</string>
+    <string name="th08_start_skip_title">跳過標題畫面（直接從所選關卡開始）</string>
+    <string name="th08_start_shot">角色與機體類型</string>
+    <string name="th08_start_difficulty">難度（Extra 有自己的關卡）</string>
+    <string name="th08_start_stage">關卡</string>
+    <string name="th08_start_lives">殘機</string>
+    <string name="th08_start_practice">以練習模式開始</string>
 
-    <string name="controls_title">操作</string>
-    <string name="controls_body">遊戲的觸控操作（也可以使用藍牙或 USB 手把）。</string>
-    <string name="controls_movement">移動</string>
-    <string name="controls_drag_speed">拖曳速度（手指移動時角色移動的距離）</string>
-    <string name="controls_button_size">按鈕大小</string>
-    <string name="controls_opacity">按鈕不透明度</string>
-    <string name="controls_autofire">自動射擊（遊戲中始終按住射擊）</string>
-    <string name="controls_focus_toggle">低速按鈕改為切換式（點一下開，再點一下關）</string>
-    <string name="controls_left">左手模式（按鈕在左側）</string>
-    <string name="controls_vibrate">中彈和使用炸彈時震動</string>
+    <string name="th08_controls_title">操作</string>
+    <string name="th08_controls_body">遊戲的觸控操作（也可以使用藍牙或 USB 手把）。</string>
+    <string name="th08_controls_movement">移動</string>
+    <string name="th08_controls_drag_speed">拖曳速度（手指移動時角色移動的距離）</string>
+    <string name="th08_controls_button_size">按鈕大小</string>
+    <string name="th08_controls_opacity">按鈕不透明度</string>
+    <string name="th08_controls_autofire">自動射擊（遊戲中始終按住射擊）</string>
+    <string name="th08_controls_focus_toggle">低速按鈕改為切換式（點一下開，再點一下關）</string>
+    <string name="th08_controls_left">左手模式（按鈕在左側）</string>
+    <string name="th08_controls_vibrate">中彈和使用炸彈時震動</string>
 
-    <string name="display_title">顯示</string>
-    <string name="display_body">直向遊玩時，遊戲區域佔滿整個寬度，下方是分數，再下方是操作按鈕。</string>
-    <string name="display_screen">螢幕方向</string>
-    <string name="display_scaling">縮放方式</string>
-    <string name="display_scanlines">CRT 掃描線</string>
+    <string name="th08_display_title">顯示</string>
+    <string name="th08_display_body">直向遊玩時，遊戲區域佔滿整個寬度，下方是分數，再下方是操作按鈕。</string>
+    <string name="th08_display_screen">螢幕方向</string>
+    <string name="th08_display_scaling">縮放方式</string>
+    <string name="th08_display_scanlines">CRT 掃描線</string>
 
-    <string name="practice_title">練習工具</string>
-    <string name="practice_body">原作中沒有的功能。使用慢動作或讀取即時存檔後，該局的分數不會儲存；顯示判定點則沒有任何影響。</string>
-    <string name="practice_speed">遊戲速度</string>
-    <string name="practice_hitbox">顯示角色的判定點</string>
-    <string name="practice_states">即時存檔（SAVE / LOAD 按鈕；鍵盤為 F5 / F9，手把為 L3 / R3）</string>
+    <string name="th08_practice_title">練習工具</string>
+    <string name="th08_practice_body">原作中沒有的功能。使用慢動作或讀取即時存檔後，該局的分數不會儲存；顯示判定點則沒有任何影響。</string>
+    <string name="th08_practice_speed">遊戲速度</string>
+    <string name="th08_practice_hitbox">顯示角色的判定點</string>
+    <string name="th08_practice_states">即時存檔（SAVE / LOAD 按鈕；鍵盤為 F5 / F9，手把為 L3 / R3）</string>
 
-    <string name="mischief_title">惡作劇</string>
-    <string name="mischief_body">原作中沒有的功能。只要開啟其中任意一項，分數、通關紀錄、符卡紀錄和遊玩紀錄都不會儲存。</string>
+    <string name="th08_mischief_title">惡作劇</string>
+    <string name="th08_mischief_body">原作中沒有的功能。只要開啟其中任意一項，分數、通關紀錄、符卡紀錄和遊玩紀錄都不會儲存。</string>
 
-    <string name="music_title">替換音樂</string>
-    <string name="music_body">用你自己的音訊檔（MP3、AAC、OGG、FLAC、WAV 等）替換遊戲中的某首曲子。它會被轉換為 WAV（44,100 Hz，立體聲），並像遊戲音樂一樣循環播放；thbgm.dat 不會被修改。</string>
-    <string name="music_song">曲目</string>
-    <string name="music_replaced_mark">（已替換）</string>
-    <string name="music_loop">循環起點（從曲子開頭算起的秒數；留空或 0 = 整首循環）</string>
-    <string name="music_choose">選擇音訊檔</string>
-    <string name="music_restore">恢復遊戲原曲</string>
-    <string name="music_restored">已恢復：重新播放遊戲原曲。</string>
-    <string name="music_now_yours">目前：你的音樂（%1$s）</string>
-    <string name="music_now_game">目前：遊戲原曲</string>
-    <string name="music_loop_nan">循環起點必須是秒數。</string>
-    <string name="music_reading">正在讀取檔案…</string>
-    <string name="music_done">完成：%1$s 現在播放你的音樂（%2$s）。</string>
-    <string name="music_failed">無法使用該檔案：%1$s</string>
-    <string name="music_busy">請等待正在進行的轉換或備份完成。</string>
-    <string name="music_converting">正在轉換為 WAV（44,100 Hz，立體聲）…</string>
-    <string name="music_converting_pct">正在轉換… %1$d%%</string>
-    <string name="music_decoding_pct">正在解碼… %1$d%%</string>
-    <string name="music_describe">%1$s，從 %2$s 開始循環，%3$.1f MB</string>
-    <string name="music_err_no_audio">該檔案沒有音軌</string>
-    <string name="music_err_nothing">無法從該檔案解碼出任何內容</string>
-    <string name="music_err_cannot">無法解碼此檔案：%1$s</string>
+    <string name="th08_music_title">替換音樂</string>
+    <string name="th08_music_body">用你自己的音訊檔（MP3、AAC、OGG、FLAC、WAV 等）替換遊戲中的某首曲子。它會被轉換為 WAV（44,100 Hz，立體聲），並像遊戲音樂一樣循環播放；thbgm.dat 不會被修改。</string>
+    <string name="th08_music_song">曲目</string>
+    <string name="th08_music_replaced_mark">（已替換）</string>
+    <string name="th08_music_loop">循環起點（從曲子開頭算起的秒數；留空或 0 = 整首循環）</string>
+    <string name="th08_music_choose">選擇音訊檔</string>
+    <string name="th08_music_restore">恢復遊戲原曲</string>
+    <string name="th08_music_restored">已恢復：重新播放遊戲原曲。</string>
+    <string name="th08_music_now_yours">目前：你的音樂（%1$s）</string>
+    <string name="th08_music_now_game">目前：遊戲原曲</string>
+    <string name="th08_music_loop_nan">循環起點必須是秒數。</string>
+    <string name="th08_music_reading">正在讀取檔案…</string>
+    <string name="th08_music_done">完成：%1$s 現在播放你的音樂（%2$s）。</string>
+    <string name="th08_music_failed">無法使用該檔案：%1$s</string>
+    <string name="th08_music_busy">請等待正在進行的轉換或備份完成。</string>
+    <string name="th08_music_converting">正在轉換為 WAV（44,100 Hz，立體聲）…</string>
+    <string name="th08_music_converting_pct">正在轉換… %1$d%%</string>
+    <string name="th08_music_decoding_pct">正在解碼… %1$d%%</string>
+    <string name="th08_music_describe">%1$s，從 %2$s 開始循環，%3$.1f MB</string>
+    <string name="th08_music_err_no_audio">該檔案沒有音軌</string>
+    <string name="th08_music_err_nothing">無法從該檔案解碼出任何內容</string>
+    <string name="th08_music_err_cannot">無法解碼此檔案：%1$s</string>
 
-    <string name="backup_title">備份</string>
-    <string name="backup_body">把最高分和遊玩紀錄、遊戲設定、錄像、啟動器設定，以及（可選的）替換音樂儲存到一個檔案中（下載資料夾、雲端硬碟等），重新安裝後或在新手機上可以還原。備份中不包含遊戲檔案和下載的遊戲文字：請重新匯入或下載。</string>
-    <string name="backup_music">包括替換的音樂（檔案更大）</string>
-    <string name="backup_save">備份到檔案</string>
-    <string name="backup_restore">從備份還原</string>
-    <string name="backup_busy">請等待正在進行的匯入、轉換或備份完成。</string>
-    <string name="backup_saving">正在儲存…</string>
-    <string name="backup_saved">已儲存：%1$s。</string>
-    <string name="backup_save_failed">無法儲存備份：%1$s</string>
-    <string name="backup_confirm_title">要還原此備份嗎？</string>
-    <string name="backup_confirm_body">目前的最高分、遊戲設定和啟動器設定將被備份中的內容取代（如果備份含有音樂，替換的音樂也會被取代）。同名的錄像會被取代；其他錄像會保留。</string>
-    <string name="backup_confirm_ok">還原</string>
-    <string name="backup_restoring">正在還原…</string>
-    <string name="backup_reading">正在讀取 %1$s…</string>
-    <string name="backup_saving_music">正在儲存音樂：%1$s…</string>
-    <string name="backup_reading_music">正在讀取音樂：%1$s…</string>
-    <string name="backup_restored">已還原：%1$s。</string>
-    <string name="backup_restore_failed">無法還原：%1$s</string>
-    <string name="backup_part_scores">最高分和紀錄</string>
-    <string name="backup_part_options">遊戲設定</string>
-    <string name="backup_part_settings">啟動器設定</string>
-    <string name="backup_empty">無（備份是空的）</string>
-    <string name="backup_err_not_backup">這不是 TH08 移植版的備份</string>
-    <string name="backup_err_newer">此備份來自較新版本的應用程式，請先更新應用程式</string>
-    <string name="backup_err_damaged">備份已損毀</string>
+    <string name="th08_backup_title">備份</string>
+    <string name="th08_backup_body">把最高分和遊玩紀錄、遊戲設定、錄像、啟動器設定，以及（可選的）替換音樂儲存到一個檔案中（下載資料夾、雲端硬碟等），重新安裝後或在新手機上可以還原。備份中不包含遊戲檔案和下載的遊戲文字：請重新匯入或下載。</string>
+    <string name="th08_backup_music">包括替換的音樂（檔案更大）</string>
+    <string name="th08_backup_save">備份到檔案</string>
+    <string name="th08_backup_restore">從備份還原</string>
+    <string name="th08_backup_busy">請等待正在進行的匯入、轉換或備份完成。</string>
+    <string name="th08_backup_saving">正在儲存…</string>
+    <string name="th08_backup_saved">已儲存：%1$s。</string>
+    <string name="th08_backup_save_failed">無法儲存備份：%1$s</string>
+    <string name="th08_backup_confirm_title">要還原此備份嗎？</string>
+    <string name="th08_backup_confirm_body">目前的最高分、遊戲設定和啟動器設定將被備份中的內容取代（如果備份含有音樂，替換的音樂也會被取代）。同名的錄像會被取代；其他錄像會保留。</string>
+    <string name="th08_backup_confirm_ok">還原</string>
+    <string name="th08_backup_restoring">正在還原…</string>
+    <string name="th08_backup_reading">正在讀取 %1$s…</string>
+    <string name="th08_backup_saving_music">正在儲存音樂：%1$s…</string>
+    <string name="th08_backup_reading_music">正在讀取音樂：%1$s…</string>
+    <string name="th08_backup_restored">已還原：%1$s。</string>
+    <string name="th08_backup_restore_failed">無法還原：%1$s</string>
+    <string name="th08_backup_part_scores">最高分和紀錄</string>
+    <string name="th08_backup_part_options">遊戲設定</string>
+    <string name="th08_backup_part_settings">啟動器設定</string>
+    <string name="th08_backup_empty">無（備份是空的）</string>
+    <string name="th08_backup_err_not_backup">這不是 TH08 移植版的備份</string>
+    <string name="th08_backup_err_newer">此備份來自較新版本的應用程式，請先更新應用程式</string>
+    <string name="th08_backup_err_damaged">備份已損毀</string>
 
-    <string name="crash_title">遊戲意外關閉</string>
-    <string name="crash_body">很抱歉。發生情況的日誌已保存在這支手機上；你可以儲存它並附加到 GitHub 上的錯誤回報中。不會自動傳送任何內容。</string>
-    <string name="crash_save">儲存日誌</string>
-    <string name="crash_dismiss">關閉</string>
-    <string name="update_title">版本 %1$s 已發布</string>
-    <string name="update_body">你目前的版本是 %1$s。請從發布頁面下載新的 APK 並覆蓋安裝（分數和設定會保留）。</string>
-    <string name="update_open">開啟發布頁面</string>
-    <string name="no_browser">找不到可開啟 %1$s 的瀏覽器</string>
+    <string name="th08_crash_title">遊戲意外關閉</string>
+    <string name="th08_crash_body">很抱歉。發生情況的日誌已保存在這支手機上；你可以儲存它並附加到 GitHub 上的錯誤回報中。不會自動傳送任何內容。</string>
+    <string name="th08_crash_save">儲存日誌</string>
+    <string name="th08_crash_dismiss">關閉</string>
+    <string name="th08_update_title">版本 %1$s 已發布</string>
+    <string name="th08_update_body">你目前的版本是 %1$s。請從發布頁面下載新的 APK 並覆蓋安裝（分數和設定會保留）。</string>
+    <string name="th08_update_open">開啟發布頁面</string>
+    <string name="th08_no_browser">找不到可開啟 %1$s 的瀏覽器</string>
 
-    <string name="help_title">說明與更新</string>
-    <string name="help_version">版本 %1$s（組建 %2$d）。</string>
-    <string name="help_auto">每天檢查一次新版本</string>
-    <string name="help_check">立即檢查更新</string>
-    <string name="help_checking">正在檢查…</string>
-    <string name="help_none_published">尚未發布任何正式版本。</string>
-    <string name="help_newer">版本 %1$s 已發布（見本頁頂部）。</string>
-    <string name="help_latest">已是最新版本（最新發布為 %1$s）。</string>
-    <string name="help_check_failed">無法檢查：%1$s</string>
-    <string name="help_bug">發現錯誤？儲存日誌（在你分享之前它只保存在你的手機上），並將其附加到 GitHub 的 Issue 中。</string>
-    <string name="help_save_log">儲存用於錯誤回報的日誌</string>
-    <string name="help_report">在 GitHub 上回報問題</string>
-    <string name="help_log_saved">日誌已儲存。請將其附加到你的錯誤回報中。</string>
-    <string name="help_log_failed">無法儲存日誌：%1$s</string>
-    <string name="err_cannot_write">無法寫入該位置</string>
-    <string name="err_cannot_read">無法讀取該檔案</string>
-    <string name="list_separator">、</string>
+    <string name="th08_help_title">說明與更新</string>
+    <string name="th08_help_version">版本 %1$s（組建 %2$d）。</string>
+    <string name="th08_help_auto">每天檢查一次新版本</string>
+    <string name="th08_help_check">立即檢查更新</string>
+    <string name="th08_help_checking">正在檢查…</string>
+    <string name="th08_help_none_published">尚未發布任何正式版本。</string>
+    <string name="th08_help_newer">版本 %1$s 已發布（見本頁頂部）。</string>
+    <string name="th08_help_latest">已是最新版本（最新發布為 %1$s）。</string>
+    <string name="th08_help_check_failed">無法檢查：%1$s</string>
+    <string name="th08_help_bug">發現錯誤？儲存日誌（在你分享之前它只保存在你的手機上），並將其附加到 GitHub 的 Issue 中。</string>
+    <string name="th08_help_save_log">儲存用於錯誤回報的日誌</string>
+    <string name="th08_help_report">在 GitHub 上回報問題</string>
+    <string name="th08_help_log_saved">日誌已儲存。請將其附加到你的錯誤回報中。</string>
+    <string name="th08_help_log_failed">無法儲存日誌：%1$s</string>
+    <string name="th08_err_cannot_write">無法寫入該位置</string>
+    <string name="th08_err_cannot_read">無法讀取該檔案</string>
+    <string name="th08_list_separator">、</string>
 
-    <string name="footer">供你使用自己擁有的《東方永夜抄 ～ Imperishable Night》（上海愛麗絲幻樂團）遊玩的同人移植版。不包含任何遊戲檔案。</string>
+    <string name="th08_footer">供你使用自己擁有的《東方永夜抄 ～ Imperishable Night》（上海愛麗絲幻樂團）遊玩的同人移植版。不包含任何遊戲檔案。</string>
 
-    <string-array name="stages">
+    <string-array name="th08_stages">
         <item>1 面</item>
         <item>2 面</item>
         <item>3 面</item>
@@ -209,51 +209,51 @@
         <item>6A 面</item>
         <item>6B 面</item>
     </string-array>
-    <string-array name="lives">
+    <string-array name="th08_lives">
         <item>0</item>
         <item>1</item>
         <item>2（遊戲預設）</item>
         <item>3</item>
         <item>4</item>
     </string-array>
-    <string-array name="move_modes">
+    <string-array name="th08_move_modes">
         <item>任意位置拖曳（觸控板式）</item>
         <item>方向鍵</item>
     </string-array>
-    <string-array name="button_sizes">
+    <string-array name="th08_button_sizes">
         <item>小</item>
         <item>標準</item>
         <item>大</item>
         <item>特大</item>
     </string-array>
-    <string-array name="opacities">
+    <string-array name="th08_opacities">
         <item>很淡</item>
         <item>較淡</item>
         <item>標準</item>
         <item>不透明</item>
     </string-array>
-    <string-array name="layouts">
+    <string-array name="th08_layouts">
         <item>橫向</item>
         <item>直向（遊戲區域佔滿寬度）</item>
     </string-array>
-    <string-array name="scalings">
+    <string-array name="th08_scalings">
         <item>平滑</item>
         <item>銳利像素</item>
         <item>像素完美（整數倍）</item>
     </string-array>
-    <string-array name="speeds">
+    <string-array name="th08_speeds">
         <item>正常速度</item>
         <item formatted="false">75%（慢動作）</item>
         <item formatted="false">50%（慢動作）</item>
     </string-array>
-    <string-array name="mischief">
+    <string-array name="th08_mischief">
         <item>無限殘機</item>
         <item>無限炸彈</item>
         <item>無敵（不會被任何東西擊中）</item>
         <item>火力始終 MAX</item>
         <item>無限接關</item>
     </string-array>
-    <string-array name="track_titles">
+    <string-array name="th08_track_titles">
         <item>永夜抄　～ Eastern Night.</item>
         <item>幻視の夜　～ Ghostly Eyes</item>
         <item>蠢々秋月　～ Mooned Insect</item>
@@ -276,7 +276,7 @@
         <item>Eternal Dream　～ 幽玄の槭樹</item>
         <item>東方妖怪小町</item>
     </string-array>
-    <string-array name="track_places">
+    <string-array name="th08_track_places">
         <item>標題畫面</item>
         <item>1 面</item>
         <item>1 面 Boss（莉格露）</item>
@@ -299,10 +299,10 @@
         <item>製作人員名單</item>
         <item>Last Word</item>
     </string-array>
-    <plurals name="backup_part_replays">
+    <plurals name="th08_backup_part_replays">
         <item quantity="other">%d 個錄像</item>
     </plurals>
-    <plurals name="backup_part_songs">
+    <plurals name="th08_backup_part_songs">
         <item quantity="other">%d 首替換的音樂</item>
     </plurals>
 </resources>

@@ -13,7 +13,7 @@
 #                   ES 3 rendering, audio mixer, gamepad/keyboard/touch input, crash
 #                   handler, data mounting and the Android JNI glue.
 # A game adds its own static library on top of thengine_core and links thengine_host
-# into its executable (desktop) or libmain.so (Android).
+# into its executable (desktop) or lib<game>main.so (Android).
 
 if(NOT EXISTS "${TOUHOU_THIRD_PARTY}/zstd/lib/zstd.h" OR NOT EXISTS "${TOUHOU_THIRD_PARTY}/include/stb_image.h")
   message(FATAL_ERROR "Third-party sources missing in ${TOUHOU_THIRD_PARTY}. Run: bash scripts/fetch_deps.sh")
