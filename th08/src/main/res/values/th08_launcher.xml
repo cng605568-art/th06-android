@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- True only inside Touhou Launcher (the one app for TH06-TH08), which overrides it: the
+         game then keeps its files in a th08/ folder and runs in a process of its own. -->
+    <bool name="th08_in_touhou_launcher">false</bool>
+</resources>

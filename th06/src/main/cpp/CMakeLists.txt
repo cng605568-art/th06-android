@@ -1,6 +1,6 @@
 # Native build of the th06 app, driven by Gradle's externalNativeBuild on Android (AGP
 # passes the NDK toolchain, ABI and TOUHOU_THIRD_PARTY). Produces libSDL2.so and
-# libmain.so, the two libraries GameActivity loads: the shared engine
+# libth06main.so, the two libraries GameActivity loads: the shared engine
 # (engine/native/engine.cmake) with Embodiment of Scarlet Devil's game code (th06.cmake).
 #
 # The same file also builds a Linux desktop executable for development
@@ -37,10 +37,11 @@ set(TH06_APP_SOURCES
   src/th06/Th06Game.cpp)
 
 if(ANDROID)
-  # SDLActivity loads "libmain.so" and calls SDL_main() in it.
-  add_library(main SHARED ${TH06_APP_SOURCES})
-  target_link_options(main PRIVATE -Wl,--gc-sections)
-  set(TH06_APP_TARGET main)
+  # GameActivity names "libth06main.so" (one name per game, so the three can share Touhou
+  # Launcher's APK); SDLActivity loads it and calls SDL_main() in it.
+  add_library(th06main SHARED ${TH06_APP_SOURCES})
+  target_link_options(th06main PRIVATE -Wl,--gc-sections)
+  set(TH06_APP_TARGET th06main)
 else()
   add_executable(th06_desktop ${TH06_APP_SOURCES})
   set(TH06_APP_TARGET th06_desktop)

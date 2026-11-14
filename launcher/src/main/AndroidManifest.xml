@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Touhou Launcher. The three game libraries bring their activities, features and permissions;
+     this adds the picker, and runs each game's SDL activity in a process of its own (":th06",
+     ":th07", ":th08"): SDL and the engines keep process-wide state, and the game process ends
+     with the game (GameActivity.onDestroy), so every start is a fresh one. The games' launcher
+     screens stay in the main process. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application
+        android:name=".TouhouApp"
+        android:label="@string/hub_app_name"
+        android:icon="@drawable/hub_ic_launcher"
+        android:allowBackup="false"
+        android:appCategory="game"
+        android:isGame="true"
+        android:hardwareAccelerated="true"
+        android:theme="@style/Hub.Theme">
+
+        <activity
+            android:name=".HubActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name="io.github.cng605568art.th06.GameActivity"
+            android:process=":th06"
+            tools:node="merge" />
+        <activity
+            android:name="io.github.cng605568art.th07.GameActivity"
+            android:process=":th07"
+            tools:node="merge" />
+        <activity
+            android:name="io.github.cng605568art.th08.GameActivity"
+            android:process=":th08"
+            tools:node="merge" />
+    </application>
+</manifest>

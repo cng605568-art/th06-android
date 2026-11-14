@@ -111,6 +111,15 @@ bool App::init(int argc, char** argv) {
         if (a == "--frames" && next) devFrames_ = std::atoi(argv[++i]);
         else if (a == "--ticks" && next) devTicks_ = std::atoi(argv[++i]);
         else if (a == "--screenshot" && next) devScreenshot_ = argv[++i];
+        else if (a == "--shots" && next) {
+            const std::string list = argv[++i];
+            for (std::size_t at = 0; at < list.size();) {
+                std::size_t end = list.find(',', at);
+                if (end == std::string::npos) end = list.size();
+                devShots_.push_back(static_cast<std::uint64_t>(std::atoll(list.substr(at, end - at).c_str())));
+                at = end + 1;
+            }
+        }
         else if (a == "--demo-touch") devTouch_ = true;
         else if (a == "--demo-bomb" && next) devBombFrame_ = std::atoi(argv[++i]);
         else if (a == "--demo-pause" && next) devPauseFrame_ = std::atoi(argv[++i]);
@@ -487,13 +496,10 @@ void App::developerFrameHooks() {
     if (devClearFrame_ >= 0 && frameCount_ == static_cast<std::uint64_t>(devClearFrame_)) {
         game_->devCommand(Game::DevCommand::Clear);
     }
-    const bool byFrames = devFrames_ > 0 && frameCount_ >= static_cast<std::uint64_t>(devFrames_);
-    const bool byTicks = devTicks_ > 0 && tickCount_ >= static_cast<std::uint64_t>(devTicks_);
-    if (!byFrames && !byTicks) return;
-    if (!devScreenshot_.empty()) {
+    auto writeScreenshot = [this](const std::string& path) {
         std::vector<std::uint8_t> px(static_cast<std::size_t>(drawWidth_) * drawHeight_ * 4);
         glReadPixels(0, 0, drawWidth_, drawHeight_, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
-        if (std::FILE* f = std::fopen(devScreenshot_.c_str(), "wb")) {
+        if (std::FILE* f = std::fopen(path.c_str(), "wb")) {
             std::fprintf(f, "P6\n%d %d\n255\n", drawWidth_, drawHeight_);
             for (int y = drawHeight_ - 1; y >= 0; --y) {
                 for (int x = 0; x < drawWidth_; ++x) {
@@ -501,9 +507,19 @@ void App::developerFrameHooks() {
                 }
             }
             std::fclose(f);
-            log::info("Screenshot written to {}", devScreenshot_);
+            log::info("Screenshot written to {}", path);
         }
+    };
+    // --shots "N,M,...": extra screenshots at those frames, next to --screenshot (stem_N.ppm).
+    if (!devScreenshot_.empty() && std::find(devShots_.begin(), devShots_.end(), frameCount_) != devShots_.end()) {
+        std::string stem = devScreenshot_;
+        if (stem.size() > 4 && stem.ends_with(".ppm")) stem.resize(stem.size() - 4);
+        writeScreenshot(stem + "_" + std::to_string(frameCount_) + ".ppm");
     }
+    const bool byFrames = devFrames_ > 0 && frameCount_ >= static_cast<std::uint64_t>(devFrames_);
+    const bool byTicks = devTicks_ > 0 && tickCount_ >= static_cast<std::uint64_t>(devTicks_);
+    if (!byFrames && !byTicks) return;
+    if (!devScreenshot_.empty()) writeScreenshot(devScreenshot_);
     log::info("Exit after {} frames", frameCount_);
     game_->logStatus(frameInfo());
     game_->logSummary();
@@ -602,10 +618,27 @@ bool App::capturePlayfield() {
     } else {
         log::warn("Playfield capture: framebuffer incomplete");
     }
+    // A capture that reads back black at nine points across the rectangle is treated as
+    // failed: the menus then show over the live (paused) playfield instead of a black one.
+    // (Some phone GPUs were seen to give a black copy; a dark stage can also be black at all
+    // nine points, which only costs the snapshot's dimming.)
+    bool black = ok;
+    if (ok) {
+        for (int i = 0; i < 9 && black; ++i) {
+            std::uint8_t px[4] = {0, 0, 0, 0};
+            glReadPixels(r.x + w * (1 + i % 3) / 4, r.y + h * (1 + i / 3) / 4, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
+            if (px[0] | px[1] | px[2]) black = false;
+        }
+        if (black && captureBlackStreak_++ == 0) {
+            log::warn("Playfield capture read back black ({}x{} at {},{} of texture {}x{}; GL {}): drawing the live playfield instead", w, h, r.x,
+                      r.y, texW, texH, reinterpret_cast<const char*>(glGetString(GL_RENDERER)));
+        }
+        if (!black) captureBlackStreak_ = 0;
+    }
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 0, 0);
     RenderTarget::bindScreen();
     gl::check("capturePlayfield");
-    return ok;
+    return ok && !black;
 }
 
 // Draws part of the game's picture (sx..: picture pixels) at dx.. on the screen.

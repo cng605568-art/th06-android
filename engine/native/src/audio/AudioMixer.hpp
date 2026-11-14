@@ -19,8 +19,8 @@ namespace touhou {
 // allocates. One voice per sound id; replaying a voice restarts it.
 class AudioMixer final : public SampleBackend, public MusicBackend {
   public:
-    static constexpr int kMaxSamples = 32;
-    static constexpr int kMaxVoices = 64;  // th07 has 38 sound ids, one voice each
+    static constexpr int kMaxSamples = 48;  // th08 has 36 effect WAVs
+    static constexpr int kMaxVoices = 64;   // th07 has 38 sound ids and th08 46, one voice each
 
     ~AudioMixer() override;
 

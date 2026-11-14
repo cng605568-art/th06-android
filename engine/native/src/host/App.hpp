@@ -79,6 +79,7 @@ class App {
     int devSeed_ = -1;
     bool devLockstep_ = false;
     std::string devScreenshot_;
+    std::vector<std::uint64_t> devShots_;
     bool devTouch_ = false;
     int devBombFrame_ = -1;
     int devPauseFrame_ = -1;
@@ -115,6 +116,7 @@ class App {
     SpriteBatch batch_;
     RenderTarget target_;
     GLuint captureFbo_ = 0;
+    int captureBlackStreak_ = 0;  // captures in a row that read back all black (see capturePlayfield)
     AudioMixer audio_;
     InputMapper input_;
     VirtualController touch_;

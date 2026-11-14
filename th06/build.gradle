@@ -1,35 +1,32 @@
 plugins {
-    id 'com.android.application'
+    id 'com.android.library'
 }
 
-// Pinned sources fetched by scripts/fetch_deps.sh. SDL's Java glue is compiled from the
-// same tarball as the native library so the two can never drift apart.
+// The Embodiment of Scarlet Devil as a library: its launcher and game activities, resources and native engine
+// (libSDL2.so + libth06main.so, built from th06/src/main/cpp/CMakeLists.txt). Two apps package
+// it: the standalone app (:th06-app, apps/th06) and Touhou Launcher (:launcher), which holds all
+// three games. SDL's Java glue comes from the :sdl library.
+
 def thirdParty = rootProject.file('third_party')
-def sdl2Dir = new File(thirdParty, 'SDL2')
-if (!new File(sdl2Dir, 'android-project/app/src/main/java/org/libsdl/app/SDLActivity.java').exists()) {
+if (!new File(thirdParty, 'SDL2/CMakeLists.txt').exists()) {
     throw new GradleException('third_party/SDL2 is missing. Run: bash scripts/fetch_deps.sh')
 }
 
-def abiList = (project.findProperty('th06.abis') ?: 'arm64-v8a').toString()
+// -Pth06.abis=... for this game alone; otherwise the same list as the others (-Pth06.abis,
+// which CI passes, or gradle.properties).
+def abiList = (project.findProperty('th06.abis') ?: project.findProperty('th06.abis') ?: 'arm64-v8a').toString()
         .split(',').collect { it.trim() }.findAll { !it.isEmpty() }
-
-// Release signing comes only from environment variables (set by CI from GitHub Secrets).
-def keystorePath = System.getenv('TH06_KEYSTORE_PATH')
-def hasReleaseKey = keystorePath != null && !keystorePath.isEmpty() && new File(keystorePath).exists()
 
 android {
     namespace = 'io.github.cng605568art.th06'
     compileSdk = 36
     ndkVersion = '28.2.13676358'
+    // Every resource of this game starts with "th06_", so the three games' resources stay
+    // apart in Touhou Launcher's APK (lint checks it).
+    resourcePrefix = 'th06_'
 
     defaultConfig {
-        applicationId = 'io.github.cng605568art.th06'
         minSdk = 24
-        targetSdk = 36
-        versionCode = (System.getenv('TH06_VERSION_CODE') ?: '1').toInteger()
-        // The version is kept in the VERSION file at the top of the repository; CI adds
-        // "-dev+<commit>" for branch builds and uses the tag's version for releases.
-        versionName = System.getenv('TH06_VERSION_NAME') ?: (rootProject.file('VERSION').text.trim() + '-local')
 
         ndk {
             abiFilters.addAll(abiList)
@@ -46,36 +43,10 @@ android {
         }
     }
 
-    signingConfigs {
-        release {
-            if (hasReleaseKey) {
-                storeFile = file(keystorePath)
-                storePassword = System.getenv('TH06_KEYSTORE_PASSWORD')
-                keyAlias = System.getenv('TH06_KEY_ALIAS') ?: 'release'
-                keyPassword = System.getenv('TH06_KEY_PASSWORD') ?: System.getenv('TH06_KEYSTORE_PASSWORD')
-            }
-        }
-    }
-
-    buildTypes {
-        release {
-            minifyEnabled = false
-            // No release key (forks, local builds): sign with the debug key so the APK still
-            // installs for testing. CI refuses to publish tags in that state.
-            signingConfig = hasReleaseKey ? signingConfigs.release : signingConfigs.debug
-        }
-    }
-
     externalNativeBuild {
         cmake {
             path = file('src/main/cpp/CMakeLists.txt')
             version = '3.22.1'
-        }
-    }
-
-    sourceSets {
-        main {
-            java.srcDir(new File(sdl2Dir, 'android-project/app/src/main/java'))
         }
     }
 
@@ -84,17 +55,12 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    packaging {
-        jniLibs {
-            // Keep .so files uncompressed and 16 KB page-aligned inside the APK.
-            useLegacyPackaging = false
-        }
-    }
-
     lint {
-        // SDL's bundled Java targets many API levels behind runtime checks; don't let
-        // release lint fail the CI build on it.
         checkReleaseBuilds = false
         abortOnError = false
     }
+}
+
+dependencies {
+    api project(':sdl')
 }

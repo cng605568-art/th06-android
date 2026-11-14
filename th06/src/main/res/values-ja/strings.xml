@@ -1,153 +1,153 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Generated: launcher text in five languages (keep the files in step). -->
 <resources>
-    <string name="header_tag">Android 移植版  ·  お手持ちの 2002 年版ゲームデータで遊べます</string>
-    <string name="play">プレイ</string>
-    <string name="hint_choose_folder">先にゲームフォルダを選んでください（下の「ゲームデータ」）。</string>
-    <string name="hint_extra">Extra ステージから開始  ·  練習扱い、記録は保存されません</string>
-    <string name="hint_stage">ステージ %1$d から開始  ·  練習扱い、記録は保存されません</string>
-    <string name="hint_title">ゲームのタイトル画面を開きます</string>
-    <string name="lang_title">言語</string>
-    <string name="lang_body">このランチャーと、ゲーム内のテキスト（会話・スペルカード・曲コメント）の言語です。</string>
-    <string name="lang_system">端末の設定に合わせる</string>
-    <string name="files_title">ゲームデータ</string>
-    <string name="files_body">お手持ちのゲームフォルダをスマートフォンにコピーし（2002 年版の 紅魔郷**.DAT / KOUMAKYO_**.dat、または New Classic の th06**.dat がある data フォルダ）、ここで選んでください。ファイルはその場で読み込まれ、コピーはされません。</string>
-    <string name="files_choose">ゲームフォルダを選ぶ</string>
-    <string name="files_prefer_nc">両方の版が見つかった場合は New Classic の素材を優先する</string>
-    <string name="files_denied">Android がそのフォルダへの継続的なアクセスを許可しませんでした: %1$s</string>
-    <string name="files_scanning">検索中…</string>
-    <string name="files_scanning_path">検索中 %1$s</string>
-    <string name="files_none_found">そのフォルダ（とサブフォルダ）にゲームのアーカイブ（PBG3 または PKGL で始まる .dat ファイル）が見つかりませんでした。</string>
-    <string name="files_none_selected">まだゲームデータが選ばれていません。2002 年版ゲームのフォルダ（紅魔郷CM.DAT、紅魔郷ST.DAT … または KOUMAKYO_*.dat）を選んでください。</string>
-    <string name="files_kind_classic">Classic</string>
-    <string name="files_kind_program">プログラム</string>
-    <string name="files_kind_nc">New Classic</string>
-    <string name="files_music">BGM: bgm/ の %1$d 曲（%2$.0f MB）</string>
-    <string name="files_music_none">BGM: なし（音楽を流すには bgm フォルダもコピーしてください）</string>
-    <string name="files_replaced">差し替えた曲: %1$d 曲（下記参照）</string>
-    <string name="files_scores">ハイスコア: PC の score.dat（新しいスコアはアプリ内に保存）</string>
-    <string name="files_nc_only">ステージは 2002 年版のデータで動きます。New Classic のアーカイブだけではまだステージを開始できません。</string>
-    <string name="select_title">ステージセレクト</string>
-    <string name="select_body">タイトル画面を飛ばして好きなステージから始めます。練習専用で、記録は一切保存されません。</string>
-    <string name="select_check">好きなステージから始める（スコアは保存されません）</string>
-    <string name="select_shot">装備（ショットタイプ）</string>
-    <string name="select_difficulty">難易度</string>
-    <string name="select_start">開始ステージ（Extra は専用の難易度）</string>
-    <string name="controls_title">操作</string>
-    <string name="controls_body">ゲームのタッチ操作です（Bluetooth / USB のゲームパッドも使えます）。</string>
-    <string name="controls_movement">移動</string>
-    <string name="controls_drag_speed">ドラッグ速度（指の移動量に対する自機の移動量）</string>
-    <string name="controls_button_size">ボタンの大きさ</string>
-    <string name="controls_opacity">ボタンの不透明度</string>
-    <string name="controls_autofire">オート連射（プレイ中はショットを押しっぱなしにする）</string>
-    <string name="controls_focus_toggle">低速ボタンを切り替え式にする（タップでオン／オフ）</string>
-    <string name="controls_left">左利き（ボタンを左側に）</string>
-    <string name="controls_vibrate">被弾時とボム使用時に振動する</string>
-    <string name="display_title">画面</string>
-    <string name="display_body">縦画面では、プレイ画面を横幅いっぱいに表示し、その下にスコア、さらに下に操作ボタンを置きます。メニューや会話シーンは全体が表示されます。</string>
-    <string name="display_screen">画面の向き</string>
-    <string name="display_scaling">拡大方法</string>
-    <string name="display_scanlines">ブラウン管風の走査線</string>
-    <string name="practice_title">練習ツール</string>
-    <string name="practice_body">原作にはない機能です。スローモーションやステートロードを使ったゲームのスコアは保存されません。当たり判定の表示は何も変えません。</string>
-    <string name="practice_speed">ゲーム速度</string>
-    <string name="practice_hitbox">自機の当たり判定を表示する</string>
-    <string name="practice_states">ステートセーブ（SAVE / LOAD ボタン。キーボードは F5 / F9、ゲームパッドは L3 / R3）</string>
-    <string name="mischief_title">いたずら</string>
-    <string name="mischief_body">原作にはない機能です。どれか一つでもオンの間は、スコア・クリア記録・スペルカードは保存されません。</string>
-    <string name="music_title">曲の差し替え</string>
-    <string name="music_body">ゲームの曲のかわりに、お好きな音声ファイル（MP3、AAC、OGG、FLAC、WAV など）を流します。WAV（44,100 Hz・ステレオ）に変換され、ゲームの BGM と同じようにループします。</string>
-    <string name="music_song">曲</string>
-    <string name="music_replaced_mark">（差し替え済み）</string>
-    <string name="music_loop">ループ開始位置（曲の先頭からの秒数。空欄か 0 で曲全体）</string>
-    <string name="music_choose">音声ファイルを選ぶ</string>
-    <string name="music_restore">元の曲に戻す</string>
-    <string name="music_restored">元に戻しました。ゲームの元の曲が流れます。</string>
-    <string name="music_now_yours">現在: あなたの曲（%1$s）</string>
-    <string name="music_now_game">現在: ゲームの元の曲</string>
-    <string name="music_loop_nan">ループ開始位置は秒数（数字）で入力してください。</string>
-    <string name="music_reading">ファイルを読み込み中…</string>
-    <string name="music_done">完了: %1$s であなたの曲が流れます（%2$s）。</string>
-    <string name="music_failed">そのファイルは使えませんでした: %1$s</string>
-    <string name="music_converting">WAV（44,100 Hz・ステレオ）に変換中…</string>
-    <string name="music_converting_pct">変換中… %1$d%%</string>
-    <string name="music_decoding_pct">デコード中… %1$d%%</string>
-    <string name="music_describe">%1$s、%2$s からループ、%3$.1f MB</string>
-    <string name="music_err_no_audio">そのファイルには音声トラックがありません</string>
-    <string name="music_err_nothing">そのファイルからは何もデコードできませんでした</string>
-    <string name="music_err_cannot">このファイルはデコードできません: %1$s</string>
-    <string name="backup_title">バックアップ</string>
-    <string name="backup_body">ハイスコア・ゲーム設定・リプレイ・ランチャーの設定を一つのファイルにまとめて（ダウンロードフォルダやクラウドなどに）保存し、再インストール後や新しいスマートフォンで復元できます。</string>
-    <string name="backup_music">差し替えた曲も含める（ファイルが大きくなります）</string>
-    <string name="backup_save">ファイルにバックアップ</string>
-    <string name="backup_restore">バックアップから復元</string>
-    <string name="backup_saving">保存中…</string>
-    <string name="backup_saved">保存しました: %1$s。</string>
-    <string name="backup_save_failed">バックアップを保存できませんでした: %1$s</string>
-    <string name="backup_confirm_title">このバックアップを復元しますか？</string>
-    <string name="backup_confirm_body">現在のハイスコア・ゲーム設定・ランチャーの設定は、バックアップの内容に置き換えられます（バックアップに曲が含まれていれば、差し替えた曲も）。</string>
-    <string name="backup_confirm_ok">復元</string>
-    <string name="cancel">キャンセル</string>
-    <string name="backup_restoring">復元中…</string>
-    <string name="backup_restored">復元しました: %1$s。</string>
-    <string name="backup_restore_failed">復元できませんでした: %1$s</string>
-    <string name="backup_part_scores">ハイスコア</string>
-    <string name="backup_part_options">ゲーム設定</string>
-    <string name="backup_part_settings">ランチャーの設定</string>
-    <string name="backup_empty">なし（バックアップは空でした）</string>
-    <string name="backup_saving_music">曲を保存中: %1$s…</string>
-    <string name="backup_reading_music">曲を読み込み中: %1$s…</string>
-    <string name="err_cannot_write">そこには書き込めません</string>
-    <string name="err_cannot_read">そのファイルを読み込めません</string>
-    <string name="backup_err_not_backup">TH06 移植版のバックアップではありません</string>
-    <string name="backup_err_newer">このバックアップは新しいバージョンのアプリで作られています。先にアプリを更新してください</string>
-    <string name="backup_err_damaged">バックアップが壊れています</string>
-    <string name="list_separator">、</string>
-    <string name="crash_title">ゲームが予期せず終了しました</string>
-    <string name="crash_body">ご迷惑をおかけしました。何が起きたかのログがこの端末に残っています。保存して GitHub の不具合報告に添付できます。自動で送信されることはありません。</string>
-    <string name="crash_save">ログを保存</string>
-    <string name="crash_dismiss">閉じる</string>
-    <string name="update_title">バージョン %1$s が公開されています</string>
-    <string name="update_body">現在のバージョンは %1$s です。リリースページから新しい APK をダウンロードし、上書きインストールしてください（スコアや設定はそのまま残ります）。</string>
-    <string name="update_open">リリースページを開く</string>
-    <string name="no_browser">%1$s を開くブラウザが見つかりません</string>
-    <string name="help_title">ヘルプと更新</string>
-    <string name="help_version">バージョン %1$s（ビルド %2$d）。</string>
-    <string name="help_auto">1 日 1 回、新しいバージョンを確認する</string>
-    <string name="help_check">今すぐ更新を確認</string>
-    <string name="help_checking">確認中…</string>
-    <string name="help_none_published">まだリリースは公開されていません。</string>
-    <string name="help_newer">バージョン %1$s が公開されています（このページの上部をご覧ください）。</string>
-    <string name="help_latest">最新バージョンです（最新のリリースは %1$s）。</string>
-    <string name="help_check_failed">確認できませんでした: %1$s</string>
-    <string name="help_bug">不具合を見つけたら、ログを保存して（共有するまで端末の外には出ません）GitHub の Issue に添付してください。</string>
-    <string name="help_save_log">不具合報告用のログを保存</string>
-    <string name="help_report">GitHub で問題を報告</string>
-    <string name="help_log_saved">ログを保存しました。不具合報告に添付してください。</string>
-    <string name="help_log_failed">ログを保存できませんでした: %1$s</string>
-    <string name="footer">お手持ちの『東方紅魔郷 ～ the Embodiment of Scarlet Devil』（上海アリス幻樂団）で遊ぶための、ファンによる移植版です。ゲームのファイルは含まれていません。\nフォント: Yuji Syuku、Zen Antique（SIL Open Font License 1.1）。</string>
-    <string name="gametext_caption">ゲーム内のテキスト（会話・スペルカード・曲）</string>
-    <string name="gametext_same">アプリと同じ</string>
-    <string name="gametext_original">ゲームの元の日本語テキストです。</string>
-    <string name="gametext_not_installed">Touhou Patch Center（thpatch.net）から翻訳をダウンロードします。取得するのはゲームのテキストファイルだけです（小さなサイズ）。</string>
-    <string name="gametext_installed">インストール済み: %1$d ファイル、全 7 ステージ中 %2$d ステージの会話、%3$s 更新。</string>
-    <string name="gametext_download">翻訳をダウンロード</string>
-    <string name="gametext_update">新しい翻訳を確認</string>
-    <string name="gametext_remove">翻訳を削除</string>
-    <string name="gametext_connecting">thpatch.net に接続中…</string>
-    <string name="gametext_downloading">%1$s をダウンロード中: %3$d 個中 %2$d 個目…</string>
-    <string name="gametext_done">完了しました（新しいファイル %1$d 個）。次回ゲームを起動したときから翻訳が使われます。</string>
-    <string name="gametext_failed">ダウンロードできませんでした: %1$s</string>
-    <string name="gametext_unavailable">Touhou Patch Center にはこの言語のゲームテキスト翻訳がまだないため、日本語のままになります。</string>
-    <string name="gametext_removed">削除しました。ゲームは元の日本語テキストを表示します。</string>
-    <string name="gametext_credit">ゲームテキストの翻訳: Touhou Patch Center の協力者の皆さん（thpatch.net）、CC BY-SA 3.0。ゲーム内の画像は変更されません。</string>
-    <string-array name="shot_types">
+    <string name="th06_header_tag">Android 移植版  ·  お手持ちの 2002 年版ゲームデータで遊べます</string>
+    <string name="th06_play">プレイ</string>
+    <string name="th06_hint_choose_folder">先にゲームフォルダを選んでください（下の「ゲームデータ」）。</string>
+    <string name="th06_hint_extra">Extra ステージから開始  ·  練習扱い、記録は保存されません</string>
+    <string name="th06_hint_stage">ステージ %1$d から開始  ·  練習扱い、記録は保存されません</string>
+    <string name="th06_hint_title">ゲームのタイトル画面を開きます</string>
+    <string name="th06_lang_title">言語</string>
+    <string name="th06_lang_body">このランチャーと、ゲーム内のテキスト（会話・スペルカード・曲コメント）の言語です。</string>
+    <string name="th06_lang_system">端末の設定に合わせる</string>
+    <string name="th06_files_title">ゲームデータ</string>
+    <string name="th06_files_body">お手持ちのゲームフォルダをスマートフォンにコピーし（2002 年版の 紅魔郷**.DAT / KOUMAKYO_**.dat、または New Classic の th06**.dat がある data フォルダ）、ここで選んでください。ファイルはその場で読み込まれ、コピーはされません。</string>
+    <string name="th06_files_choose">ゲームフォルダを選ぶ</string>
+    <string name="th06_files_prefer_nc">両方の版が見つかった場合は New Classic の素材を優先する</string>
+    <string name="th06_files_denied">Android がそのフォルダへの継続的なアクセスを許可しませんでした: %1$s</string>
+    <string name="th06_files_scanning">検索中…</string>
+    <string name="th06_files_scanning_path">検索中 %1$s</string>
+    <string name="th06_files_none_found">そのフォルダ（とサブフォルダ）にゲームのアーカイブ（PBG3 または PKGL で始まる .dat ファイル）が見つかりませんでした。</string>
+    <string name="th06_files_none_selected">まだゲームデータが選ばれていません。2002 年版ゲームのフォルダ（紅魔郷CM.DAT、紅魔郷ST.DAT … または KOUMAKYO_*.dat）を選んでください。</string>
+    <string name="th06_files_kind_classic">Classic</string>
+    <string name="th06_files_kind_program">プログラム</string>
+    <string name="th06_files_kind_nc">New Classic</string>
+    <string name="th06_files_music">BGM: bgm/ の %1$d 曲（%2$.0f MB）</string>
+    <string name="th06_files_music_none">BGM: なし（音楽を流すには bgm フォルダもコピーしてください）</string>
+    <string name="th06_files_replaced">差し替えた曲: %1$d 曲（下記参照）</string>
+    <string name="th06_files_scores">ハイスコア: PC の score.dat（新しいスコアはアプリ内に保存）</string>
+    <string name="th06_files_nc_only">ステージは 2002 年版のデータで動きます。New Classic のアーカイブだけではまだステージを開始できません。</string>
+    <string name="th06_select_title">ステージセレクト</string>
+    <string name="th06_select_body">タイトル画面を飛ばして好きなステージから始めます。練習専用で、記録は一切保存されません。</string>
+    <string name="th06_select_check">好きなステージから始める（スコアは保存されません）</string>
+    <string name="th06_select_shot">装備（ショットタイプ）</string>
+    <string name="th06_select_difficulty">難易度</string>
+    <string name="th06_select_start">開始ステージ（Extra は専用の難易度）</string>
+    <string name="th06_controls_title">操作</string>
+    <string name="th06_controls_body">ゲームのタッチ操作です（Bluetooth / USB のゲームパッドも使えます）。</string>
+    <string name="th06_controls_movement">移動</string>
+    <string name="th06_controls_drag_speed">ドラッグ速度（指の移動量に対する自機の移動量）</string>
+    <string name="th06_controls_button_size">ボタンの大きさ</string>
+    <string name="th06_controls_opacity">ボタンの不透明度</string>
+    <string name="th06_controls_autofire">オート連射（プレイ中はショットを押しっぱなしにする）</string>
+    <string name="th06_controls_focus_toggle">低速ボタンを切り替え式にする（タップでオン／オフ）</string>
+    <string name="th06_controls_left">左利き（ボタンを左側に）</string>
+    <string name="th06_controls_vibrate">被弾時とボム使用時に振動する</string>
+    <string name="th06_display_title">画面</string>
+    <string name="th06_display_body">縦画面では、プレイ画面を横幅いっぱいに表示し、その下にスコア、さらに下に操作ボタンを置きます。メニューや会話シーンは全体が表示されます。</string>
+    <string name="th06_display_screen">画面の向き</string>
+    <string name="th06_display_scaling">拡大方法</string>
+    <string name="th06_display_scanlines">ブラウン管風の走査線</string>
+    <string name="th06_practice_title">練習ツール</string>
+    <string name="th06_practice_body">原作にはない機能です。スローモーションやステートロードを使ったゲームのスコアは保存されません。当たり判定の表示は何も変えません。</string>
+    <string name="th06_practice_speed">ゲーム速度</string>
+    <string name="th06_practice_hitbox">自機の当たり判定を表示する</string>
+    <string name="th06_practice_states">ステートセーブ（SAVE / LOAD ボタン。キーボードは F5 / F9、ゲームパッドは L3 / R3）</string>
+    <string name="th06_mischief_title">いたずら</string>
+    <string name="th06_mischief_body">原作にはない機能です。どれか一つでもオンの間は、スコア・クリア記録・スペルカードは保存されません。</string>
+    <string name="th06_music_title">曲の差し替え</string>
+    <string name="th06_music_body">ゲームの曲のかわりに、お好きな音声ファイル（MP3、AAC、OGG、FLAC、WAV など）を流します。WAV（44,100 Hz・ステレオ）に変換され、ゲームの BGM と同じようにループします。</string>
+    <string name="th06_music_song">曲</string>
+    <string name="th06_music_replaced_mark">（差し替え済み）</string>
+    <string name="th06_music_loop">ループ開始位置（曲の先頭からの秒数。空欄か 0 で曲全体）</string>
+    <string name="th06_music_choose">音声ファイルを選ぶ</string>
+    <string name="th06_music_restore">元の曲に戻す</string>
+    <string name="th06_music_restored">元に戻しました。ゲームの元の曲が流れます。</string>
+    <string name="th06_music_now_yours">現在: あなたの曲（%1$s）</string>
+    <string name="th06_music_now_game">現在: ゲームの元の曲</string>
+    <string name="th06_music_loop_nan">ループ開始位置は秒数（数字）で入力してください。</string>
+    <string name="th06_music_reading">ファイルを読み込み中…</string>
+    <string name="th06_music_done">完了: %1$s であなたの曲が流れます（%2$s）。</string>
+    <string name="th06_music_failed">そのファイルは使えませんでした: %1$s</string>
+    <string name="th06_music_converting">WAV（44,100 Hz・ステレオ）に変換中…</string>
+    <string name="th06_music_converting_pct">変換中… %1$d%%</string>
+    <string name="th06_music_decoding_pct">デコード中… %1$d%%</string>
+    <string name="th06_music_describe">%1$s、%2$s からループ、%3$.1f MB</string>
+    <string name="th06_music_err_no_audio">そのファイルには音声トラックがありません</string>
+    <string name="th06_music_err_nothing">そのファイルからは何もデコードできませんでした</string>
+    <string name="th06_music_err_cannot">このファイルはデコードできません: %1$s</string>
+    <string name="th06_backup_title">バックアップ</string>
+    <string name="th06_backup_body">ハイスコア・ゲーム設定・リプレイ・ランチャーの設定を一つのファイルにまとめて（ダウンロードフォルダやクラウドなどに）保存し、再インストール後や新しいスマートフォンで復元できます。</string>
+    <string name="th06_backup_music">差し替えた曲も含める（ファイルが大きくなります）</string>
+    <string name="th06_backup_save">ファイルにバックアップ</string>
+    <string name="th06_backup_restore">バックアップから復元</string>
+    <string name="th06_backup_saving">保存中…</string>
+    <string name="th06_backup_saved">保存しました: %1$s。</string>
+    <string name="th06_backup_save_failed">バックアップを保存できませんでした: %1$s</string>
+    <string name="th06_backup_confirm_title">このバックアップを復元しますか？</string>
+    <string name="th06_backup_confirm_body">現在のハイスコア・ゲーム設定・ランチャーの設定は、バックアップの内容に置き換えられます（バックアップに曲が含まれていれば、差し替えた曲も）。</string>
+    <string name="th06_backup_confirm_ok">復元</string>
+    <string name="th06_cancel">キャンセル</string>
+    <string name="th06_backup_restoring">復元中…</string>
+    <string name="th06_backup_restored">復元しました: %1$s。</string>
+    <string name="th06_backup_restore_failed">復元できませんでした: %1$s</string>
+    <string name="th06_backup_part_scores">ハイスコア</string>
+    <string name="th06_backup_part_options">ゲーム設定</string>
+    <string name="th06_backup_part_settings">ランチャーの設定</string>
+    <string name="th06_backup_empty">なし（バックアップは空でした）</string>
+    <string name="th06_backup_saving_music">曲を保存中: %1$s…</string>
+    <string name="th06_backup_reading_music">曲を読み込み中: %1$s…</string>
+    <string name="th06_err_cannot_write">そこには書き込めません</string>
+    <string name="th06_err_cannot_read">そのファイルを読み込めません</string>
+    <string name="th06_backup_err_not_backup">TH06 移植版のバックアップではありません</string>
+    <string name="th06_backup_err_newer">このバックアップは新しいバージョンのアプリで作られています。先にアプリを更新してください</string>
+    <string name="th06_backup_err_damaged">バックアップが壊れています</string>
+    <string name="th06_list_separator">、</string>
+    <string name="th06_crash_title">ゲームが予期せず終了しました</string>
+    <string name="th06_crash_body">ご迷惑をおかけしました。何が起きたかのログがこの端末に残っています。保存して GitHub の不具合報告に添付できます。自動で送信されることはありません。</string>
+    <string name="th06_crash_save">ログを保存</string>
+    <string name="th06_crash_dismiss">閉じる</string>
+    <string name="th06_update_title">バージョン %1$s が公開されています</string>
+    <string name="th06_update_body">現在のバージョンは %1$s です。リリースページから新しい APK をダウンロードし、上書きインストールしてください（スコアや設定はそのまま残ります）。</string>
+    <string name="th06_update_open">リリースページを開く</string>
+    <string name="th06_no_browser">%1$s を開くブラウザが見つかりません</string>
+    <string name="th06_help_title">ヘルプと更新</string>
+    <string name="th06_help_version">バージョン %1$s（ビルド %2$d）。</string>
+    <string name="th06_help_auto">1 日 1 回、新しいバージョンを確認する</string>
+    <string name="th06_help_check">今すぐ更新を確認</string>
+    <string name="th06_help_checking">確認中…</string>
+    <string name="th06_help_none_published">まだリリースは公開されていません。</string>
+    <string name="th06_help_newer">バージョン %1$s が公開されています（このページの上部をご覧ください）。</string>
+    <string name="th06_help_latest">最新バージョンです（最新のリリースは %1$s）。</string>
+    <string name="th06_help_check_failed">確認できませんでした: %1$s</string>
+    <string name="th06_help_bug">不具合を見つけたら、ログを保存して（共有するまで端末の外には出ません）GitHub の Issue に添付してください。</string>
+    <string name="th06_help_save_log">不具合報告用のログを保存</string>
+    <string name="th06_help_report">GitHub で問題を報告</string>
+    <string name="th06_help_log_saved">ログを保存しました。不具合報告に添付してください。</string>
+    <string name="th06_help_log_failed">ログを保存できませんでした: %1$s</string>
+    <string name="th06_footer">お手持ちの『東方紅魔郷 ～ the Embodiment of Scarlet Devil』（上海アリス幻樂団）で遊ぶための、ファンによる移植版です。ゲームのファイルは含まれていません。\nフォント: Yuji Syuku、Zen Antique（SIL Open Font License 1.1）。</string>
+    <string name="th06_gametext_caption">ゲーム内のテキスト（会話・スペルカード・曲）</string>
+    <string name="th06_gametext_same">アプリと同じ</string>
+    <string name="th06_gametext_original">ゲームの元の日本語テキストです。</string>
+    <string name="th06_gametext_not_installed">Touhou Patch Center（thpatch.net）から翻訳をダウンロードします。取得するのはゲームのテキストファイルだけです（小さなサイズ）。</string>
+    <string name="th06_gametext_installed">インストール済み: %1$d ファイル、全 7 ステージ中 %2$d ステージの会話、%3$s 更新。</string>
+    <string name="th06_gametext_download">翻訳をダウンロード</string>
+    <string name="th06_gametext_update">新しい翻訳を確認</string>
+    <string name="th06_gametext_remove">翻訳を削除</string>
+    <string name="th06_gametext_connecting">thpatch.net に接続中…</string>
+    <string name="th06_gametext_downloading">%1$s をダウンロード中: %3$d 個中 %2$d 個目…</string>
+    <string name="th06_gametext_done">完了しました（新しいファイル %1$d 個）。次回ゲームを起動したときから翻訳が使われます。</string>
+    <string name="th06_gametext_failed">ダウンロードできませんでした: %1$s</string>
+    <string name="th06_gametext_unavailable">Touhou Patch Center にはこの言語のゲームテキスト翻訳がまだないため、日本語のままになります。</string>
+    <string name="th06_gametext_removed">削除しました。ゲームは元の日本語テキストを表示します。</string>
+    <string name="th06_gametext_credit">ゲームテキストの翻訳: Touhou Patch Center の協力者の皆さん（thpatch.net）、CC BY-SA 3.0。ゲーム内の画像は変更されません。</string>
+    <string-array name="th06_shot_types">
         <item>霊夢A（ホーミングアミュレット）</item>
         <item>霊夢B（封魔針）</item>
         <item>魔理沙A（マジックミサイル）</item>
         <item>魔理沙B（イリュージョンレーザー）</item>
     </string-array>
-    <string-array name="stages">
+    <string-array name="th06_stages">
         <item>ステージ1</item>
         <item>ステージ2</item>
         <item>ステージ3</item>
@@ -156,44 +156,44 @@
         <item>ステージ6</item>
         <item>Extra</item>
     </string-array>
-    <string-array name="mischief">
+    <string-array name="th06_mischief">
         <item>残機無限</item>
         <item>ボム無限</item>
         <item>無敵（何にも当たらない）</item>
         <item>パワー常に MAX</item>
         <item>コンティニュー無制限</item>
     </string-array>
-    <string-array name="move_modes">
+    <string-array name="th06_move_modes">
         <item>どこでもドラッグ（タッチパッド式）</item>
         <item>十字キー</item>
     </string-array>
-    <string-array name="button_sizes">
+    <string-array name="th06_button_sizes">
         <item>小</item>
         <item>標準</item>
         <item>大</item>
         <item>特大</item>
     </string-array>
-    <string-array name="opacities">
+    <string-array name="th06_opacities">
         <item>かなり薄い</item>
         <item>薄い</item>
         <item>標準</item>
         <item>不透明</item>
     </string-array>
-    <string-array name="speeds">
+    <string-array name="th06_speeds">
         <item>通常の速度</item>
         <item formatted="false">75%（スローモーション）</item>
         <item formatted="false">50%（スローモーション）</item>
     </string-array>
-    <string-array name="layouts">
+    <string-array name="th06_layouts">
         <item>横画面</item>
         <item>縦画面（プレイ画面を横幅いっぱいに）</item>
     </string-array>
-    <string-array name="scalings">
+    <string-array name="th06_scalings">
         <item>なめらか</item>
         <item>くっきりしたドット</item>
         <item>ドット等倍（整数倍）</item>
     </string-array>
-    <string-array name="track_names">
+    <string-array name="th06_track_names">
         <item>タイトル画面</item>
         <item>ステージ1</item>
         <item>ステージ1 ボス</item>
@@ -212,13 +212,13 @@
         <item>エンディング</item>
         <item>スタッフロール</item>
     </string-array>
-    <plurals name="files_in_use">
+    <plurals name="th06_files_in_use">
         <item quantity="other">使用中のファイル: %d 個</item>
     </plurals>
-    <plurals name="backup_part_replays">
+    <plurals name="th06_backup_part_replays">
         <item quantity="other">リプレイ %d 件</item>
     </plurals>
-    <plurals name="backup_part_songs">
+    <plurals name="th06_backup_part_songs">
         <item quantity="other">差し替えた曲 %d 曲</item>
     </plurals>
 </resources>

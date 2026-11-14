@@ -15,5 +15,16 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = 'th06-android'
+// SDL's Java glue, shared by every game.
+include ':sdl'
+// The games as libraries: activities, resources and native engine (th06/, th07/, th08/).
 include ':th06'
 include ':th07'
+include ':th08'
+// The apps: each game on its own (the app ids the releases have always had) ...
+include ':th06-app', ':th07-app', ':th08-app'
+project(':th06-app').projectDir = file('apps/th06')
+project(':th07-app').projectDir = file('apps/th07')
+project(':th08-app').projectDir = file('apps/th08')
+// ... and Touhou Launcher, all three in one app.
+include ':launcher'

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hub_choose">Pilih permainan</string>
+    <string name="hub_ready">Sedia untuk dimainkan</string>
+    <string name="hub_needs_files">Tambah fail permainan anda</string>
+    <string name="hub_note">Setiap permainan menyimpan fail, skor, main semula dan tetapannya sendiri. Anda perlukan salinan sendiri bagi setiap permainan.</string>
+    <string name="hub_version">Versi %1$s</string>
+</resources>

@@ -1,5 +1,5 @@
 // Entry point. On Android, SDL.h renames main() to SDL_main(), which SDLActivity calls
-// on its native thread after loading libSDL2.so and libmain.so.
+// on its native thread after loading libSDL2.so and libth06main.so.
 #include <memory>
 
 #include <SDL.h>

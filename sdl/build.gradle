@@ -1,0 +1,38 @@
+plugins {
+    id 'com.android.library'
+}
+
+// SDL2's Java glue (org.libsdl.app: SDLActivity, input, audio, HID), compiled from the pinned
+// source release in third_party/SDL2 (scripts/fetch_deps.sh) so it can never drift from the
+// native libSDL2.so the games build from the same tarball. One copy for every game and app.
+
+def sdl2Java = rootProject.file('third_party/SDL2/android-project/app/src/main/java')
+if (!new File(sdl2Java, 'org/libsdl/app/SDLActivity.java').exists()) {
+    throw new GradleException('third_party/SDL2 is missing. Run: bash scripts/fetch_deps.sh')
+}
+
+android {
+    namespace = 'org.libsdl.app'
+    compileSdk = 36
+
+    defaultConfig {
+        minSdk = 24
+    }
+
+    sourceSets {
+        main {
+            java.srcDir(sdl2Java)
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    lint {
+        // SDL's Java targets many API levels behind runtime checks.
+        checkReleaseBuilds = false
+        abortOnError = false
+    }
+}

@@ -1,0 +1,32 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Touhou Launcher: TH06, TH07 and TH08 in one app. A picker opens each game's own launcher; each
+// game keeps its files in a folder of its own (GameStorage in each game) and plays in a process
+// of its own (AndroidManifest.xml), so the games never share state.
+
+android {
+    namespace = 'io.github.cng605568art.touhou'
+
+    defaultConfig {
+        applicationId = 'io.github.cng605568art.touhou'
+    }
+
+    packaging {
+        jniLibs {
+            // Every game library builds the same pinned SDL2 and ships the NDK's C++ runtime;
+            // the APK needs one copy of each.
+            pickFirsts.add('**/libSDL2.so')
+            pickFirsts.add('**/libc++_shared.so')
+        }
+    }
+}
+
+dependencies {
+    implementation project(':th06')
+    implementation project(':th07')
+    implementation project(':th08')
+}
+
+apply from: rootProject.file('gradle/touhou-app.gradle')

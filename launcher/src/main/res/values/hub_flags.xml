@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Each game library defines its flag as false (the standalone apps); inside Touhou Launcher
+         the games keep their files in folders of their own and play in processes of their own
+         (see GameStorage in each game). -->
+    <bool name="th06_in_touhou_launcher">true</bool>
+    <bool name="th07_in_touhou_launcher">true</bool>
+    <bool name="th08_in_touhou_launcher">true</bool>
+</resources>

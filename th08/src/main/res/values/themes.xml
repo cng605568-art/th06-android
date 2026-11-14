@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The launcher: night primary, moon accent, drawn edge to edge under a night header. -->
+    <style name="Th08.Launcher" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:colorPrimary">@color/th08_night</item>
+        <item name="android:colorPrimaryDark">@color/th08_night_deep</item>
+        <item name="android:colorAccent">@color/th08_moon</item>
+        <item name="android:colorControlActivated">@color/th08_moon</item>
+        <item name="android:colorControlHighlight">#33C9952B</item>
+        <item name="android:textColorPrimary">@color/th08_ink</item>
+        <item name="android:textColorSecondary">@color/th08_muted</item>
+        <item name="android:windowBackground">@color/th08_paper</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@color/th08_paper</item>
+    </style>
+</resources>

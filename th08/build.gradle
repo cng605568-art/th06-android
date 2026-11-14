@@ -1,0 +1,66 @@
+plugins {
+    id 'com.android.library'
+}
+
+// Imperishable Night as a library: its launcher and game activities, resources and native engine
+// (libSDL2.so + libth08main.so, built from th08/src/main/cpp/CMakeLists.txt). Two apps package
+// it: the standalone app (:th08-app, apps/th08) and Touhou Launcher (:launcher), which holds all
+// three games. SDL's Java glue comes from the :sdl library.
+
+def thirdParty = rootProject.file('third_party')
+if (!new File(thirdParty, 'SDL2/CMakeLists.txt').exists()) {
+    throw new GradleException('third_party/SDL2 is missing. Run: bash scripts/fetch_deps.sh')
+}
+
+// -Pth08.abis=... for this game alone; otherwise the same list as the others (-Pth06.abis,
+// which CI passes, or gradle.properties).
+def abiList = (project.findProperty('th08.abis') ?: project.findProperty('th06.abis') ?: 'arm64-v8a').toString()
+        .split(',').collect { it.trim() }.findAll { !it.isEmpty() }
+
+android {
+    namespace = 'io.github.cng605568art.th08'
+    compileSdk = 36
+    ndkVersion = '28.2.13676358'
+    // Every resource of this game starts with "th08_", so the three games' resources stay
+    // apart in Touhou Launcher's APK (lint checks it).
+    resourcePrefix = 'th08_'
+
+    defaultConfig {
+        minSdk = 24
+
+        ndk {
+            abiFilters.addAll(abiList)
+        }
+
+        externalNativeBuild {
+            cmake {
+                // Two C++ shared libraries (SDL2's HIDAPI layer and ours): the NDK requires
+                // the shared STL; AGP packages libc++_shared.so automatically.
+                arguments '-DANDROID_STL=c++_shared',
+                          '-DANDROID_ARM_NEON=ON',
+                          "-DTOUHOU_THIRD_PARTY=${thirdParty.absolutePath}"
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file('src/main/cpp/CMakeLists.txt')
+            version = '3.22.1'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
+    }
+}
+
+dependencies {
+    api project(':sdl')
+}

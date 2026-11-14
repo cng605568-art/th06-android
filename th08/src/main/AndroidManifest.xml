@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- GLES 3.0 for instanced bullet rendering. -->
+    <uses-feature android:glEsVersion="0x00030000" android:required="true" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.hardware.gamepad" android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+
+    <!-- Vibration on a miss and a bomb (SDL's Java glue also references it for rumble). -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Only when the player asks (or leaves the daily check on): the newest release's version
+         from GitHub, and the game text from Touhou Patch Center. Nothing about the player is
+         sent. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- The app (the standalone app in apps/th08, or Touhou Launcher) sets the application's
+         name, label, icon and theme, and which activity the home screen opens. -->
+    <application>
+
+        <!-- Launcher: imports the player's own game files and sets the start options. It
+             handles rotation itself so an import running in the background keeps its page. -->
+        <activity
+            android:name=".LauncherActivity"
+            android:label="@string/th08_app_name"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:theme="@style/Th08.Launcher" />
+
+        <!-- The SDL game activity (native code runs in libth08main.so). Touhou Launcher runs it in a
+             process of its own. -->
+        <activity
+            android:name=".GameActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="layoutDirection|locale|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation"
+            android:preferMinimalPostProcessing="true"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen" />
+    </application>
+</manifest>

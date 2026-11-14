@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive icon (Android 8+): the crescent moon over the night colour, cropped by the launcher's mask. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/th08_night_deep" />
+    <foreground android:drawable="@drawable/th08_ic_launcher_foreground" />
+</adaptive-icon>

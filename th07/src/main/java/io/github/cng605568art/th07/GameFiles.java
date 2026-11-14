@@ -362,8 +362,8 @@ final class GameFiles {
             deleteTree(to);
             if (!from.isDirectory()) continue;
             File parent = to.getParentFile();
-            if (parent != null && !parent.isDirectory() && !parent.mkdirs()) throw new IOException(ctx.getString(R.string.import_cannot_store));
-            if (!from.renameTo(to)) throw new IOException(ctx.getString(R.string.import_cannot_store));
+            if (parent != null && !parent.isDirectory() && !parent.mkdirs()) throw new IOException(ctx.getString(R.string.th07_import_cannot_store));
+            if (!from.renameTo(to)) throw new IOException(ctx.getString(R.string.th07_import_cannot_store));
         }
         writeList(importedList(ctx), imported);
         deleteTree(part);
@@ -426,7 +426,7 @@ final class GameFiles {
             String[] dir = stack.pop();
             int depth = Integer.parseInt(dir[1]);
             if (progress != null) {
-                progress.report(ctx.getString(R.string.import_scanning_path, dir[2].isEmpty() ? "/" : dir[2]));
+                progress.report(ctx.getString(R.string.th07_import_scanning_path, dir[2].isEmpty() ? "/" : dir[2]));
             }
             Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, dir[0]);
             try (Cursor c = cr.query(children, projection, null, null, null)) {
@@ -512,7 +512,7 @@ final class GameFiles {
                 if (thcrap == null || s.depth < thcrap.depth) thcrap = s;
                 continue;
             }
-            progress.report(ctx.getString(R.string.import_checking, s.name));
+            progress.report(ctx.getString(R.string.th07_import_checking, s.name));
             byte[] head = new byte[16];
             int n;
             try (InputStream in = cr.openInputStream(s.uri)) {
@@ -540,7 +540,7 @@ final class GameFiles {
         if (dat == null && bgm == null && exes.isEmpty()) {
             // Only the PC's records (a backup of scores or replays) or the English patch:
             // import just those.
-            if (score == null && replays.isEmpty() && thcrap == null) return ctx.getString(R.string.import_nothing);
+            if (score == null && replays.isEmpty() && thcrap == null) return ctx.getString(R.string.th07_import_nothing);
             StringBuilder report = new StringBuilder();
             importRecords(ctx, score, replays, report, progress);
             importEnglish(ctx, thcrap, report, progress);
@@ -548,11 +548,11 @@ final class GameFiles {
         }
 
         File dir = dir(ctx);
-        if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException(ctx.getString(R.string.import_cannot_store));
+        if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException(ctx.getString(R.string.th07_import_cannot_store));
         StringBuilder report = new StringBuilder();
         if (dat != null) {
             long bytes = copy(ctx, dat, file(ctx, DAT), null, progress);
-            line(report, ctx.getString(R.string.import_done_file, DAT, bytes / (double) MB));
+            line(report, ctx.getString(R.string.th07_import_done_file, DAT, bytes / (double) MB));
         } else {
             notFound(ctx, report, DAT);
         }
@@ -573,7 +573,7 @@ final class GameFiles {
                 commit(part, target);
                 ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                         .putString(KEY_EXE_STAMP, target.length() + ":" + target.lastModified()).apply();
-                line(report, ctx.getString(R.string.import_done_exe, EXE));
+                line(report, ctx.getString(R.string.th07_import_done_exe, EXE));
                 exeDone = true;
                 break;
             }
@@ -585,7 +585,7 @@ final class GameFiles {
             // A folder holds other programs too (the configuration tool): name the wrong one
             // only when it was picked directly or is called th07.exe.
             if (wrongExe != null && (pickedOneByOne || wrongExe.name.equalsIgnoreCase(EXE))) {
-                line(report, ctx.getString(R.string.import_exe_wrong, wrongExe.name));
+                line(report, ctx.getString(R.string.th07_import_exe_wrong, wrongExe.name));
             } else {
                 notFound(ctx, report, EXE);
             }
@@ -593,14 +593,14 @@ final class GameFiles {
 
         if (bgm != null) {
             long bytes = copy(ctx, bgm, file(ctx, BGM), null, progress);
-            line(report, ctx.getString(R.string.import_done_file, BGM, bytes / (double) MB));
+            line(report, ctx.getString(R.string.th07_import_done_file, BGM, bytes / (double) MB));
         } else {
             notFound(ctx, report, BGM);
         }
         importRecords(ctx, score, replays, report, progress);
         importEnglish(ctx, thcrap, report, progress);
         if (pickedOneByOne && !skipped.isEmpty()) {
-            line(report, ctx.getString(R.string.import_skipped, join(skipped)));
+            line(report, ctx.getString(R.string.th07_import_skipped, join(skipped)));
         }
         return report.toString().trim();
     }
@@ -611,12 +611,12 @@ final class GameFiles {
         List<String> patches = new ArrayList<>();
         int files = importEnglishPatch(ctx, thcrap, patches, progress);
         if (files < 0) {
-            line(report, ctx.getString(R.string.import_english_none));
+            line(report, ctx.getString(R.string.th07_import_english_none));
             return;
         }
         List<String> ids = new ArrayList<>();
         for (String p : patches) ids.add(p.substring(p.indexOf('/') + 1));
-        line(report, ctx.getString(R.string.import_done_english, files, join(ids)));
+        line(report, ctx.getString(R.string.th07_import_done_english, files, join(ids)));
     }
 
     /** A folder's children in a picked tree: {document id, name, MIME type}. */
@@ -718,15 +718,15 @@ final class GameFiles {
                 continue;
             }
             copyDocument(ctx, DocumentsContract.buildDocumentUriUsingTree(tree, c[0]), new File(dir, lower(c[1])));
-            if (++copied[0] % 10 == 0) progress.report(ctx.getString(R.string.import_copying_english, copied[0]));
+            if (++copied[0] % 10 == 0) progress.report(ctx.getString(R.string.th07_import_copying_english, copied[0]));
         }
     }
 
     private static void copyDocument(Context ctx, Uri uri, File target) throws IOException {
         File dir = target.getParentFile();
-        if (dir != null && !dir.isDirectory() && !dir.mkdirs()) throw new IOException(ctx.getString(R.string.import_cannot_store));
+        if (dir != null && !dir.isDirectory() && !dir.mkdirs()) throw new IOException(ctx.getString(R.string.th07_import_cannot_store));
         try (InputStream in = ctx.getContentResolver().openInputStream(uri); FileOutputStream out = new FileOutputStream(target)) {
-            if (in == null) throw new IOException(ctx.getString(R.string.import_cannot_read, target.getName()));
+            if (in == null) throw new IOException(ctx.getString(R.string.th07_import_cannot_read, target.getName()));
             byte[] buf = new byte[64 * 1024];
             int n;
             while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
@@ -788,11 +788,11 @@ final class GameFiles {
                 kept = target.renameTo(bak);
             }
             commit(part, target);
-            line(report, ctx.getString(kept ? R.string.import_done_score_kept : R.string.import_done_score));
+            line(report, ctx.getString(kept ? R.string.th07_import_done_score_kept : R.string.th07_import_done_score));
         }
         if (replays.isEmpty()) return;
         File dir = replayDir(ctx);
-        if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException(ctx.getString(R.string.import_cannot_store));
+        if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException(ctx.getString(R.string.th07_import_cannot_store));
         int added = 0, already = 0;
         for (Source s : replays) {
             MessageDigest md;
@@ -813,13 +813,13 @@ final class GameFiles {
             if (name == null) {
                 //noinspection ResultOfMethodCallIgnored
                 part.delete();
-                line(report, ctx.getString(R.string.import_replays_full));
+                line(report, ctx.getString(R.string.th07_import_replays_full));
                 break;
             }
             commit(part, new File(dir, name));
             ++added;
         }
-        line(report, ctx.getString(R.string.import_done_replays, added, already));
+        line(report, ctx.getString(R.string.th07_import_done_replays, added, already));
     }
 
     /** A replay with these bytes is already in the folder (imported before). */
@@ -864,9 +864,9 @@ final class GameFiles {
     }
 
     private static void notFound(Context ctx, StringBuilder report, String name) {
-        if (state(ctx, name).present) line(report, ctx.getString(R.string.import_kept, name));
-        else if (BGM.equals(name)) line(report, ctx.getString(R.string.import_bgm_not_found));
-        else line(report, ctx.getString(R.string.import_not_found, name));
+        if (state(ctx, name).present) line(report, ctx.getString(R.string.th07_import_kept, name));
+        else if (BGM.equals(name)) line(report, ctx.getString(R.string.th07_import_bgm_not_found));
+        else line(report, ctx.getString(R.string.th07_import_not_found, name));
     }
 
     /** Copies `src` over `target`; returns the bytes copied. */
@@ -892,14 +892,14 @@ final class GameFiles {
         }
         long free = dir.getUsableSpace();
         if (src.size > 0 && free < src.size + SPACE_MARGIN) {
-            throw new IOException(ctx.getString(R.string.import_no_space, src.name,
+            throw new IOException(ctx.getString(R.string.th07_import_no_space, src.name,
                     (src.size + SPACE_MARGIN + MB - 1) / MB, free / MB));
         }
         long totalMb = src.size > 0 ? (src.size + MB - 1) / MB : -1;
         boolean ok = false;
         try (InputStream in = ctx.getContentResolver().openInputStream(src.uri);
              FileOutputStream out = new FileOutputStream(part)) {
-            if (in == null) throw new IOException(ctx.getString(R.string.import_cannot_read, src.name));
+            if (in == null) throw new IOException(ctx.getString(R.string.th07_import_cannot_read, src.name));
             byte[] buf = new byte[1024 * 1024];
             long done = 0, shown = -1;
             int n;
@@ -911,8 +911,8 @@ final class GameFiles {
                 if (mb != shown && (mb % 4 == 0 || shown < 0)) {
                     shown = mb;
                     progress.report(totalMb > 0
-                            ? ctx.getString(R.string.import_copying, src.name, mb, totalMb)
-                            : ctx.getString(R.string.import_copying_unknown, src.name, mb));
+                            ? ctx.getString(R.string.th07_import_copying, src.name, mb, totalMb)
+                            : ctx.getString(R.string.th07_import_copying_unknown, src.name, mb));
                 }
             }
             out.getFD().sync();

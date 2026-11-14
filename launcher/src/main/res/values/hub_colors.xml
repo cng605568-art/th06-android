@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- A shrine-night palette: deep ink, the yin-yang orb's red, warm paper for text. -->
+    <color name="hub_ink">#120F1C</color>
+    <color name="hub_ink_light">#221C33</color>
+    <color name="hub_red">#C8102E</color>
+    <color name="hub_paper">#F6EFE2</color>
+</resources>

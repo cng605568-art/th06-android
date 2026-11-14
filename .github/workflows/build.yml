@@ -4,9 +4,10 @@
 #   push a tag "v*"              -> same, plus a GitHub Release with the signed APKs (and the
 #                                   unsigned TH07 IPA from the iOS job)
 #                                   (tags containing "-", e.g. v0.2.0-beta, become pre-releases)
-# The same job also builds the Perfect Cherry Blossom app (:th07, signed with the same key),
-# uploads it as its own workflow artifact (th07-android-<version>) and attaches it to the
-# release next to the th06 APK (checksums in SHA256SUMS-th07.txt).
+# The release job builds four APKs, all signed with the same key: Touhou Launcher (:launcher,
+# TH06, TH07 and TH08 in one app: touhou-launcher-android-<version>) and each game's standalone
+# app (:th06-app, :th07-app, :th08-app: th06-, th07- and th08-android-<version>), each uploaded
+# as its own workflow artifact and attached to the release (checksums in SHA256SUMS*.txt).
 #
 # Repository secrets (Settings > Secrets and variables > Actions):
 #   ANDROID_KEYSTORE_BASE64    base64 of your release .jks (required for tags)
@@ -156,100 +157,80 @@ jobs:
           printf '%s' "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/release.jks"
           echo "TH06_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
 
-      # Passwords are passed to this step only, never written to GITHUB_ENV.
-      - name: Build release APK (CMake via externalNativeBuild)
+      # Every app in one Gradle run, signed with the same key: the three games' standalone apps
+      # and Touhou Launcher (all three in one app). The game libraries' native code is built
+      # once and packaged by both. Passwords are passed to this step only, never written to
+      # GITHUB_ENV; the next step deletes the decoded keystore.
+      - name: Build the release APKs (CMake via externalNativeBuild)
         env:
           TH06_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           TH06_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           TH06_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: gradle --no-daemon --stacktrace :th06:assembleRelease -Pth06.abis="$ABIS"
+        run: >-
+          gradle --no-daemon --stacktrace -Pth06.abis="$ABIS"
+          :th06-app:assembleRelease :th07-app:assembleRelease :th08-app:assembleRelease :launcher:assembleRelease
 
-      # The Perfect Cherry Blossom app, signed with the same key: built here, before the next
-      # step deletes the decoded keystore. Passwords again go to this step only.
-      - name: Build th07 release APK (CMake via externalNativeBuild)
-        env:
-          TH06_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          TH06_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          TH06_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: gradle --no-daemon --stacktrace :th07:assembleRelease -Pth06.abis="$ABIS"
-
-      - name: Verify signature and stage APK
+      - name: Verify signatures and stage the APKs
         run: |
-          apk=th06/build/outputs/apk/release/th06-release.apk
-          test -f "$apk" || { echo "::error::$apk was not produced"; ls -R th06/build/outputs/apk || true; exit 1; }
-          "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner" verify --verbose --print-certs "$apk"
-          # The app cannot start without these three libraries for every ABI built.
-          unzip -l "$apk" 'lib/*'
-          for abi in ${ABIS//,/ }; do
-            for lib in libmain.so libSDL2.so libc++_shared.so; do
-              unzip -l "$apk" "lib/$abi/$lib" > /dev/null || { echo "::error::lib/$abi/$lib missing from the APK"; exit 1; }
-            done
-          done
-          "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/zipalign" -c -P 16 4 "$apk" \
-            && echo "Native libraries are 16 KB page aligned" \
-            || echo "::warning::Native libraries are not 16 KB page aligned (needed by some Android 15+ devices)"
-          mkdir -p dist
-          suffix=""
-          [ "$HAS_KEYSTORE" = "true" ] || suffix="-debugsigned"
-          cp "$apk" "dist/${APK_BASENAME}${suffix}.apk"
-          (cd dist && sha256sum *.apk > SHA256SUMS.txt && cat SHA256SUMS.txt)
           rm -f "$RUNNER_TEMP/release.jks"
+          v="${TH06_VERSION_NAME//+/-}"
+          scripts/stage_apk.sh apps/th06/build/outputs/apk/release/th06-app-release.apk io.github.cng605568art.th06 \
+            "libth06main.so libSDL2.so libc++_shared.so" dist "th06-android-$v" SHA256SUMS.txt
+          scripts/stage_apk.sh apps/th07/build/outputs/apk/release/th07-app-release.apk io.github.cng605568art.th07 \
+            "libth07main.so libSDL2.so libc++_shared.so" dist-th07 "th07-android-$v" SHA256SUMS-th07.txt
+          scripts/stage_apk.sh apps/th08/build/outputs/apk/release/th08-app-release.apk io.github.cng605568art.th08 \
+            "libth08main.so libSDL2.so libc++_shared.so" dist-th08 "th08-android-$v" SHA256SUMS-th08.txt
+          scripts/stage_apk.sh launcher/build/outputs/apk/release/launcher-release.apk io.github.cng605568art.touhou \
+            "libth06main.so libth07main.so libth08main.so libSDL2.so libc++_shared.so" \
+            dist-launcher "touhou-launcher-android-$v" SHA256SUMS-launcher.txt
+          echo "TH07_APK_BASENAME=th07-android-$v" >> "$GITHUB_ENV"
+          echo "TH08_APK_BASENAME=th08-android-$v" >> "$GITHUB_ENV"
+          echo "LAUNCHER_APK_BASENAME=touhou-launcher-android-$v" >> "$GITHUB_ENV"
 
-      - name: Verify signature and stage th07 APK
+      # Touhou Launcher must open on its own picker (one home-screen entry), run each game in its
+      # own process and tell the games they are inside it; the standalone apps must not.
+      - name: Check Touhou Launcher's manifest and flags
         run: |
-          apk=th07/build/outputs/apk/release/th07-release.apk
-          test -f "$apk" || { echo "::error::$apk was not produced"; ls -R th07/build/outputs/apk || true; exit 1; }
-          "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner" verify --verbose --print-certs "$apk"
-          # Its own app id, so it installs next to the th06 app instead of over it.
-          aapt2="$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/aapt2"
-          badging="$([ -x "$aapt2" ] && "$aapt2" dump badging "$apk" 2>/dev/null || true)"
-          if [ -n "$badging" ]; then
-            package_line="$(printf '%s\n' "$badging" | grep -m 1 '^package:' || true)"
-            echo "$package_line"
-            case "$package_line" in
-              *"name='io.github.cng605568art.th07'"*) ;;
-              *) echo "::error::th07 APK does not have the app id io.github.cng605568art.th07"; exit 1 ;;
-            esac
-          else
-            echo "::warning::aapt2 dump badging unavailable; app id not checked"
-          fi
-          # The app cannot start without these three libraries for every ABI built.
-          unzip -l "$apk" 'lib/*'
-          for abi in ${ABIS//,/ }; do
-            for lib in libmain.so libSDL2.so libc++_shared.so; do
-              unzip -l "$apk" "lib/$abi/$lib" > /dev/null || { echo "::error::lib/$abi/$lib missing from the th07 APK"; exit 1; }
-            done
+          a="$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/aapt2"
+          [ -x "$a" ] || { echo "::warning::aapt2 unavailable; launcher not checked"; exit 0; }
+          apk=launcher/build/outputs/apk/release/launcher-release.apk
+          "$a" dump badging "$apk" | grep -E "^(application-label|launchable-activity):" || true
+          n=$("$a" dump badging "$apk" | grep -c "^launchable-activity:" || true)
+          [ "$n" = 1 ] || { echo "::error::Touhou Launcher has $n home-screen activities (want 1)"; exit 1; }
+          tree=$("$a" dump xmltree --file AndroidManifest.xml "$apk")
+          res=$("$a" dump resources "$apk")
+          for g in th06 th07 th08; do
+            grep -q "\":$g\"" <<< "$tree" || { echo "::error::$g's game activity has no process of its own"; exit 1; }
+            grep -A1 "bool/${g}_in_touhou_launcher" <<< "$res" | grep -q "true" \
+              || { echo "::error::${g}_in_touhou_launcher is not true in Touhou Launcher"; exit 1; }
+            grep -A1 "bool/${g}_in_touhou_launcher" < <("$a" dump resources "apps/$g/build/outputs/apk/release/$g-app-release.apk") | grep -q "false" \
+              || { echo "::error::${g}_in_touhou_launcher is not false in the standalone $g app"; exit 1; }
           done
-          "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/zipalign" -c -P 16 4 "$apk" \
-            && echo "th07: native libraries are 16 KB page aligned" \
-            || echo "::warning::th07: native libraries are not 16 KB page aligned (needed by some Android 15+ devices)"
-          base="th07-android-${TH06_VERSION_NAME//+/-}"
-          echo "TH07_APK_BASENAME=$base" >> "$GITHUB_ENV"
-          mkdir -p dist-th07
-          suffix=""
-          [ "$HAS_KEYSTORE" = "true" ] || suffix="-debugsigned"
-          cp "$apk" "dist-th07/${base}${suffix}.apk"
-          (cd dist-th07 && sha256sum *.apk > SHA256SUMS-th07.txt && cat SHA256SUMS-th07.txt)
+          echo "Touhou Launcher: one picker, three game processes, flags set"
 
       # Unstripped native libraries, to turn the addresses in a player's crash log
-      # (libmain.so+0x...) back into function names and lines.
+      # (libth08main.so+0x...) back into function names and lines. Touhou Launcher packages
+      # the same libraries, so these serve its crash logs too.
       - name: Stage native debug symbols
         run: |
-          mkdir -p symbols
-          for abi in ${ABIS//,/ }; do
-            lib=$(find th06/build/intermediates -path "*merged_native_libs*" -path "*/$abi/*" -name libmain.so | head -n 1)
-            if [ -n "$lib" ]; then
-              mkdir -p "symbols/$abi" && cp "$lib" "symbols/$abi/libmain.so"
-            else
-              echo "::warning::No unstripped libmain.so found for $abi"
-            fi
+          for game in th06 th07 th08; do
+            for abi in ${ABIS//,/ }; do
+              # The game library's CMake output (before any stripping), else what the app merged.
+              lib=$(find "$game/build/intermediates/cxx" -path "*/obj/$abi/*" -name "lib${game}main.so" 2>/dev/null | head -n 1)
+              [ -n "$lib" ] || lib=$(find "apps/$game/build/intermediates" -path "*merged_native_libs*" -path "*/$abi/*" -name "lib${game}main.so" | head -n 1)
+              if [ -n "$lib" ]; then
+                mkdir -p "symbols-$game/$abi" && cp "$lib" "symbols-$game/$abi/lib${game}main.so"
+              else
+                echo "::warning::No unstripped lib${game}main.so found for $abi"
+              fi
+            done
           done
 
       - name: Upload native debug symbols
         uses: actions/upload-artifact@v7
         with:
           name: debug-symbols-${{ env.APK_BASENAME }}
-          path: symbols/
+          path: symbols-th06/
           if-no-files-found: warn
           retention-days: 30
 
@@ -260,18 +241,6 @@ jobs:
           path: dist/*
           if-no-files-found: error
           retention-days: 30
-
-      - name: Stage th07 native debug symbols
-        run: |
-          mkdir -p symbols-th07
-          for abi in ${ABIS//,/ }; do
-            lib=$(find th07/build/intermediates -path "*merged_native_libs*" -path "*/$abi/*" -name libmain.so | head -n 1)
-            if [ -n "$lib" ]; then
-              mkdir -p "symbols-th07/$abi" && cp "$lib" "symbols-th07/$abi/libmain.so"
-            else
-              echo "::warning::No unstripped th07 libmain.so found for $abi"
-            fi
-          done
 
       - name: Upload th07 native debug symbols
         uses: actions/upload-artifact@v7
@@ -289,15 +258,43 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Upload th08 native debug symbols
+        uses: actions/upload-artifact@v7
+        with:
+          name: debug-symbols-${{ env.TH08_APK_BASENAME }}
+          path: symbols-th08/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload th08 APK artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.TH08_APK_BASENAME }}
+          path: dist-th08/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Touhou Launcher APK artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.LAUNCHER_APK_BASENAME }}
+          path: dist-launcher/*
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v3
         with:
           files: |
+            dist-launcher/*.apk
+            dist-launcher/SHA256SUMS-launcher.txt
             dist/*.apk
             dist/SHA256SUMS.txt
             dist-th07/*.apk
             dist-th07/SHA256SUMS-th07.txt
+            dist-th08/*.apk
+            dist-th08/SHA256SUMS-th08.txt
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-') }}
           fail_on_unmatched_files: true

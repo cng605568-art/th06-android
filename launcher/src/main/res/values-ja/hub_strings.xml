@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hub_choose">ゲームを選んでください</string>
+    <string name="hub_ready">プレイできます</string>
+    <string name="hub_needs_files">ゲームファイルを追加してください</string>
+    <string name="hub_note">ゲームごとにファイル・スコア・リプレイ・設定は別々に保存されます。それぞれのゲームはご自身でお持ちのものが必要です。</string>
+    <string name="hub_version">バージョン %1$s</string>
+</resources>

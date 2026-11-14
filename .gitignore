@@ -7,6 +7,11 @@
 /th06/.cxx/
 /th07/build/
 /th07/.cxx/
+/th08/build/
+/th08/.cxx/
+/sdl/build/
+/apps/*/build/
+/launcher/build/
 /.gradle/
 /local.properties
 *.apk

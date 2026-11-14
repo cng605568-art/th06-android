@@ -13,7 +13,7 @@
 #                   ES 3 rendering, audio mixer, gamepad/keyboard/touch input, crash
 #                   handler, data mounting and the Android JNI glue.
 # A game adds its own static library on top of thengine_core and links thengine_host
-# into its executable (desktop) or libmain.so (Android).
+# into its executable (desktop) or lib<game>main.so (Android).
 
 if(NOT EXISTS "${TOUHOU_THIRD_PARTY}/zstd/lib/zstd.h" OR NOT EXISTS "${TOUHOU_THIRD_PARTY}/include/stb_image.h")
   message(FATAL_ERROR "Third-party sources missing in ${TOUHOU_THIRD_PARTY}. Run: bash scripts/fetch_deps.sh")
@@ -45,6 +45,8 @@ add_library(thengine_core STATIC
   ${THENGINE_SRC}/io/PeImage.cpp
   ${THENGINE_SRC}/io/Pbg3Archive.cpp
   ${THENGINE_SRC}/io/Pbg4Archive.cpp
+  ${THENGINE_SRC}/io/PbgzArchive.cpp
+  ${THENGINE_SRC}/io/ThCrypt.cpp
   ${THENGINE_SRC}/io/PkglArchive.cpp
   ${THENGINE_SRC}/io/Vfs.cpp
   ${THENGINE_SRC}/gfx/Anm.cpp
@@ -52,6 +54,7 @@ add_library(thengine_core STATIC
   ${THENGINE_SRC}/gfx/Image.cpp
   ${THENGINE_SRC}/gfx/ProceduralArt.cpp
   ${THENGINE_SRC}/gfx/TextRenderer.cpp
+  ${THENGINE_SRC}/gfx/Thtx.cpp
   ${THENGINE_SRC}/gfx/TextureLibrary.cpp
   ${THENGINE_SRC}/audio/MusicPlayer.cpp
   ${THENGINE_SRC}/input/DragPad.cpp

@@ -108,7 +108,7 @@ public class LauncherActivity extends Activity {
 
     @Override
     protected void attachBaseContext(Context base) {
-        super.attachBaseContext(Lang.wrap(base));  // the launcher's text in the chosen language
+        super.attachBaseContext(GameStorage.wrap(Lang.wrap(base)));  // (its own folder inside Touhou Launcher)  // the launcher's text in the chosen language
     }
 
     @Override
@@ -124,7 +124,7 @@ public class LauncherActivity extends Activity {
         page.addView(header, Ui.matchWrap());
 
         // Play, floating over the header's edge, with a line saying what it will do.
-        playButton = ui.hero(getString(R.string.play));
+        playButton = ui.hero(getString(R.string.th07_play));
         playButton.setOnClickListener(v -> startActivity(new Intent(this, GameActivity.class)));
         LinearLayout.LayoutParams playLp = Ui.matchWrap();
         playLp.setMargins(ui.dp(28), -ui.dp(32), ui.dp(28), 0);
@@ -149,7 +149,7 @@ public class LauncherActivity extends Activity {
         addBackupSection(page);
         addHelpSection(page);
 
-        TextView footer = ui.body(getString(R.string.footer), 12, Ui.MUTED);
+        TextView footer = ui.body(getString(R.string.th07_footer), 12, Ui.MUTED);
         footer.setGravity(Gravity.CENTER_HORIZONTAL);
         footer.setPadding(ui.dp(28), ui.dp(10), ui.dp(28), ui.dp(8));
         page.addView(footer, Ui.matchWrap());
@@ -224,13 +224,13 @@ public class LauncherActivity extends Activity {
         bg.setCornerRadii(new float[] {0, 0, 0, 0, r, r, r, r});
         header.setBackground(bg);
 
-        TextView title = ui.title(getString(R.string.header_title), 40, Color.WHITE);
+        TextView title = ui.title(getString(R.string.th07_header_title), 40, Color.WHITE);
         title.setShadowLayer(ui.dp(6), 0, ui.dp(2), 0x80000000);
         header.addView(title);
-        TextView subtitle = ui.title(getString(R.string.header_subtitle), 18, Ui.SAKURA_SOFT);
+        TextView subtitle = ui.title(getString(R.string.th07_header_subtitle), 18, Ui.SAKURA_SOFT);
         subtitle.setPadding(0, ui.dp(8), 0, 0);
         header.addView(subtitle);
-        TextView tag = ui.body(getString(R.string.header_tag), 13, 0xFFE9D6F0);
+        TextView tag = ui.body(getString(R.string.th07_header_tag), 13, 0xFFE9D6F0);
         tag.setGravity(Gravity.CENTER_HORIZONTAL);
         tag.setPadding(0, ui.dp(8), 0, 0);
         header.addView(tag);
@@ -278,7 +278,7 @@ public class LauncherActivity extends Activity {
         try {
             startActivityForResult(intent, request);
         } catch (ActivityNotFoundException e) {
-            errors.setText(R.string.files_no_picker);
+            errors.setText(R.string.th07_files_no_picker);
         }
     }
 
@@ -286,7 +286,7 @@ public class LauncherActivity extends Activity {
         try {
             startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
         } catch (ActivityNotFoundException e) {
-            updateStatus.setText(getString(R.string.no_browser, url));
+            updateStatus.setText(getString(R.string.th07_no_browser, url));
         }
     }
 
@@ -295,11 +295,11 @@ public class LauncherActivity extends Activity {
     private void showBanners() {
         banners.removeAllViews();
         if (Logs.hasUnseenCrash(this)) {
-            LinearLayout card = ui.card(banners, getString(R.string.crash_title), getString(R.string.crash_body));
-            Button save = ui.primary(getString(R.string.crash_save));
+            LinearLayout card = ui.card(banners, getString(R.string.th07_crash_title), getString(R.string.th07_crash_body));
+            Button save = ui.primary(getString(R.string.th07_crash_save));
             save.setOnClickListener(v -> saveLog());
             card.addView(save, ui.matchWrap(12, 4));
-            Button dismiss = ui.secondary(getString(R.string.crash_dismiss));
+            Button dismiss = ui.secondary(getString(R.string.th07_crash_dismiss));
             dismiss.setOnClickListener(v -> {
                 Logs.markSeen(this);
                 showBanners();
@@ -308,9 +308,9 @@ public class LauncherActivity extends Activity {
         }
         UpdateChecker.Result update = UpdateChecker.cached(this);
         if (update != null && update.newer) {
-            LinearLayout card = ui.card(banners, getString(R.string.update_title, update.latest),
-                    getString(R.string.update_body, Logs.versionName(this)));
-            Button open = ui.primary(getString(R.string.update_open));
+            LinearLayout card = ui.card(banners, getString(R.string.th07_update_title, update.latest),
+                    getString(R.string.th07_update_body, Logs.versionName(this)));
+            Button open = ui.primary(getString(R.string.th07_update_open));
             open.setOnClickListener(v -> openPage(update.page));
             card.addView(open, ui.matchWrap(12, 0));
         }
@@ -320,9 +320,9 @@ public class LauncherActivity extends Activity {
 
     /** The launcher's language, and the game's own text: the original or a translation. */
     private void addLanguageSection(LinearLayout page) {
-        String heading = getString(R.string.lang_title);
+        String heading = getString(R.string.th07_lang_title);
         if (!heading.equals("Language")) heading += "  ·  Language";  // findable in any language
-        LinearLayout card = ui.card(page, heading, getString(R.string.lang_body));
+        LinearLayout card = ui.card(page, heading, getString(R.string.th07_lang_body));
         card.addView(ui.spinner(Lang.labels(this), Lang.chosenIndex(this), v -> {
             if (v == Lang.chosenIndex(this)) return;
             Lang.choose(this, v);
@@ -330,8 +330,8 @@ public class LauncherActivity extends Activity {
             recreate();  // every text on the page in the new language
         }), ui.matchWrap(8, 0));
 
-        card.addView(ui.caption(getString(R.string.gametext_caption)), Ui.matchWrap());
-        String[] labels = {getString(R.string.gametext_same), "日本語 (Original)", "English", "简体中文", "繁體中文", "Bahasa Melayu"};
+        card.addView(ui.caption(getString(R.string.th07_gametext_caption)), Ui.matchWrap());
+        String[] labels = {getString(R.string.th07_gametext_same), "日本語 (Original)", "English", "简体中文", "繁體中文", "Bahasa Melayu"};
         gameTextChoice = ui.spinner(labels, GameText.chosenIndex(this), v -> {
             if (v == GameText.chosenIndex(this)) return;
             GameText.choose(this, v);
@@ -343,13 +343,13 @@ public class LauncherActivity extends Activity {
         gameTextStatus = ui.body("", 14, Ui.INK);
         gameTextStatus.setPadding(ui.dp(4), ui.dp(10), ui.dp(4), ui.dp(4));
         card.addView(gameTextStatus, Ui.matchWrap());
-        gameTextDownload = ui.primary(getString(R.string.gametext_download));
+        gameTextDownload = ui.primary(getString(R.string.th07_gametext_download));
         gameTextDownload.setOnClickListener(v -> downloadGameText());
         card.addView(gameTextDownload, ui.matchWrap(6, 4));
-        gameTextRemove = ui.secondary(getString(R.string.gametext_remove));
+        gameTextRemove = ui.secondary(getString(R.string.th07_gametext_remove));
         gameTextRemove.setOnClickListener(v -> removeGameText());
         card.addView(gameTextRemove, ui.matchWrap(0, 4));
-        card.addView(ui.caption(getString(R.string.gametext_credit)), Ui.matchWrap());
+        card.addView(ui.caption(getString(R.string.th07_gametext_credit)), Ui.matchWrap());
     }
 
     private void refreshGameText() {
@@ -363,17 +363,17 @@ public class LauncherActivity extends Activity {
             GameText.Status st = GameText.status(this, code);
             String state;
             if (!translatable) {
-                state = getString(R.string.gametext_original);
+                state = getString(R.string.th07_gametext_original);
             } else if (st.downloaded) {
-                state = getString(R.string.gametext_installed, st.files, st.dialogue,
+                state = getString(R.string.th07_gametext_installed, st.files, st.dialogue,
                         DateFormat.getDateInstance(DateFormat.MEDIUM).format(new Date(st.updated)));
             } else if (st.installed) {
-                state = getString(R.string.gametext_imported, st.files, st.dialogue);
+                state = getString(R.string.th07_gametext_imported, st.files, st.dialogue);
             } else {
-                state = getString(code.equals("en") ? R.string.gametext_not_installed_en : R.string.gametext_not_installed);
+                state = getString(code.equals("en") ? R.string.th07_gametext_not_installed_en : R.string.th07_gametext_not_installed);
             }
             gameTextStatus.setText(message != null ? message + "\n" + state : state);
-            gameTextDownload.setText(st.installed ? R.string.gametext_update : R.string.gametext_download);
+            gameTextDownload.setText(st.installed ? R.string.th07_gametext_update : R.string.th07_gametext_download);
             gameTextRemove.setVisibility(st.downloaded ? View.VISIBLE : View.GONE);
         }
         gameTextDownload.setVisibility(translatable ? View.VISIBLE : View.GONE);
@@ -390,12 +390,12 @@ public class LauncherActivity extends Activity {
 
     private void downloadGameText() {
         if (Backup.busy() || !GameText.beginDownload()) {
-            gameTextStatus.setText(R.string.gametext_busy);
+            gameTextStatus.setText(R.string.th07_gametext_busy);
             return;
         }
         final Context app = appContext();
         final String code = GameText.effective(this);
-        reportGameText(getString(R.string.gametext_connecting));
+        reportGameText(getString(R.string.th07_gametext_connecting));
         updateBusy();
         refreshGameText();
         updatePlayHint();
@@ -403,11 +403,11 @@ public class LauncherActivity extends Activity {
             String message;
             try {
                 int n = GameText.download(app, code, LauncherActivity::reportGameText);
-                message = app.getString(R.string.gametext_done, n);
+                message = app.getString(R.string.th07_gametext_done, n);
             } catch (GameText.NotAvailable e) {
-                message = app.getString(R.string.gametext_unavailable);
+                message = app.getString(R.string.th07_gametext_unavailable);
             } catch (IOException | RuntimeException e) {
-                message = app.getString(R.string.gametext_failed, String.valueOf(e.getMessage()));
+                message = app.getString(R.string.th07_gametext_failed, String.valueOf(e.getMessage()));
             } finally {
                 GameText.endDownload();
             }
@@ -418,12 +418,12 @@ public class LauncherActivity extends Activity {
 
     private void removeGameText() {
         if (Backup.busy() || !GameFiles.beginImport()) {
-            gameTextStatus.setText(R.string.gametext_busy);
+            gameTextStatus.setText(R.string.th07_gametext_busy);
             return;
         }
         try {
             GameText.remove(this, GameText.effective(this));
-            lastGameText = getString(R.string.gametext_removed);
+            lastGameText = getString(R.string.th07_gametext_removed);
         } finally {
             GameFiles.endImport();
         }
@@ -433,20 +433,20 @@ public class LauncherActivity extends Activity {
     // ---- game files -----------------------------------------------------------------------
 
     private void addFilesSection(LinearLayout page) {
-        LinearLayout card = ui.card(page, getString(R.string.files_title), getString(R.string.files_body));
+        LinearLayout card = ui.card(page, getString(R.string.th07_files_title), getString(R.string.th07_files_body));
         status = ui.statusBox();
         card.addView(status, ui.matchWrap(12, 8));
         importStatus = ui.body("", 14, Ui.INK);
         importStatus.setPadding(ui.dp(4), ui.dp(2), ui.dp(4), ui.dp(6));
         card.addView(importStatus, Ui.matchWrap());
-        folderButton = ui.primary(getString(R.string.files_choose_folder));
+        folderButton = ui.primary(getString(R.string.th07_files_choose_folder));
         folderButton.setOnClickListener(v -> {
             Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
             pick.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
             launch(pick, REQUEST_FOLDER, importStatus);
         });
         card.addView(folderButton, ui.matchWrap(4, 4));
-        filesButton = ui.secondary(getString(R.string.files_choose_files));
+        filesButton = ui.secondary(getString(R.string.th07_files_choose_files));
         filesButton.setOnClickListener(v -> {
             Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             pick.addCategory(Intent.CATEGORY_OPENABLE);
@@ -456,7 +456,7 @@ public class LauncherActivity extends Activity {
             launch(pick, REQUEST_FILES, importStatus);
         });
         card.addView(filesButton, ui.matchWrap(0, 4));
-        removeButton = ui.secondary(getString(R.string.files_remove));
+        removeButton = ui.secondary(getString(R.string.th07_files_remove));
         removeButton.setOnClickListener(v -> confirmRemove());
         card.addView(removeButton, ui.matchWrap(0, 0));
     }
@@ -475,15 +475,15 @@ public class LauncherActivity extends Activity {
             String what;
             if (!s.present) {
                 mark = music ? "–" : "✗";
-                what = getString(music ? R.string.status_missing_optional : R.string.status_missing_needed);
+                what = getString(music ? R.string.th07_status_missing_optional : R.string.th07_status_missing_needed);
             } else if (!s.valid) {
                 mark = "✗";
-                what = getString(GameFiles.DAT.equals(name) ? R.string.status_bad_dat
-                        : GameFiles.EXE.equals(name) ? R.string.status_bad_exe : R.string.status_bad_bgm);
+                what = getString(GameFiles.DAT.equals(name) ? R.string.th07_status_bad_dat
+                        : GameFiles.EXE.equals(name) ? R.string.th07_status_bad_exe : R.string.th07_status_bad_bgm);
             } else {
                 mark = "✓";
-                what = GameFiles.EXE.equals(name) ? getString(R.string.status_ok_exe)
-                        : getString(R.string.status_ok_size, s.size / 1048576.0);
+                what = GameFiles.EXE.equals(name) ? getString(R.string.th07_status_ok_exe)
+                        : getString(R.string.th07_status_ok_size, s.size / 1048576.0);
             }
             imported |= s.present;
             valid[k] = s.valid;
@@ -492,32 +492,32 @@ public class LauncherActivity extends Activity {
         boolean patch = GameFiles.englishPresent(this);
         imported |= patch;
         sb.append(String.format(Locale.ROOT, "%-10s %s  %s%n", GameFiles.THCRAP, patch ? "✓" : "–",
-                patch ? getString(R.string.status_english_ok, GameFiles.englishFiles(this)) : getString(R.string.status_english_missing)));
+                patch ? getString(R.string.th07_status_english_ok, GameFiles.englishFiles(this)) : getString(R.string.th07_status_english_missing)));
         int replaced = MusicReplacer.replacedCount(this);
         if (replaced > 0) {
-            sb.append(String.format(Locale.ROOT, "%-10s %s  %s%n", "music/", "✓", getString(R.string.status_music_replaced, replaced)));
+            sb.append(String.format(Locale.ROOT, "%-10s %s  %s%n", "music/", "✓", getString(R.string.th07_status_music_replaced, replaced)));
         }
         ready = valid[0] && valid[1];
-        sb.append('\n').append(getString(!ready ? R.string.status_not_ready
-                : valid[2] ? R.string.status_ready : R.string.status_ready_no_music));
+        sb.append('\n').append(getString(!ready ? R.string.th07_status_not_ready
+                : valid[2] ? R.string.th07_status_ready : R.string.th07_status_ready_no_music));
         return sb.toString();
     }
 
     private void confirmRemove() {
         new AlertDialog.Builder(this)
-                .setTitle(R.string.files_remove_title)
-                .setMessage(R.string.files_remove_body)
-                .setPositiveButton(R.string.files_remove_ok, (d, which) -> {
+                .setTitle(R.string.th07_files_remove_title)
+                .setMessage(R.string.th07_files_remove_body)
+                .setPositiveButton(R.string.th07_files_remove_ok, (d, which) -> {
                     if (Backup.busy() || !GameFiles.beginImport()) return;
                     try {
                         GameFiles.removeAll(this);
                     } finally {
                         GameFiles.endImport();
                     }
-                    lastImport = getString(R.string.files_removed);
+                    lastImport = getString(R.string.th07_files_removed);
                     refresh();
                 })
-                .setNegativeButton(R.string.cancel, null)
+                .setNegativeButton(R.string.th07_cancel, null)
                 .show();
     }
 
@@ -553,14 +553,14 @@ public class LauncherActivity extends Activity {
     /** Imports from a picked folder (`tree`) or from picked files (`docs`) on a worker thread. */
     private void startImport(Uri tree, List<Uri> docs) {
         if (Backup.busy() || !GameFiles.beginImport()) {
-            importStatus.setText(GameText.downloading() ? R.string.gametext_busy : R.string.import_busy);
+            importStatus.setText(GameText.downloading() ? R.string.th07_gametext_busy : R.string.th07_import_busy);
             return;
         }
         final Context app = appContext();
         // Hold on to read access for the import's whole run, even if this page is recreated;
         // given back when it ends (the copies need no access to the originals).
         final List<Uri> held = holdAccess(tree != null ? Collections.singletonList(tree) : docs);
-        report(getString(R.string.import_starting));
+        report(getString(R.string.th07_import_starting));
         updateBusy();
         refreshGameText();
         updatePlayHint();
@@ -572,7 +572,7 @@ public class LauncherActivity extends Activity {
                         : GameFiles.describe(app, docs);
                 result = GameFiles.importFrom(app, sources, tree == null, progress);
             } catch (IOException | RuntimeException e) {
-                result = app.getString(R.string.import_failed, String.valueOf(e.getMessage()));
+                result = app.getString(R.string.th07_import_failed, String.valueOf(e.getMessage()));
             } finally {
                 releaseAccess(app, held);
                 GameFiles.endImport();
@@ -619,8 +619,8 @@ public class LauncherActivity extends Activity {
     // ---- start options ----------------------------------------------------------------------
 
     private void addStartSection(LinearLayout page) {
-        LinearLayout card = ui.card(page, getString(R.string.start_title), getString(R.string.start_body));
-        CheckBox skipTitle = ui.check(getString(R.string.start_skip_title), Options.skipTitle(this));
+        LinearLayout card = ui.card(page, getString(R.string.th07_start_title), getString(R.string.th07_start_body));
+        CheckBox skipTitle = ui.check(getString(R.string.th07_start_skip_title), Options.skipTitle(this));
         skipTitle.setOnCheckedChangeListener((b, checked) -> {
             Options.setSkipTitle(this, checked);
             updateStartRows();
@@ -632,13 +632,13 @@ public class LauncherActivity extends Activity {
         directRows = new LinearLayout(this);
         directRows.setOrientation(LinearLayout.VERTICAL);
         card.addView(directRows, Ui.matchWrap());
-        directRows.addView(ui.caption(getString(R.string.start_shot)), Ui.matchWrap());
-        directRows.addView(ui.spinner(getResources().getStringArray(R.array.shot_types), Options.shotType(this), v -> {
+        directRows.addView(ui.caption(getString(R.string.th07_start_shot)), Ui.matchWrap());
+        directRows.addView(ui.spinner(getResources().getStringArray(R.array.th07_shot_types), Options.shotType(this), v -> {
             Options.setShotType(this, v);
             updatePlayHint();
         }), Ui.matchWrap());
-        directRows.addView(ui.caption(getString(R.string.start_difficulty)), Ui.matchWrap());
-        directRows.addView(ui.spinner(getResources().getStringArray(R.array.difficulties), Options.difficulty(this), v -> {
+        directRows.addView(ui.caption(getString(R.string.th07_start_difficulty)), Ui.matchWrap());
+        directRows.addView(ui.spinner(getResources().getStringArray(R.array.th07_difficulties), Options.difficulty(this), v -> {
             Options.setDifficulty(this, v);
             updateStartRows();
             updatePlayHint();
@@ -646,8 +646,8 @@ public class LauncherActivity extends Activity {
 
         stageRow = new LinearLayout(this);
         stageRow.setOrientation(LinearLayout.VERTICAL);
-        stageRow.addView(ui.caption(getString(R.string.start_stage)), Ui.matchWrap());
-        stageRow.addView(ui.spinner(getResources().getStringArray(R.array.stages), Options.stage(this) - 1, v -> {
+        stageRow.addView(ui.caption(getString(R.string.th07_start_stage)), Ui.matchWrap());
+        stageRow.addView(ui.spinner(getResources().getStringArray(R.array.th07_stages), Options.stage(this) - 1, v -> {
             Options.setStage(this, v + 1);
             updatePlayHint();
         }), Ui.matchWrap());
@@ -655,12 +655,12 @@ public class LauncherActivity extends Activity {
 
         livesRow = new LinearLayout(this);
         livesRow.setOrientation(LinearLayout.VERTICAL);
-        livesRow.addView(ui.caption(getString(R.string.start_lives)), Ui.matchWrap());
-        livesRow.addView(ui.spinner(getResources().getStringArray(R.array.lives), Options.lives(this),
+        livesRow.addView(ui.caption(getString(R.string.th07_start_lives)), Ui.matchWrap());
+        livesRow.addView(ui.spinner(getResources().getStringArray(R.array.th07_lives), Options.lives(this),
                 v -> Options.setLives(this, v)), Ui.matchWrap());
         directRows.addView(livesRow, Ui.matchWrap());
 
-        practice = ui.check(getString(R.string.start_practice), Options.practice(this));
+        practice = ui.check(getString(R.string.th07_start_practice), Options.practice(this));
         practice.setOnCheckedChangeListener((b, checked) -> {
             Options.setPractice(this, checked);
             updateStartRows();
@@ -681,33 +681,33 @@ public class LauncherActivity extends Activity {
     private void updatePlayHint() {
         if (playHint == null) return;
         if (GameFiles.importing()) {
-            playHint.setText(GameText.downloading() ? R.string.hint_gametext_downloading : R.string.hint_importing);
+            playHint.setText(GameText.downloading() ? R.string.th07_hint_gametext_downloading : R.string.th07_hint_importing);
             return;
         }
         if (Backup.busy()) {
-            playHint.setText(R.string.hint_backup);
+            playHint.setText(R.string.th07_hint_backup);
             return;
         }
         if (!ready) {
-            playHint.setText(R.string.hint_import);
+            playHint.setText(R.string.th07_hint_import);
             return;
         }
         String hint;
         if (!Options.skipTitle(this)) {
-            hint = getString(R.string.hint_title);
+            hint = getString(R.string.th07_hint_title);
         } else {
-            String shot = getResources().getStringArray(R.array.shot_types)[Options.shotType(this)];
+            String shot = getResources().getStringArray(R.array.th07_shot_types)[Options.shotType(this)];
             int difficulty = Options.difficulty(this);
             if (difficulty == Options.EXTRA) {
-                hint = getString(R.string.hint_extra, shot);
+                hint = getString(R.string.th07_hint_extra, shot);
             } else if (difficulty == Options.PHANTASM) {
-                hint = getString(R.string.hint_phantasm, shot);
+                hint = getString(R.string.th07_hint_phantasm, shot);
             } else {
-                String name = getResources().getStringArray(R.array.difficulties)[difficulty];
-                hint = getString(R.string.hint_stage, Options.stage(this), shot, name);
+                String name = getResources().getStringArray(R.array.th07_difficulties)[difficulty];
+                hint = getString(R.string.th07_hint_stage, Options.stage(this), shot, name);
             }
         }
-        if (GameText.stack(this).length > 0) hint += getString(R.string.hint_gametext, GameText.label(GameText.effective(this)));
+        if (GameText.stack(this).length > 0) hint += getString(R.string.th07_hint_gametext, GameText.label(GameText.effective(this)));
         playHint.setText(hint);
     }
 
@@ -715,30 +715,30 @@ public class LauncherActivity extends Activity {
 
     /** Touch controls: drag-to-move or the D-pad, and how the buttons look and behave. */
     private void addControlsSection(LinearLayout page) {
-        LinearLayout card = ui.card(page, getString(R.string.controls_title), getString(R.string.controls_body));
-        card.addView(ui.caption(getString(R.string.controls_movement)), Ui.matchWrap());
+        LinearLayout card = ui.card(page, getString(R.string.th07_controls_title), getString(R.string.th07_controls_body));
+        card.addView(ui.caption(getString(R.string.th07_controls_movement)), Ui.matchWrap());
         LinearLayout dragOnly = new LinearLayout(this);
         dragOnly.setOrientation(LinearLayout.VERTICAL);
-        card.addView(ui.spinner(getResources().getStringArray(R.array.move_modes), Options.controlChoice(this, "mode", 0), v -> {
+        card.addView(ui.spinner(getResources().getStringArray(R.array.th07_move_modes), Options.controlChoice(this, "mode", 0), v -> {
             Options.setControlChoice(this, "mode", v);
             dragOnly.setVisibility(v == 0 ? View.VISIBLE : View.GONE);
         }), Ui.matchWrap());
-        dragOnly.addView(ui.caption(getString(R.string.controls_drag_speed)), Ui.matchWrap());
+        dragOnly.addView(ui.caption(getString(R.string.th07_controls_drag_speed)), Ui.matchWrap());
         dragOnly.addView(ui.spinner(Options.DRAG_SPEEDS, Options.controlChoice(this, "speed", 2),
                 v -> Options.setControlChoice(this, "speed", v)), Ui.matchWrap());
         dragOnly.setVisibility(Options.controlChoice(this, "mode", 0) == 0 ? View.VISIBLE : View.GONE);
         card.addView(dragOnly, Ui.matchWrap());
-        card.addView(ui.caption(getString(R.string.controls_button_size)), Ui.matchWrap());
-        card.addView(ui.spinner(getResources().getStringArray(R.array.button_sizes), Options.controlChoice(this, "size", 1),
+        card.addView(ui.caption(getString(R.string.th07_controls_button_size)), Ui.matchWrap());
+        card.addView(ui.spinner(getResources().getStringArray(R.array.th07_button_sizes), Options.controlChoice(this, "size", 1),
                 v -> Options.setControlChoice(this, "size", v)), Ui.matchWrap());
-        card.addView(ui.caption(getString(R.string.controls_opacity)), Ui.matchWrap());
-        card.addView(ui.spinner(getResources().getStringArray(R.array.opacities), Options.controlChoice(this, "opacity", 3),
+        card.addView(ui.caption(getString(R.string.th07_controls_opacity)), Ui.matchWrap());
+        card.addView(ui.spinner(getResources().getStringArray(R.array.th07_opacities), Options.controlChoice(this, "opacity", 3),
                 v -> Options.setControlChoice(this, "opacity", v)), Ui.matchWrap());
         String[][] flags = {
-            {"autoFire", getString(R.string.controls_autofire)},
-            {"focusToggle", getString(R.string.controls_focus_toggle)},
-            {"left", getString(R.string.controls_left)},
-            {"vibrate", getString(R.string.controls_vibrate)},
+            {"autoFire", getString(R.string.th07_controls_autofire)},
+            {"focusToggle", getString(R.string.th07_controls_focus_toggle)},
+            {"left", getString(R.string.th07_controls_left)},
+            {"vibrate", getString(R.string.th07_controls_vibrate)},
         };
         for (String[] f : flags) {
             final String key = f[0];
@@ -750,27 +750,27 @@ public class LauncherActivity extends Activity {
 
     /** How the game is shown: sideways or upright, smooth or sharp pixels, scanlines. */
     private void addDisplaySection(LinearLayout page) {
-        LinearLayout card = ui.card(page, getString(R.string.display_title), getString(R.string.display_body));
-        card.addView(ui.caption(getString(R.string.display_screen)), Ui.matchWrap());
-        card.addView(ui.spinner(getResources().getStringArray(R.array.layouts), Options.controlChoice(this, "layout", 0),
+        LinearLayout card = ui.card(page, getString(R.string.th07_display_title), getString(R.string.th07_display_body));
+        card.addView(ui.caption(getString(R.string.th07_display_screen)), Ui.matchWrap());
+        card.addView(ui.spinner(getResources().getStringArray(R.array.th07_layouts), Options.controlChoice(this, "layout", 0),
                 v -> Options.setControlChoice(this, "layout", v)), Ui.matchWrap());
-        card.addView(ui.caption(getString(R.string.display_scaling)), Ui.matchWrap());
-        card.addView(ui.spinner(getResources().getStringArray(R.array.scalings), Options.controlChoice(this, "scaling", 0),
+        card.addView(ui.caption(getString(R.string.th07_display_scaling)), Ui.matchWrap());
+        card.addView(ui.spinner(getResources().getStringArray(R.array.th07_scalings), Options.controlChoice(this, "scaling", 0),
                 v -> Options.setControlChoice(this, "scaling", v)), Ui.matchWrap());
-        CheckBox scan = ui.check(getString(R.string.display_scanlines), Options.controlFlag(this, "scanlines", false));
+        CheckBox scan = ui.check(getString(R.string.th07_display_scanlines), Options.controlFlag(this, "scanlines", false));
         scan.setOnCheckedChangeListener((b, checked) -> Options.setControlFlag(this, "scanlines", checked));
         card.addView(scan, Ui.matchWrap());
     }
 
     /** Practice tools (not in the original): slow motion, a hitbox marker, save states. */
     private void addPracticeSection(LinearLayout page) {
-        LinearLayout card = ui.card(page, getString(R.string.practice_title), getString(R.string.practice_body));
-        card.addView(ui.caption(getString(R.string.practice_speed)), Ui.matchWrap());
-        card.addView(ui.spinner(getResources().getStringArray(R.array.speeds), Options.controlChoice(this, "speed%", 0),
+        LinearLayout card = ui.card(page, getString(R.string.th07_practice_title), getString(R.string.th07_practice_body));
+        card.addView(ui.caption(getString(R.string.th07_practice_speed)), Ui.matchWrap());
+        card.addView(ui.spinner(getResources().getStringArray(R.array.th07_speeds), Options.controlChoice(this, "speed%", 0),
                 v -> Options.setControlChoice(this, "speed%", v)), Ui.matchWrap());
         String[][] flags = {
-            {"hitbox", getString(R.string.practice_hitbox)},
-            {"saveStates", getString(R.string.practice_states)},
+            {"hitbox", getString(R.string.th07_practice_hitbox)},
+            {"saveStates", getString(R.string.th07_practice_states)},
         };
         for (String[] f : flags) {
             final String key = f[0];
@@ -782,9 +782,9 @@ public class LauncherActivity extends Activity {
 
     /** Mischief (not in the original): while any is on, nothing from the game is saved. */
     private void addMischiefSection(LinearLayout page) {
-        LinearLayout card = ui.card(page, getString(R.string.mischief_title), getString(R.string.mischief_body));
+        LinearLayout card = ui.card(page, getString(R.string.th07_mischief_title), getString(R.string.th07_mischief_body));
         int mischief = Options.mischief(this);
-        String[] names = getResources().getStringArray(R.array.mischief);
+        String[] names = getResources().getStringArray(R.array.th07_mischief);
         for (int i = 0; i < names.length && i < Options.MISCHIEF_COUNT; ++i) {
             final int bit = i;
             CheckBox box = ui.check(names[i], (mischief & (1 << i)) != 0);
@@ -801,8 +801,8 @@ public class LauncherActivity extends Activity {
      * place. thbgm.dat is not touched; "Restore" puts the original back.
      */
     private void addMusicSection(LinearLayout page) {
-        LinearLayout card = ui.card(page, getString(R.string.music_title), getString(R.string.music_body));
-        card.addView(ui.caption(getString(R.string.music_song)), Ui.matchWrap());
+        LinearLayout card = ui.card(page, getString(R.string.th07_music_title), getString(R.string.th07_music_body));
+        card.addView(ui.caption(getString(R.string.th07_music_song)), Ui.matchWrap());
         musicTracks = ui.adapter(trackLabels());
         musicSpinner = ui.spinner(musicTracks, musicTrack, position -> {
             if (position != musicTrack && !MusicReplacer.busy()) lastMusic = null;
@@ -810,10 +810,10 @@ public class LauncherActivity extends Activity {
             showMusicStatus();
         });
         card.addView(musicSpinner, Ui.matchWrap());
-        card.addView(ui.caption(getString(R.string.music_loop)), Ui.matchWrap());
+        card.addView(ui.caption(getString(R.string.th07_music_loop)), Ui.matchWrap());
         loopFrom = ui.field("0", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
         card.addView(loopFrom, Ui.matchWrap());
-        musicPick = ui.primary(getString(R.string.music_choose));
+        musicPick = ui.primary(getString(R.string.th07_music_choose));
         musicPick.setOnClickListener(v -> {
             Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             pick.addCategory(Intent.CATEGORY_OPENABLE);
@@ -823,11 +823,11 @@ public class LauncherActivity extends Activity {
             launch(pick, REQUEST_AUDIO, musicStatus);
         });
         card.addView(musicPick, ui.matchWrap(16, 8));
-        musicRestore = ui.secondary(getString(R.string.music_restore));
+        musicRestore = ui.secondary(getString(R.string.th07_music_restore));
         musicRestore.setOnClickListener(v -> {
             if (MusicReplacer.busy() || Backup.busy()) return;
             MusicReplacer.restore(this, musicTrack);
-            lastMusic = getString(R.string.music_restored);
+            lastMusic = getString(R.string.th07_music_restored);
             refreshTracks();
             refresh();
         });
@@ -841,7 +841,7 @@ public class LauncherActivity extends Activity {
         String[] labels = new String[MusicReplacer.TRACK_COUNT];
         for (int t = 0; t < labels.length; ++t) {
             labels[t] = MusicReplacer.trackLabel(this, t)
-                    + (MusicReplacer.isReplaced(this, t) ? "   " + getString(R.string.music_replaced_mark) : "");
+                    + (MusicReplacer.isReplaced(this, t) ? "   " + getString(R.string.th07_music_replaced_mark) : "");
         }
         return labels;
     }
@@ -860,7 +860,7 @@ public class LauncherActivity extends Activity {
         if (converting && message != null) {
             musicStatus.setText(message);  // the conversion's progress
         } else {
-            String state = now != null ? getString(R.string.music_now_yours, now) : getString(R.string.music_now_game);
+            String state = now != null ? getString(R.string.th07_music_now_yours, now) : getString(R.string.th07_music_now_game);
             musicStatus.setText(message != null ? message + "\n" + state : state);
         }
         boolean busy = converting || Backup.busy();
@@ -883,27 +883,27 @@ public class LauncherActivity extends Activity {
             if (!text.isEmpty()) loop = Double.parseDouble(text);
             if (Double.isNaN(loop) || Double.isInfinite(loop)) throw new NumberFormatException(text);
         } catch (NumberFormatException e) {
-            lastMusic = getString(R.string.music_loop_nan);
+            lastMusic = getString(R.string.th07_music_loop_nan);
             showMusicStatus();
             return;
         }
         if (Backup.busy() || !MusicReplacer.begin()) {
-            musicStatus.setText(R.string.music_busy);
+            musicStatus.setText(R.string.th07_music_busy);
             return;
         }
         final double loopSeconds = loop;
         final Context app = appContext();
         final List<Uri> held = holdAccess(Collections.singletonList(audio));
-        lastMusic = getString(R.string.music_reading);
+        lastMusic = getString(R.string.th07_music_reading);
         updateBusy();
         showMusicStatus();
         new Thread(() -> {
             String result;
             try {
                 String summary = MusicReplacer.replace(app, audio, track, loopSeconds, LauncherActivity::reportMusic);
-                result = app.getString(R.string.music_done, MusicReplacer.trackName(app, track), summary);
+                result = app.getString(R.string.th07_music_done, MusicReplacer.trackName(app, track), summary);
             } catch (IOException | RuntimeException e) {
-                result = app.getString(R.string.music_failed, String.valueOf(e.getMessage()));
+                result = app.getString(R.string.th07_music_failed, String.valueOf(e.getMessage()));
             } finally {
                 releaseAccess(app, held);
                 MusicReplacer.end();
@@ -920,10 +920,10 @@ public class LauncherActivity extends Activity {
 
     /** Backup and restore of high scores, game options, replays, launcher settings and replaced music. */
     private void addBackupSection(LinearLayout page) {
-        LinearLayout card = ui.card(page, getString(R.string.backup_title), getString(R.string.backup_body));
-        backupMusic = ui.check(getString(R.string.backup_music), true);
+        LinearLayout card = ui.card(page, getString(R.string.th07_backup_title), getString(R.string.th07_backup_body));
+        backupMusic = ui.check(getString(R.string.th07_backup_music), true);
         card.addView(backupMusic, ui.matchWrap(4, 0));
-        backupButton = ui.primary(getString(R.string.backup_save));
+        backupButton = ui.primary(getString(R.string.th07_backup_save));
         backupButton.setOnClickListener(v -> {
             Intent create = new Intent(Intent.ACTION_CREATE_DOCUMENT);
             create.addCategory(Intent.CATEGORY_OPENABLE);
@@ -932,7 +932,7 @@ public class LauncherActivity extends Activity {
             launch(create, REQUEST_BACKUP, backupStatus);
         });
         card.addView(backupButton, ui.matchWrap(10, 4));
-        restoreButton = ui.secondary(getString(R.string.backup_restore));
+        restoreButton = ui.secondary(getString(R.string.th07_backup_restore));
         restoreButton.setOnClickListener(v -> {
             Intent open = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             open.addCategory(Intent.CATEGORY_OPENABLE);
@@ -955,7 +955,7 @@ public class LauncherActivity extends Activity {
     /** Takes the backup lock (imports, backups, restores and music conversions never overlap). */
     private boolean beginBackup() {
         if (GameFiles.importing() || MusicReplacer.busy() || !Backup.begin()) {
-            backupStatus.setText(R.string.backup_busy);
+            backupStatus.setText(R.string.th07_backup_busy);
             return false;
         }
         updateBusy();
@@ -968,14 +968,14 @@ public class LauncherActivity extends Activity {
         if (!beginBackup()) return;
         final Context app = appContext();
         final boolean music = backupMusic.isChecked();
-        reportBackup(getString(R.string.backup_saving));
+        reportBackup(getString(R.string.th07_backup_saving));
         new Thread(() -> {
             String message;
             try (OutputStream out = app.getContentResolver().openOutputStream(target, "wt")) {
-                if (out == null) throw new IOException(app.getString(R.string.err_cannot_write));
-                message = app.getString(R.string.backup_saved, Backup.create(app, out, music, LauncherActivity::reportBackup));
+                if (out == null) throw new IOException(app.getString(R.string.th07_err_cannot_write));
+                message = app.getString(R.string.th07_backup_saved, Backup.create(app, out, music, LauncherActivity::reportBackup));
             } catch (IOException | RuntimeException e) {
-                message = app.getString(R.string.backup_save_failed, String.valueOf(e.getMessage()));
+                message = app.getString(R.string.th07_backup_save_failed, String.valueOf(e.getMessage()));
             } finally {
                 Backup.end();
             }
@@ -990,26 +990,26 @@ public class LauncherActivity extends Activity {
 
     private void confirmRestore(Uri source) {
         new AlertDialog.Builder(this)
-                .setTitle(R.string.backup_confirm_title)
-                .setMessage(R.string.backup_confirm_body)
-                .setPositiveButton(R.string.backup_confirm_ok, (d, w) -> restore(source))
-                .setNegativeButton(R.string.cancel, null)
+                .setTitle(R.string.th07_backup_confirm_title)
+                .setMessage(R.string.th07_backup_confirm_body)
+                .setPositiveButton(R.string.th07_backup_confirm_ok, (d, w) -> restore(source))
+                .setNegativeButton(R.string.th07_cancel, null)
                 .show();
     }
 
     private void restore(Uri source) {
         if (!beginBackup()) return;
         final Context app = appContext();
-        reportBackup(getString(R.string.backup_restoring));
+        reportBackup(getString(R.string.th07_backup_restoring));
         new Thread(() -> {
             String message;
             boolean ok = false;
             try (InputStream in = app.getContentResolver().openInputStream(source)) {
-                if (in == null) throw new IOException(app.getString(R.string.err_cannot_read));
-                message = app.getString(R.string.backup_restored, Backup.restore(app, in, LauncherActivity::reportBackup));
+                if (in == null) throw new IOException(app.getString(R.string.th07_err_cannot_read));
+                message = app.getString(R.string.th07_backup_restored, Backup.restore(app, in, LauncherActivity::reportBackup));
                 ok = true;
             } catch (IOException | RuntimeException e) {
-                message = app.getString(R.string.backup_restore_failed, String.valueOf(e.getMessage()));
+                message = app.getString(R.string.th07_backup_restore_failed, String.valueOf(e.getMessage()));
             } finally {
                 Backup.end();
             }
@@ -1033,23 +1033,23 @@ public class LauncherActivity extends Activity {
     // ---- help & updates ---------------------------------------------------------------------
 
     private void addHelpSection(LinearLayout page) {
-        LinearLayout card = ui.card(page, getString(R.string.help_title),
-                getString(R.string.help_version, Logs.versionName(this), Logs.versionCode(this)));
-        CheckBox auto = ui.check(getString(R.string.help_auto), UpdateChecker.autoCheck(this));
+        LinearLayout card = ui.card(page, getString(R.string.th07_help_title),
+                getString(R.string.th07_help_version, Logs.versionName(this), Logs.versionCode(this)));
+        CheckBox auto = ui.check(getString(R.string.th07_help_auto), UpdateChecker.autoCheck(this));
         auto.setOnCheckedChangeListener((b, checked) -> UpdateChecker.setAutoCheck(this, checked));
         card.addView(auto, ui.matchWrap(4, 0));
-        updateButton = ui.secondary(getString(R.string.help_check));
+        updateButton = ui.secondary(getString(R.string.th07_help_check));
         updateButton.setOnClickListener(v -> checkForUpdates(true));
         card.addView(updateButton, ui.matchWrap(6, 4));
         updateStatus = ui.body("", 14, Ui.INK);
         updateStatus.setPadding(ui.dp(4), ui.dp(4), ui.dp(4), ui.dp(6));
         card.addView(updateStatus, Ui.matchWrap());
 
-        card.addView(ui.caption(getString(R.string.help_bug)), Ui.matchWrap());
-        Button log = ui.secondary(getString(R.string.help_save_log));
+        card.addView(ui.caption(getString(R.string.th07_help_bug)), Ui.matchWrap());
+        Button log = ui.secondary(getString(R.string.th07_help_save_log));
         log.setOnClickListener(v -> saveLog());
         card.addView(log, ui.matchWrap(4, 4));
-        Button issues = ui.secondary(getString(R.string.help_report));
+        Button issues = ui.secondary(getString(R.string.th07_help_report));
         issues.setOnClickListener(v -> openPage(UpdateChecker.ISSUES_PAGE));
         card.addView(issues, ui.matchWrap(0, 4));
         logStatus = ui.body("", 14, Ui.INK);
@@ -1063,7 +1063,7 @@ public class LauncherActivity extends Activity {
         checkingUpdates = true;
         updateButton.setEnabled(false);
         if (manual) {
-            lastUpdate = getString(R.string.help_checking);
+            lastUpdate = getString(R.string.th07_help_checking);
             updateStatus.setText(lastUpdate);
         }
         final Context app = appContext();
@@ -1071,11 +1071,11 @@ public class LauncherActivity extends Activity {
             String message;
             try {
                 UpdateChecker.Result r = UpdateChecker.check(app);
-                if (r.latest == null) message = app.getString(R.string.help_none_published);
-                else if (r.newer) message = app.getString(R.string.help_newer, r.latest);
-                else message = app.getString(R.string.help_latest, r.latest);
+                if (r.latest == null) message = app.getString(R.string.th07_help_none_published);
+                else if (r.newer) message = app.getString(R.string.th07_help_newer, r.latest);
+                else message = app.getString(R.string.th07_help_latest, r.latest);
             } catch (IOException | RuntimeException e) {
-                message = app.getString(R.string.help_check_failed, String.valueOf(e.getMessage()));
+                message = app.getString(R.string.th07_help_check_failed, String.valueOf(e.getMessage()));
             }
             if (manual) lastUpdate = message;
             checkingUpdates = false;
@@ -1094,13 +1094,13 @@ public class LauncherActivity extends Activity {
 
     private void writeLog(Uri target) {
         try (OutputStream out = getContentResolver().openOutputStream(target, "wt")) {
-            if (out == null) throw new IOException(getString(R.string.err_cannot_write));
+            if (out == null) throw new IOException(getString(R.string.th07_err_cannot_write));
             Logs.writeReport(this, out);
             Logs.markSeen(this);
             showBanners();
-            logStatus.setText(R.string.help_log_saved);
+            logStatus.setText(R.string.th07_help_log_saved);
         } catch (IOException | RuntimeException e) {
-            logStatus.setText(getString(R.string.help_log_failed, e.getMessage()));
+            logStatus.setText(getString(R.string.th07_help_log_failed, e.getMessage()));
         }
     }
 }

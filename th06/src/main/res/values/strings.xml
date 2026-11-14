@@ -1,160 +1,160 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Generated: launcher text in five languages (keep the files in step). -->
 <resources>
-    <string name="app_name" translatable="false">TH06 Port</string>
-    <string name="header_tag">Android port  ·  plays your own 2002 game files</string>
-    <string name="play">Play</string>
-    <string name="hint_choose_folder">Choose your game folder first (Game files, below).</string>
-    <string name="hint_extra">Starts at the Extra stage  ·  practice, nothing is saved</string>
-    <string name="hint_stage">Starts at stage %1$d  ·  practice, nothing is saved</string>
-    <string name="hint_title">Opens the game\'s title screen</string>
-    <string name="lang_title">Language</string>
-    <string name="lang_body">For this launcher and for the game’s own text (story, spell cards, music comments).</string>
-    <string name="lang_system">Phone setting</string>
-    <string name="files_title">Game files</string>
-    <string name="files_body">Copy your own game folder to the phone (the 2002 original with its 紅魔郷**.DAT / KOUMAKYO_**.dat files, or the New Classic data folder with th06**.dat), then choose it here. The files are read in place; nothing is copied.</string>
-    <string name="files_choose">Choose game folder</string>
-    <string name="files_prefer_nc">If both versions are found, prefer New Classic assets</string>
-    <string name="files_denied">Android did not grant lasting access to that folder: %1$s</string>
-    <string name="files_scanning">Scanning…</string>
-    <string name="files_scanning_path">Scanning %1$s</string>
-    <string name="files_none_found">No game archives (.dat files starting with PBG3 or PKGL) were found in that folder or its subfolders.</string>
-    <string name="files_none_selected">No game data selected yet. Choose the folder of the 2002 game (紅魔郷CM.DAT, 紅魔郷ST.DAT … or KOUMAKYO_*.dat).</string>
-    <string name="files_kind_classic">Classic</string>
-    <string name="files_kind_program">Program</string>
-    <string name="files_kind_nc">New Classic</string>
-    <string name="files_music">Music: %1$d tracks from bgm/ (%2$.0f MB)</string>
-    <string name="files_music_none">Music: none (copy the game\'s bgm folder too for music)</string>
-    <string name="files_replaced">Replaced music: %1$d track(s) (see below)</string>
-    <string name="files_scores">High scores: score.dat from your PC (new scores are saved in the app)</string>
-    <string name="files_nc_only">The stage engine runs the 2002 data files; New Classic archives alone cannot start a stage yet.</string>
-    <string name="select_title">Stage select</string>
-    <string name="select_body">Skip the title screen and start at any stage. Practice only: nothing from these games is saved.</string>
-    <string name="select_check">Start at any stage (scores not saved)</string>
-    <string name="select_shot">Shot type</string>
-    <string name="select_difficulty">Difficulty</string>
-    <string name="select_start">Start at (Extra uses its own difficulty)</string>
-    <string name="controls_title">Controls</string>
-    <string name="controls_body">Touch controls for the game (a Bluetooth or USB gamepad works too).</string>
-    <string name="controls_movement">Movement</string>
-    <string name="controls_drag_speed">Drag speed (how far the ship moves for your finger\'s travel)</string>
-    <string name="controls_button_size">Button size</string>
-    <string name="controls_opacity">Button opacity</string>
-    <string name="controls_autofire">Auto-fire (Shot is always held while you play)</string>
-    <string name="controls_focus_toggle">Focus button toggles (tap on, tap off)</string>
-    <string name="controls_left">Left-handed (buttons on the left)</string>
-    <string name="controls_vibrate">Vibrate on a miss and on a bomb</string>
-    <string name="display_title">Display</string>
-    <string name="display_body">Upright play puts the playfield across the whole width with the score below it and the controls underneath; menus and story screens stay whole.</string>
-    <string name="display_screen">Screen</string>
-    <string name="display_scaling">Scaling</string>
-    <string name="display_scanlines">CRT scanlines</string>
-    <string name="practice_title">Practice tools</string>
-    <string name="practice_body">Not in the original game. Slow motion, or loading a save state, means that game\'s scores are not saved; the hitbox marker changes nothing.</string>
-    <string name="practice_speed">Game speed</string>
-    <string name="practice_hitbox">Show the ship\'s hitbox</string>
-    <string name="practice_states">Save states (SAVE / LOAD buttons; F5 / F9 on a keyboard, L3 / R3 on a gamepad)</string>
-    <string name="mischief_title">Mischief</string>
-    <string name="mischief_body">Not in the original game. While any of these is on, scores, clears and spell cards are not saved.</string>
-    <string name="music_title">Replace music</string>
-    <string name="music_body">Play your own audio file (MP3, AAC, OGG, FLAC, WAV …) in place of one of the game\'s songs. It is converted to WAV (44,100 Hz, stereo) and loops like the game\'s music.</string>
-    <string name="music_song">Song</string>
-    <string name="music_replaced_mark">(replaced)</string>
-    <string name="music_loop">Loop from (seconds into your song; empty or 0 = the whole song)</string>
-    <string name="music_choose">Choose audio file</string>
-    <string name="music_restore">Restore the game\'s song</string>
-    <string name="music_restored">Restored: the game\'s own song plays again.</string>
-    <string name="music_now_yours">Now: your music (%1$s)</string>
-    <string name="music_now_game">Now: the game\'s own song</string>
-    <string name="music_loop_nan">The loop point must be a number of seconds.</string>
-    <string name="music_reading">Reading your file…</string>
-    <string name="music_done">Done: %1$s now plays your music (%2$s).</string>
-    <string name="music_failed">Could not use that file: %1$s</string>
-    <string name="music_converting">Converting to WAV (44,100 Hz, stereo)…</string>
-    <string name="music_converting_pct">Converting… %1$d%%</string>
-    <string name="music_decoding_pct">Decoding… %1$d%%</string>
-    <string name="music_describe">%1$s, loops from %2$s, %3$.1f MB</string>
-    <string name="music_err_no_audio">That file has no audio track</string>
-    <string name="music_err_nothing">Nothing could be decoded from that file</string>
-    <string name="music_err_cannot">This file cannot be decoded: %1$s</string>
-    <string name="backup_title">Backup</string>
-    <string name="backup_body">Keep your high scores, game options, replays and launcher settings in one file (in Downloads, a cloud drive …), and bring them back after reinstalling or on a new phone.</string>
-    <string name="backup_music">Include replaced music (bigger file)</string>
-    <string name="backup_save">Back up to a file</string>
-    <string name="backup_restore">Restore from a backup</string>
-    <string name="backup_saving">Saving…</string>
-    <string name="backup_saved">Saved: %1$s.</string>
-    <string name="backup_save_failed">Could not save the backup: %1$s</string>
-    <string name="backup_confirm_title">Restore this backup?</string>
-    <string name="backup_confirm_body">Your current high scores, game options and launcher settings are replaced by the backup\'s (and your replaced music too, if the backup has music).</string>
-    <string name="backup_confirm_ok">Restore</string>
-    <string name="cancel">Cancel</string>
-    <string name="backup_restoring">Restoring…</string>
-    <string name="backup_restored">Restored: %1$s.</string>
-    <string name="backup_restore_failed">Could not restore: %1$s</string>
-    <string name="backup_part_scores">high scores</string>
-    <string name="backup_part_options">game options</string>
-    <string name="backup_part_settings">launcher settings</string>
-    <string name="backup_empty">nothing (the backup was empty)</string>
-    <string name="backup_saving_music">Saving music: %1$s…</string>
-    <string name="backup_reading_music">Reading music: %1$s…</string>
-    <string name="err_cannot_write">cannot write there</string>
-    <string name="err_cannot_read">cannot read that file</string>
-    <string name="backup_err_not_backup">this is not a TH06 port backup</string>
-    <string name="backup_err_newer">this backup comes from a newer version of the app; update the app first</string>
-    <string name="backup_err_damaged">the backup is damaged</string>
-    <string name="list_separator">", "</string>
-    <string name="crash_title">The game closed unexpectedly</string>
-    <string name="crash_body">Sorry about that. A log of what happened was kept on this phone; you can save it and attach it to a bug report on GitHub. Nothing is sent automatically.</string>
-    <string name="crash_save">Save the log</string>
-    <string name="crash_dismiss">Dismiss</string>
-    <string name="update_title">Version %1$s is available</string>
-    <string name="update_body">You have %1$s. Download the new APK from its release page and install it over this one (your scores and settings stay).</string>
-    <string name="update_open">Open the release page</string>
-    <string name="no_browser">No browser found to open %1$s</string>
-    <string name="help_title">Help &amp; updates</string>
-    <string name="help_version">Version %1$s (build %2$d).</string>
-    <string name="help_auto">Check for a new version once a day</string>
-    <string name="help_check">Check for updates now</string>
-    <string name="help_checking">Checking…</string>
-    <string name="help_none_published">No release has been published yet.</string>
-    <string name="help_newer">Version %1$s is available (see the top of this page).</string>
-    <string name="help_latest">You have the newest version (%1$s is the latest release).</string>
-    <string name="help_check_failed">Could not check: %1$s</string>
-    <string name="help_bug">Found a bug? Save the log (it stays on your phone until you share it) and attach it to an issue on GitHub.</string>
-    <string name="help_save_log">Save a log for a bug report</string>
-    <string name="help_report">Report a problem on GitHub</string>
-    <string name="help_log_saved">Log saved. Attach it to your bug report.</string>
-    <string name="help_log_failed">Could not save the log: %1$s</string>
-    <string name="footer">A fan-made port for your own copy of 東方紅魔郷 ～ the Embodiment of Scarlet Devil (Team Shanghai Alice). No game files are included.\nFonts: Yuji Syuku and Zen Antique (SIL Open Font License 1.1).</string>
-    <string name="gametext_caption">Game text (story, spell cards, music)</string>
-    <string name="gametext_same">Same as the app</string>
-    <string name="gametext_original">The game\'s own Japanese text.</string>
-    <string name="gametext_not_installed">Download the translation from Touhou Patch Center (thpatch.net). Only the game\'s text files are fetched (small).</string>
-    <string name="gametext_installed">Installed: %1$d files, dialogue for %2$d of 7 stages, updated %3$s.</string>
-    <string name="gametext_download">Download translation</string>
-    <string name="gametext_update">Check for a newer translation</string>
-    <string name="gametext_remove">Remove translation</string>
-    <string name="gametext_connecting">Connecting to thpatch.net…</string>
-    <string name="gametext_downloading">Downloading %1$s: file %2$d of %3$d…</string>
-    <string name="gametext_done">Done (%1$d new files). The game uses the translation from its next start.</string>
-    <string name="gametext_failed">Could not download: %1$s</string>
-    <string name="gametext_unavailable">Touhou Patch Center has no translation of the game\'s text in this language yet, so it stays in Japanese.</string>
-    <string name="gametext_removed">Removed. The game shows its own Japanese text.</string>
-    <string name="gametext_credit">Game text translations: Touhou Patch Center contributors (thpatch.net), CC BY-SA 3.0. Pictures in the game are not changed.</string>
-    <string-array name="shot_types">
+    <string name="th06_app_name" translatable="false">TH06 Port</string>
+    <string name="th06_header_tag">Android port  ·  plays your own 2002 game files</string>
+    <string name="th06_play">Play</string>
+    <string name="th06_hint_choose_folder">Choose your game folder first (Game files, below).</string>
+    <string name="th06_hint_extra">Starts at the Extra stage  ·  practice, nothing is saved</string>
+    <string name="th06_hint_stage">Starts at stage %1$d  ·  practice, nothing is saved</string>
+    <string name="th06_hint_title">Opens the game\'s title screen</string>
+    <string name="th06_lang_title">Language</string>
+    <string name="th06_lang_body">For this launcher and for the game’s own text (story, spell cards, music comments).</string>
+    <string name="th06_lang_system">Phone setting</string>
+    <string name="th06_files_title">Game files</string>
+    <string name="th06_files_body">Copy your own game folder to the phone (the 2002 original with its 紅魔郷**.DAT / KOUMAKYO_**.dat files, or the New Classic data folder with th06**.dat), then choose it here. The files are read in place; nothing is copied.</string>
+    <string name="th06_files_choose">Choose game folder</string>
+    <string name="th06_files_prefer_nc">If both versions are found, prefer New Classic assets</string>
+    <string name="th06_files_denied">Android did not grant lasting access to that folder: %1$s</string>
+    <string name="th06_files_scanning">Scanning…</string>
+    <string name="th06_files_scanning_path">Scanning %1$s</string>
+    <string name="th06_files_none_found">No game archives (.dat files starting with PBG3 or PKGL) were found in that folder or its subfolders.</string>
+    <string name="th06_files_none_selected">No game data selected yet. Choose the folder of the 2002 game (紅魔郷CM.DAT, 紅魔郷ST.DAT … or KOUMAKYO_*.dat).</string>
+    <string name="th06_files_kind_classic">Classic</string>
+    <string name="th06_files_kind_program">Program</string>
+    <string name="th06_files_kind_nc">New Classic</string>
+    <string name="th06_files_music">Music: %1$d tracks from bgm/ (%2$.0f MB)</string>
+    <string name="th06_files_music_none">Music: none (copy the game\'s bgm folder too for music)</string>
+    <string name="th06_files_replaced">Replaced music: %1$d track(s) (see below)</string>
+    <string name="th06_files_scores">High scores: score.dat from your PC (new scores are saved in the app)</string>
+    <string name="th06_files_nc_only">The stage engine runs the 2002 data files; New Classic archives alone cannot start a stage yet.</string>
+    <string name="th06_select_title">Stage select</string>
+    <string name="th06_select_body">Skip the title screen and start at any stage. Practice only: nothing from these games is saved.</string>
+    <string name="th06_select_check">Start at any stage (scores not saved)</string>
+    <string name="th06_select_shot">Shot type</string>
+    <string name="th06_select_difficulty">Difficulty</string>
+    <string name="th06_select_start">Start at (Extra uses its own difficulty)</string>
+    <string name="th06_controls_title">Controls</string>
+    <string name="th06_controls_body">Touch controls for the game (a Bluetooth or USB gamepad works too).</string>
+    <string name="th06_controls_movement">Movement</string>
+    <string name="th06_controls_drag_speed">Drag speed (how far the ship moves for your finger\'s travel)</string>
+    <string name="th06_controls_button_size">Button size</string>
+    <string name="th06_controls_opacity">Button opacity</string>
+    <string name="th06_controls_autofire">Auto-fire (Shot is always held while you play)</string>
+    <string name="th06_controls_focus_toggle">Focus button toggles (tap on, tap off)</string>
+    <string name="th06_controls_left">Left-handed (buttons on the left)</string>
+    <string name="th06_controls_vibrate">Vibrate on a miss and on a bomb</string>
+    <string name="th06_display_title">Display</string>
+    <string name="th06_display_body">Upright play puts the playfield across the whole width with the score below it and the controls underneath; menus and story screens stay whole.</string>
+    <string name="th06_display_screen">Screen</string>
+    <string name="th06_display_scaling">Scaling</string>
+    <string name="th06_display_scanlines">CRT scanlines</string>
+    <string name="th06_practice_title">Practice tools</string>
+    <string name="th06_practice_body">Not in the original game. Slow motion, or loading a save state, means that game\'s scores are not saved; the hitbox marker changes nothing.</string>
+    <string name="th06_practice_speed">Game speed</string>
+    <string name="th06_practice_hitbox">Show the ship\'s hitbox</string>
+    <string name="th06_practice_states">Save states (SAVE / LOAD buttons; F5 / F9 on a keyboard, L3 / R3 on a gamepad)</string>
+    <string name="th06_mischief_title">Mischief</string>
+    <string name="th06_mischief_body">Not in the original game. While any of these is on, scores, clears and spell cards are not saved.</string>
+    <string name="th06_music_title">Replace music</string>
+    <string name="th06_music_body">Play your own audio file (MP3, AAC, OGG, FLAC, WAV …) in place of one of the game\'s songs. It is converted to WAV (44,100 Hz, stereo) and loops like the game\'s music.</string>
+    <string name="th06_music_song">Song</string>
+    <string name="th06_music_replaced_mark">(replaced)</string>
+    <string name="th06_music_loop">Loop from (seconds into your song; empty or 0 = the whole song)</string>
+    <string name="th06_music_choose">Choose audio file</string>
+    <string name="th06_music_restore">Restore the game\'s song</string>
+    <string name="th06_music_restored">Restored: the game\'s own song plays again.</string>
+    <string name="th06_music_now_yours">Now: your music (%1$s)</string>
+    <string name="th06_music_now_game">Now: the game\'s own song</string>
+    <string name="th06_music_loop_nan">The loop point must be a number of seconds.</string>
+    <string name="th06_music_reading">Reading your file…</string>
+    <string name="th06_music_done">Done: %1$s now plays your music (%2$s).</string>
+    <string name="th06_music_failed">Could not use that file: %1$s</string>
+    <string name="th06_music_converting">Converting to WAV (44,100 Hz, stereo)…</string>
+    <string name="th06_music_converting_pct">Converting… %1$d%%</string>
+    <string name="th06_music_decoding_pct">Decoding… %1$d%%</string>
+    <string name="th06_music_describe">%1$s, loops from %2$s, %3$.1f MB</string>
+    <string name="th06_music_err_no_audio">That file has no audio track</string>
+    <string name="th06_music_err_nothing">Nothing could be decoded from that file</string>
+    <string name="th06_music_err_cannot">This file cannot be decoded: %1$s</string>
+    <string name="th06_backup_title">Backup</string>
+    <string name="th06_backup_body">Keep your high scores, game options, replays and launcher settings in one file (in Downloads, a cloud drive …), and bring them back after reinstalling or on a new phone.</string>
+    <string name="th06_backup_music">Include replaced music (bigger file)</string>
+    <string name="th06_backup_save">Back up to a file</string>
+    <string name="th06_backup_restore">Restore from a backup</string>
+    <string name="th06_backup_saving">Saving…</string>
+    <string name="th06_backup_saved">Saved: %1$s.</string>
+    <string name="th06_backup_save_failed">Could not save the backup: %1$s</string>
+    <string name="th06_backup_confirm_title">Restore this backup?</string>
+    <string name="th06_backup_confirm_body">Your current high scores, game options and launcher settings are replaced by the backup\'s (and your replaced music too, if the backup has music).</string>
+    <string name="th06_backup_confirm_ok">Restore</string>
+    <string name="th06_cancel">Cancel</string>
+    <string name="th06_backup_restoring">Restoring…</string>
+    <string name="th06_backup_restored">Restored: %1$s.</string>
+    <string name="th06_backup_restore_failed">Could not restore: %1$s</string>
+    <string name="th06_backup_part_scores">high scores</string>
+    <string name="th06_backup_part_options">game options</string>
+    <string name="th06_backup_part_settings">launcher settings</string>
+    <string name="th06_backup_empty">nothing (the backup was empty)</string>
+    <string name="th06_backup_saving_music">Saving music: %1$s…</string>
+    <string name="th06_backup_reading_music">Reading music: %1$s…</string>
+    <string name="th06_err_cannot_write">cannot write there</string>
+    <string name="th06_err_cannot_read">cannot read that file</string>
+    <string name="th06_backup_err_not_backup">this is not a TH06 port backup</string>
+    <string name="th06_backup_err_newer">this backup comes from a newer version of the app; update the app first</string>
+    <string name="th06_backup_err_damaged">the backup is damaged</string>
+    <string name="th06_list_separator">", "</string>
+    <string name="th06_crash_title">The game closed unexpectedly</string>
+    <string name="th06_crash_body">Sorry about that. A log of what happened was kept on this phone; you can save it and attach it to a bug report on GitHub. Nothing is sent automatically.</string>
+    <string name="th06_crash_save">Save the log</string>
+    <string name="th06_crash_dismiss">Dismiss</string>
+    <string name="th06_update_title">Version %1$s is available</string>
+    <string name="th06_update_body">You have %1$s. Download the new APK from its release page and install it over this one (your scores and settings stay).</string>
+    <string name="th06_update_open">Open the release page</string>
+    <string name="th06_no_browser">No browser found to open %1$s</string>
+    <string name="th06_help_title">Help &amp; updates</string>
+    <string name="th06_help_version">Version %1$s (build %2$d).</string>
+    <string name="th06_help_auto">Check for a new version once a day</string>
+    <string name="th06_help_check">Check for updates now</string>
+    <string name="th06_help_checking">Checking…</string>
+    <string name="th06_help_none_published">No release has been published yet.</string>
+    <string name="th06_help_newer">Version %1$s is available (see the top of this page).</string>
+    <string name="th06_help_latest">You have the newest version (%1$s is the latest release).</string>
+    <string name="th06_help_check_failed">Could not check: %1$s</string>
+    <string name="th06_help_bug">Found a bug? Save the log (it stays on your phone until you share it) and attach it to an issue on GitHub.</string>
+    <string name="th06_help_save_log">Save a log for a bug report</string>
+    <string name="th06_help_report">Report a problem on GitHub</string>
+    <string name="th06_help_log_saved">Log saved. Attach it to your bug report.</string>
+    <string name="th06_help_log_failed">Could not save the log: %1$s</string>
+    <string name="th06_footer">A fan-made port for your own copy of 東方紅魔郷 ～ the Embodiment of Scarlet Devil (Team Shanghai Alice). No game files are included.\nFonts: Yuji Syuku and Zen Antique (SIL Open Font License 1.1).</string>
+    <string name="th06_gametext_caption">Game text (story, spell cards, music)</string>
+    <string name="th06_gametext_same">Same as the app</string>
+    <string name="th06_gametext_original">The game\'s own Japanese text.</string>
+    <string name="th06_gametext_not_installed">Download the translation from Touhou Patch Center (thpatch.net). Only the game\'s text files are fetched (small).</string>
+    <string name="th06_gametext_installed">Installed: %1$d files, dialogue for %2$d of 7 stages, updated %3$s.</string>
+    <string name="th06_gametext_download">Download translation</string>
+    <string name="th06_gametext_update">Check for a newer translation</string>
+    <string name="th06_gametext_remove">Remove translation</string>
+    <string name="th06_gametext_connecting">Connecting to thpatch.net…</string>
+    <string name="th06_gametext_downloading">Downloading %1$s: file %2$d of %3$d…</string>
+    <string name="th06_gametext_done">Done (%1$d new files). The game uses the translation from its next start.</string>
+    <string name="th06_gametext_failed">Could not download: %1$s</string>
+    <string name="th06_gametext_unavailable">Touhou Patch Center has no translation of the game\'s text in this language yet, so it stays in Japanese.</string>
+    <string name="th06_gametext_removed">Removed. The game shows its own Japanese text.</string>
+    <string name="th06_gametext_credit">Game text translations: Touhou Patch Center contributors (thpatch.net), CC BY-SA 3.0. Pictures in the game are not changed.</string>
+    <string-array name="th06_shot_types">
         <item>Reimu A (homing amulets)</item>
         <item>Reimu B (needles)</item>
         <item>Marisa A (missiles)</item>
         <item>Marisa B (laser)</item>
     </string-array>
-    <string-array name="difficulties" translatable="false">
+    <string-array name="th06_difficulties" translatable="false">
         <item>Easy</item>
         <item>Normal</item>
         <item>Hard</item>
         <item>Lunatic</item>
     </string-array>
-    <string-array name="stages">
+    <string-array name="th06_stages">
         <item>Stage 1</item>
         <item>Stage 2</item>
         <item>Stage 3</item>
@@ -163,44 +163,44 @@
         <item>Stage 6</item>
         <item>Extra</item>
     </string-array>
-    <string-array name="mischief">
+    <string-array name="th06_mischief">
         <item>Infinite lives</item>
         <item>Infinite bombs</item>
         <item>Invincible (nothing hits you)</item>
         <item>Power always MAX</item>
         <item>Unlimited continues</item>
     </string-array>
-    <string-array name="move_modes">
+    <string-array name="th06_move_modes">
         <item>Drag anywhere (touchpad)</item>
         <item>D-pad</item>
     </string-array>
-    <string-array name="button_sizes">
+    <string-array name="th06_button_sizes">
         <item>Small</item>
         <item>Normal</item>
         <item>Large</item>
         <item>Extra large</item>
     </string-array>
-    <string-array name="opacities">
+    <string-array name="th06_opacities">
         <item>Faint</item>
         <item>Light</item>
         <item>Normal</item>
         <item>Solid</item>
     </string-array>
-    <string-array name="speeds">
+    <string-array name="th06_speeds">
         <item>Normal speed</item>
         <item formatted="false">75% (slow motion)</item>
         <item formatted="false">50% (slow motion)</item>
     </string-array>
-    <string-array name="layouts">
+    <string-array name="th06_layouts">
         <item>Landscape (sideways)</item>
         <item>Portrait (upright; playfield fills the width)</item>
     </string-array>
-    <string-array name="scalings">
+    <string-array name="th06_scalings">
         <item>Smooth</item>
         <item>Sharp pixels</item>
         <item>Pixel-perfect (whole multiples)</item>
     </string-array>
-    <string-array name="track_names">
+    <string-array name="th06_track_names">
         <item>Title screen</item>
         <item>Stage 1</item>
         <item>Stage 1 boss</item>
@@ -219,15 +219,15 @@
         <item>Ending</item>
         <item>Staff roll</item>
     </string-array>
-    <plurals name="files_in_use">
+    <plurals name="th06_files_in_use">
         <item quantity="one">%d file in use:</item>
         <item quantity="other">%d files in use:</item>
     </plurals>
-    <plurals name="backup_part_replays">
+    <plurals name="th06_backup_part_replays">
         <item quantity="one">%d replay</item>
         <item quantity="other">%d replays</item>
     </plurals>
-    <plurals name="backup_part_songs">
+    <plurals name="th06_backup_part_songs">
         <item quantity="one">%d replaced song</item>
         <item quantity="other">%d replaced songs</item>
     </plurals>
