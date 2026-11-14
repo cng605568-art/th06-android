@@ -1,4 +1,4 @@
-# TH06 Android Port
+# Touhou Android Ports: TH06, TH07, TH08 and Touhou Launcher
 
 Native Android engine for *Touhou Koumakyou ~ the Embodiment of Scarlet Devil* (2002),
 written in C++20 on SDL2 + OpenGL ES 3. It reads **your own copy** of the game's archives on
@@ -232,7 +232,7 @@ Apple's C++ library has the number formatting the game uses from 16.3 on).
 * Not on iOS yet: the game-text downloads, replace music and the launcher's backup button
   (copy the `Saves` folder instead).
 
-## Imperishable Night (th08) app: in progress
+## Imperishable Night (th08) app
 
 `:th08` (app id `io.github.cng605568art.th08`, "TH08 Port") is the next game on the same
 engine. CI builds it as **th08-android-<version>**, and Touhou Launcher holds it too. The
